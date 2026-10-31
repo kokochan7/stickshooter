@@ -19,7 +19,7 @@ export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
 export const MAX_LAG_COMP = 0.2; // the server rewinds at most 200 ms
 export const MAX_HUMANS = 10;
-export const BOT_FILL = 6; // bots keep the room at this many players until humans fill it
+export const BOT_FILL = 0; // bots keep the room at this many players until humans fill it (0 = no bots)
 export const DEFAULT_ROOM = 'public';
 
 // Everything the owning client needs to predict and draw itself.

@@ -14,14 +14,18 @@ export const DEFAULT_SETTINGS = {
   antialias: true,
   showFps: true,
   invertY: false,
-  bots: 5,
+  bots: 0,
   difficulty: 'normal',
+  version: 2,
 };
 
 const KEY = 'stickshooter.settings.v1';
 export function loadSettings() {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(KEY) || '{}') };
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    // v2 made 0 bots the default; older saves always stored 5.
+    if ((saved.version ?? 1) < 2) delete saved.bots;
+    return { ...DEFAULT_SETTINGS, ...saved, version: DEFAULT_SETTINGS.version };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

@@ -151,7 +151,6 @@ export class Audio {
     b.hurt = thud(c, 70, 0.08, 0.6, 0.2);
     b.step = thud(c, 120, 0.025, 1.4, 0.07);
     b.land = thud(c, 80, 0.05, 1.4, 0.14);
-    b.brass = ding(c, 4200, 0.03, 0.08);
     b.buy = blip(c, 700, 1100, 0.1);
     b.spin = makeBuffer(c, 0.5, (d, n) => {
       let ph = 0;

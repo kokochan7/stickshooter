@@ -52,7 +52,7 @@ const stepState = new Map();
 
 // ---------- Setup ----------
 
-for (let i = 1; i <= 10; i++) $('m-bots').insertAdjacentHTML('beforeend', `<option value="${i}">${i}</option>`);
+for (let i = 0; i <= 10; i++) $('m-bots').insertAdjacentHTML('beforeend', `<option value="${i}">${i}</option>`);
 $('m-bots').value = String(settings.bots);
 $('m-diff').value = settings.difficulty;
 $('m-bots').addEventListener('change', () => { settings.bots = +$('m-bots').value; onSettingChange('bots'); });
@@ -313,9 +313,6 @@ function handleEvent(e) {
   }
 }
 
-view.effects.onShellBounce = (pos) => {
-  if (me && Math.hypot(pos.x - me.pos[0], pos.z - me.pos[2]) < 6) audio.play('brass', { pos: [pos.x, pos.y, pos.z], volume: 0.25, jitter: 0.2 });
-};
 
 function norm(v) {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;

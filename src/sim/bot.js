@@ -8,10 +8,15 @@ import { isEnemy } from './combat.js';
 
 const DEG = Math.PI / 180;
 
+// reaction: seconds before the first shot at a new target. aimError: initial
+// miss in degrees, shrinking at errorDecay per second. wobble: an aim drift in
+// degrees that never settles, so bots miss at range even when tracking.
+// hurtFlinch: degrees of aim knocked off when the bot is hit. lead: how much
+// of the target's movement the bot predicts.
 export const DIFFICULTY = {
-  easy: { reaction: 0.5, aimError: 9, errorDecay: 1.8, head: 0.1, turn: 280, spray: 0.3, burst: 0.7 },
-  normal: { reaction: 0.36, aimError: 7, errorDecay: 3.0, head: 0.2, turn: 420, spray: 0.55, burst: 1 },
-  hard: { reaction: 0.2, aimError: 3.5, errorDecay: 5.5, head: 0.45, turn: 700, spray: 0.85, burst: 1.3 },
+  easy: { reaction: 0.8, aimError: 16, errorDecay: 0.9, wobble: 3.2, hurtFlinch: 8, lead: 0, head: 0.04, turn: 200, spray: 0.1, burst: 0.6 },
+  normal: { reaction: 0.55, aimError: 12, errorDecay: 1.5, wobble: 2.0, hurtFlinch: 6, lead: 0.3, head: 0.1, turn: 300, spray: 0.3, burst: 0.8 },
+  hard: { reaction: 0.35, aimError: 8, errorDecay: 2.4, wobble: 1.1, hurtFlinch: 4, lead: 0.6, head: 0.22, turn: 460, spray: 0.55, burst: 1.1 },
 };
 
 const PRIMARY_POOL = ['ak47', 'ak47', 'm4a1', 'm4a1', 'famas', 'mp5', 'p90', 'ump45', 'uzi', 'shotgun', 'autoshotgun', 'awp', 'minigun'];
@@ -58,6 +63,8 @@ export class BotBrain {
     this.altToggle = false;
     this.aimHead = false;
     this.crouchFire = false;
+    this.wobblePhase = [Math.random() * 10, Math.random() * 10];
+    this.lastHurtSeen = this.p.lastHurtTime;
   }
 
   think(dt) {
@@ -91,9 +98,10 @@ export class BotBrain {
 
     if (tgt && tgt.alive && this.targetVisible) {
       // --- Combat ---
-      const aimY = this.aimHead ? (tgt.ducked ? 0.88 : 1.6) : (tgt.ducked ? 0.6 : 1.25);
+      const aimY = this.aimHead ? (tgt.ducked ? 0.88 : 1.6) : (tgt.ducked ? 0.6 : 1.1);
       // Lead the target a little based on its velocity.
-      const ax = tgt.pos[0] + tgt.vel[0] * 0.05, ay = tgt.pos[1] + aimY, az = tgt.pos[2] + tgt.vel[2] * 0.05;
+      const lead = 0.05 * this.skill.lead;
+      const ax = tgt.pos[0] + tgt.vel[0] * lead, ay = tgt.pos[1] + aimY, az = tgt.pos[2] + tgt.vel[2] * lead;
       const dx = ax - eye[0], dy = ay - eye[1], dz = az - eye[2];
       const dist = Math.hypot(dx, dy, dz);
       let wantYaw = Math.atan2(-dx, -dz);
@@ -101,8 +109,18 @@ export class BotBrain {
       // Aim error shrinks the longer we track the target.
       const decay = Math.exp(-this.skill.errorDecay * dt);
       this.aimErr[0] *= decay; this.aimErr[1] *= decay;
-      wantYaw += this.aimErr[0] * DEG;
-      wantPitch += this.aimErr[1] * DEG;
+      // Getting shot throws the aim off again.
+      if (p.lastHurtTime > this.lastHurtSeen) {
+        this.lastHurtSeen = p.lastHurtTime;
+        const f = this.skill.hurtFlinch;
+        this.aimErr[0] += (Math.random() * 2 - 1) * f;
+        this.aimErr[1] += (Math.random() * 2 - 1) * f * 0.6;
+      }
+      // A slow drift that never settles, larger while the bot or target moves.
+      const moving = Math.min(1, (Math.hypot(p.vel[0], p.vel[2]) + Math.hypot(tgt.vel[0], tgt.vel[2])) / 4);
+      const wob = this.skill.wobble * (0.6 + 0.6 * moving);
+      wantYaw += (this.aimErr[0] + wob * Math.sin(t * 1.9 + this.wobblePhase[0])) * DEG;
+      wantPitch += (this.aimErr[1] + wob * 0.6 * Math.sin(t * 2.7 + this.wobblePhase[1])) * DEG;
       // Spray control: pull down against recoil.
       wantYaw -= p.punch[1] * DEG * this.skill.spray;
       wantPitch -= p.punch[0] * DEG * this.skill.spray;

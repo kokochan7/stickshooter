@@ -107,7 +107,6 @@ export class OnlineSession {
     // formed player object to fill in.
     const p = this.game.addPlayer({ name: state.name, team: state.team, isBot: state.isBot });
     p.id = state.id;
-    p.skin = state.id === this.myId ? 'white' : 'shadow';
     return p;
   }
 
