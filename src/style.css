@@ -265,3 +265,52 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #prompt { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: var(--panel); font-weight: 700; font-size: 16px; }
 #prompt kbd { font-size: 13px; padding: 3px 8px; background: var(--accent); color: var(--accent-ink); }
 #scoreboard .sb-head { text-align: center; font: 400 24px var(--title); letter-spacing: 1px; color: var(--accent); margin: 0 0 10px; }
+
+/* ---------- Touch controls (phones / tablets) ---------- */
+#touch { position: fixed; inset: 0; z-index: 8; touch-action: none; -webkit-touch-callout: none; }
+#touch .t-zone { position: absolute; top: 0; bottom: 0; }
+#touch .t-move { left: 0; width: 42%; }
+#touch .t-look { left: 42%; right: 0; }
+#touch .t-stick {
+  position: absolute; left: -64px; top: -64px; width: 128px; height: 128px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35); background: rgba(255,255,255,.07); pointer-events: none;
+}
+#touch .t-knob {
+  position: absolute; left: 36px; top: 36px; width: 56px; height: 56px; border-radius: 50%;
+  background: rgba(255,255,255,.45); box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+#touch .t-btn {
+  --s: 58px; position: absolute; width: var(--s); height: var(--s); border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.4); background: rgba(16,19,26,.38); color: rgba(255,255,255,.9);
+  font: 800 12px var(--body); letter-spacing: .04em; padding: 0; touch-action: none;
+  -webkit-tap-highlight-color: transparent; backdrop-filter: blur(2px);
+}
+#touch .t-btn.on, #touch .t-btn.lit { background: rgba(255,210,63,.55); color: var(--accent-ink); border-color: var(--accent); }
+#touch .t-btn.big { --s: 92px; font-size: 16px; }
+#touch .t-btn.top { --s: 44px; border-radius: 12px; font-size: 11px; top: calc(10px + env(safe-area-inset-top)); }
+/* Right thumb cluster around FIRE. */
+#touch .t-fire   { right: calc(24px + env(safe-area-inset-right)); bottom: calc(64px + env(safe-area-inset-bottom)); }
+#touch .t-jump   { right: calc(36px + env(safe-area-inset-right)); bottom: calc(172px + env(safe-area-inset-bottom)); }
+#touch .t-duck   { right: calc(128px + env(safe-area-inset-right)); bottom: calc(22px + env(safe-area-inset-bottom)); }
+#touch .t-reload { right: calc(134px + env(safe-area-inset-right)); bottom: calc(112px + env(safe-area-inset-bottom)); }
+#touch .t-alt    { right: calc(112px + env(safe-area-inset-right)); bottom: calc(196px + env(safe-area-inset-bottom)); --s: 50px; font-size: 10px; }
+#touch .t-swap   { right: calc(212px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 20px; }
+#touch .t-knife  { right: calc(222px + env(safe-area-inset-right)); bottom: calc(130px + env(safe-area-inset-bottom)); --s: 50px; font-size: 10px; }
+#touch .t-drop   { right: calc(36px + env(safe-area-inset-right)); bottom: calc(250px + env(safe-area-inset-bottom)); --s: 44px; }
+#touch .t-pause  { left: calc(12px + env(safe-area-inset-left)); }
+#touch .t-buy    { left: calc(64px + env(safe-area-inset-left)); }
+#touch .t-scores { left: calc(116px + env(safe-area-inset-left)); }
+#touch .t-rotate {
+  display: none; position: absolute; inset: 0; align-items: center; justify-content: center; text-align: center;
+  background: rgba(10,12,16,.92); font: 700 18px var(--body); padding: 24px; z-index: 2;
+}
+@media (orientation: portrait) { #touch .t-rotate { display: flex; } }
+body.touch #hint, body.touch #controls { display: none; }
+body.touch #vcursor { display: none; }
+.pause-hint { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
+.pause-hint kbd { font: 700 11px var(--body); padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.1); }
+body.touch .pause-hint { display: none; }
+/* Touch: keep the HUD out from under the buttons. Ammo goes top right and the
+   FPS readout drops below the pause / buy / scores buttons. */
+body.touch .hud-br { bottom: auto; top: 18px; }
+body.touch #perf { top: 140px; }

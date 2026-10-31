@@ -387,13 +387,36 @@ distinct headshot sound, a dynamic crosshair that opens with spread and
 recoil, and a damage-direction indicator. Online play must keep all of these
 instant on the shooter's screen (see 6.3).
 
-**Recoil screen shake** (Settings > General, `viewKick`, default 25%). CS
-moves the whole camera by the view punch, which made a player motion sick
-after ten minutes. The sim is unchanged (bullets still follow view + punch),
-but the camera only shows `viewKick`% of the punch and the crosshair moves by
-the rest, so it still marks where the next bullet lands. At 100% it's plain
-CS. The viewmodel's kick, bob and landing dip scale with it too (35% to
-100%). Getting shot (aim punch) goes through the same path.
+**Recoil and screen shake** (Settings > General, `viewKick` "Screen shake %",
+default 100%). Recoil is CS 1.6's KickBack pattern scaled by `RECOIL_SCALE`
+(0.75, constants.js), so sprays climb and wander like CS but less. The camera
+eases toward the view punch over ~35 ms (`SHAKE_EASE` in main.js) instead of
+snapping, so each shot rolls the view rather than jolting it. Below 100% the
+camera shows that share of the punch and the crosshair moves by the rest, so
+it always marks where the next bullet lands. The viewmodel's kick, bob and
+landing dip scale with it (35% to 100%).
+
+**Bunny hopping.** Holding jump jumps again on the landing tick, which skips
+friction and the landing slowdown, so air strafing builds speed. Takeoff speed
+is capped at 1.7x the weapon's run speed (`BHOP_MAX_SPEED_MUL`, CS's
+`BUNNYJUMP_MAX_SPEED_FACTOR`), held at the cap rather than CS's hard knockdown.
+
+**Pause and browser shortcuts.** Esc pauses and Esc resumes. In a match the
+game takes Ctrl/Alt combos, F1-F10, Backspace and friends away from the
+browser. Ctrl+W/T/N can only be captured in fullscreen through the Keyboard
+Lock API (Chrome/Edge), so matches go fullscreen by default (setting
+`fullscreen`); elsewhere closing the tab mid-match asks first (beforeunload).
+
+**Touch controls** (src/client/touch.js, phones/tablets): floating move stick
+on the left (short push walks), drag on the right to look (`touchSens`),
+FIRE doubles as a look pad, plus jump, crouch toggle, reload, scope, weapon
+cycle, knife, drop, buy, scores and pause.
+
+**Sounds** are all synthesized at startup in audio.js (no files, no Valve
+audio): layered shots (transient, crack, resonant body, boom, action clack,
+saturation, slap-back room, 22 kHz-style grit), metal-modal reload parts,
+brass, impacts and ricochets, concrete footsteps, knife. The menu song is the
+only audio file.
 
 ### 5.10 Knife
 

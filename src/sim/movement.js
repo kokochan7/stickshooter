@@ -3,7 +3,7 @@
 import {
   GRAVITY, JUMP_SPEED, ACCELERATE, AIR_ACCELERATE, AIR_WISH_CAP, FRICTION, STOP_SPEED,
   DUCK_SPEED_MUL, WALK_SPEED_MUL, STEP_HEIGHT, PLAYER_RADIUS, STAND_HEIGHT, DUCK_HEIGHT,
-  DUCK_TIME, LAND_SPEED_MUL, JUMP_STAMINA_TIME,
+  DUCK_TIME, LAND_SPEED_MUL, JUMP_STAMINA_TIME, BHOP_MAX_SPEED_MUL,
 } from './constants.js';
 
 export function forwardVec(yaw) {
@@ -78,6 +78,15 @@ function friction(vel, dt) {
   vel[2] *= newspeed;
 }
 
+// Like CS's PM_PreventMegaBunnyJumping, hopping can't take you past
+// BHOP_MAX_SPEED_MUL x your weapon's run speed. CS 1.6 knocks you down hard
+// when you pass it; we just hold you at the cap, which feels smoother.
+function capBhopSpeed(vel, maxSpeed) {
+  const cap = maxSpeed * BHOP_MAX_SPEED_MUL;
+  const spd = Math.hypot(vel[0], vel[2]);
+  if (spd > cap) { vel[0] *= cap / spd; vel[2] *= cap / spd; }
+}
+
 // cmd: { fwd, side, jump, duck, walk, yaw, pitch }
 // maxSpeed: meters/second, from the held weapon.
 export function movePlayer(world, p, cmd, dt, maxSpeed) {
@@ -129,8 +138,12 @@ export function movePlayer(world, p, cmd, dt, maxSpeed) {
   p.stamina = Math.max(0, (p.stamina ?? 0) - dt);
 
   // --- Jump ---
-  const jumpPressed = cmd.jump && !p.jumpHeld;
+  // Holding jump hops again the moment you land (auto bunny hop), so a fresh
+  // press isn't needed. Jumping on the landing tick skips ground friction,
+  // which is what lets air strafing build speed.
+  const jumpPressed = !!cmd.jump;
   p.jumpHeld = !!cmd.jump;
+  if (p.onGround && jumpPressed) capBhopSpeed(vel, maxSpeed);
   if (p.onGround && jumpPressed && !p.ducked) {
     // Jumping again right after landing gives a lower jump.
     const mul = p.stamina > 0 ? 0.8 : 1;
@@ -193,8 +206,8 @@ export function movePlayer(world, p, cmd, dt, maxSpeed) {
     if (ground) {
       if (!wasOnGround) {
         p.landSpeed = -vel[1];
-        // Landing slowdown.
-        vel[0] *= LAND_SPEED_MUL; vel[2] *= LAND_SPEED_MUL;
+        // Landing slowdown, unless jump is held: then we hop straight away.
+        if (!cmd.jump) { vel[0] *= LAND_SPEED_MUL; vel[2] *= LAND_SPEED_MUL; }
       }
       // Snap down onto the ground (also walks down stairs smoothly).
       if (wasOnGround && ground.max[1] < p.pos[1] && p.pos[1] - ground.max[1] < STEP_HEIGHT + 0.01) {

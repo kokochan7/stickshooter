@@ -18,6 +18,7 @@ import { GameView } from './client/scene.js';
 import { Audio } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
+import { TouchControls, isTouchDevice } from './client/touch.js';
 import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons, setHudScale } from './client/hud.js';
 import { OnlineSession, roomUrl, fetchRoomCounts } from './net/online.js';
 import { PUBLIC_ROOMS, pickRoom, roomMode } from './net/protocol.js';
@@ -42,16 +43,41 @@ hud.chSettings = settings;
 const { icons, glyphs } = renderGunIcons(view.renderer);
 hud.glyphs = glyphs;
 const buyMenu = new BuyMenu(icons, (item) => pendingActions.push({ type: 'buy', item }));
-new SettingsPanel(settings, onSettingChange);
+const settingsPanel = new SettingsPanel(settings, onSettingChange);
 setHudScale(settings.hudScale);
 applyViewKick();
 
-// Recoil screen shake setting: the camera shows this share of the view punch
-// and the crosshair shows the rest. The gun's own kick and bob scale down
-// with it, but never all the way, so shooting still feels like something.
+// Screen shake setting: the camera shows this share of the view punch and
+// the crosshair shows the rest. The gun's own kick and bob scale down with
+// it, but never all the way, so shooting still feels like something.
 function applyViewKick() {
   view.viewModel.motion = 0.35 + 0.65 * (settings.viewKick / 100);
 }
+
+// The camera eases toward the view punch over SHAKE_EASE seconds instead of
+// snapping to it, so each shot rolls the view rather than jolting it.
+const SHAKE_EASE = 0.035;
+let shakeP = 0, shakeY = 0;
+
+// Phones and tablets: on-screen controls, no pointer lock.
+const TOUCH = isTouchDevice();
+document.body.classList.toggle('touch', TOUCH);
+const touch = TOUCH ? new TouchControls(input, settings, {
+  buy: () => setBuyMenu(!buyMenu.open),
+  drop: () => dropOrPickup(),
+  scores: (show) => { if (scoresForced === null) showScoreboard(show); },
+  pause: () => pauseGame(),
+  knife: () => { input.pending.slot = me?.active === 'melee' ? (me.weapons.primary ? 'primary' : 'secondary') : 'melee'; },
+  cycle: () => {
+    // primary -> pistol -> knife -> primary, skipping empty slots.
+    const order = ['primary', 'secondary', 'melee'];
+    const i = order.indexOf(me?.active);
+    for (let k = 1; k <= 3; k++) {
+      const next = order[(i + k) % 3];
+      if (me?.weapons[next]) { input.pending.slot = next; break; }
+    }
+  },
+}) : null;
 
 let me = null;
 let net = null; // OnlineSession while playing online
@@ -184,8 +210,13 @@ $('music-toggle').addEventListener('click', () => {
 function showPlaying() {
   $('menu').classList.add('hidden');
   $('pause').classList.add('hidden');
+  $('settings').classList.add('hidden');
   hud.show(true);
-  input.lock();
+  if (TOUCH) touch.show(true);
+  // Fullscreen first: switching to it cancels a pointer lock in flight.
+  else enterMatchScreen().then(() => input.lock());
+  input.inMatch = true;
+  pausedAt = 0;
   mode = 'playing';
   audio.setSfx(true);
   music.set({ active: false });
@@ -213,6 +244,9 @@ function clearPlayers() {
 
 function showMenu(status = '') {
   mode = 'menu';
+  input.inMatch = false;
+  touch?.show(false);
+  leaveMatchScreen();
   audio.setSfx(false);
   music.set({ active: true });
   if (buyMenu.open) setBuyMenu(false);
@@ -283,16 +317,79 @@ const openSettings = () => $('settings').classList.remove('hidden');
 $('open-settings').addEventListener('click', openSettings);
 $('pause-settings').addEventListener('click', openSettings);
 $('close-settings').addEventListener('click', () => $('settings').classList.add('hidden'));
-canvas.addEventListener('click', () => { if (mode === 'playing' && !input.locked && !buyMenu.open) input.lock(); });
+canvas.addEventListener('click', () => { if (!TOUCH && mode === 'playing' && !input.locked && !buyMenu.open) input.lock(); });
 
-// Losing pointer lock mid-game (Esc, alt-tab) pauses, closing the buy menu.
-input.on('lock', (locked) => {
-  if (!locked && mode === 'playing') {
-    mode = 'paused'; // first, so closing the menu doesn't re-lock
-    audio.setSfx(false); // paused means quiet, even online where the match goes on
-    if (buyMenu.open) setBuyMenu(false);
-    $('pause').classList.remove('hidden');
+// Pausing: Esc, losing pointer lock (alt-tab, the browser's own Esc) or the
+// touch pause button. Esc again resumes.
+let pausedAt = 0;
+let resumeOnLock = false;
+function pauseGame() {
+  if (mode !== 'playing') return;
+  mode = 'paused'; // first, so closing the menu doesn't re-lock
+  pausedAt = performance.now();
+  resumeOnLock = false;
+  audio.setSfx(false); // paused means quiet, even online where the match goes on
+  if (buyMenu.open) setBuyMenu(false);
+  touch?.reset();
+  // We release the mouse ourselves, which also lets us take it back on the
+  // next Esc without a click (browsers allow that after exitPointerLock).
+  input.unlock();
+  $('pause').classList.remove('hidden');
+}
+
+function resumeByKey() {
+  // Ignore the same Esc that paused us (the browser can deliver it twice).
+  if (performance.now() - pausedAt < 250) return;
+  if (!$('settings').classList.contains('hidden')) {
+    if (!settingsPanel.capturing) $('settings').classList.add('hidden');
+    return;
   }
+  if (TOUCH || input.locked) return startPlaying();
+  // Resume once the browser hands the mouse back. If it refuses (it does
+  // after you pressed Esc yourself outside fullscreen), RESUME needs a click.
+  resumeOnLock = true;
+  input.lock();
+}
+
+input.on('lock', (locked) => {
+  if (!locked && mode === 'playing') pauseGame();
+  else if (locked && mode === 'paused' && resumeOnLock) { resumeOnLock = false; startPlaying(); }
+});
+
+// ---------- Browser shortcuts during a match ----------
+// A page can't stop Ctrl+W / Ctrl+T / Ctrl+N in a normal window. In
+// fullscreen, Chrome and Edge let us take the whole keyboard with the
+// Keyboard Lock API, so those (and Esc) come to the game instead; holding Esc
+// still leaves fullscreen. Elsewhere, closing the tab mid-match at least asks
+// first (beforeunload).
+let ownFullscreen = false;
+async function enterMatchScreen() {
+  if (!settings.fullscreen) return;
+  const el = document.documentElement;
+  if (!document.fullscreenElement && el.requestFullscreen) {
+    try {
+      await el.requestFullscreen({ navigationUI: 'hide' });
+      ownFullscreen = true;
+    } catch { /* not allowed here; play windowed */ }
+  }
+  lockKeys();
+}
+function lockKeys() {
+  if (document.fullscreenElement && navigator.keyboard?.lock) navigator.keyboard.lock().catch(() => {});
+}
+function leaveMatchScreen() {
+  navigator.keyboard?.unlock?.();
+  if (ownFullscreen && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  ownFullscreen = false;
+}
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) { ownFullscreen = false; navigator.keyboard?.unlock?.(); }
+  else if (mode !== 'menu') lockKeys();
+});
+addEventListener('beforeunload', (e) => {
+  if (mode === 'menu') return;
+  e.preventDefault();
+  e.returnValue = '';
 });
 
 // The buy menu keeps pointer lock and uses a virtual cursor. Releasing and
@@ -321,15 +418,17 @@ function setBuyMenu(open) {
   input.menuKeys = open;
   // Without pointer lock the real mouse cursor already works on the menu.
   input.setCursor(open && input.locked);
-  if (!open && mode === 'playing') input.lock();
+  if (!open && mode === 'playing' && !TOUCH) input.lock();
 }
 buyMenu.onClose = () => setBuyMenu(false);
 
 input.on('key', (code) => {
+  if (code === 'Escape' && mode === 'paused') return resumeByKey();
   if (mode !== 'playing') return;
   const b = settings.binds;
   if (code === b.buy) setBuyMenu(!buyMenu.open);
   else if (code === 'Escape' && buyMenu.open) setBuyMenu(false);
+  else if (code === 'Escape') pauseGame();
   else if (buyMenu.open && /^(Digit|Numpad)\d$/.test(code)) buyMenu.key(+code.slice(-1));
   else if (buyMenu.open && code === 'Backspace') buyMenu.key('back');
   else if (code === b.switchTeam) switchTeam();
@@ -403,6 +502,7 @@ function handleEvent(e) {
         if (Math.random() < tracerChance) view.effects.tracer(muzzle, _v3.set(end[0], end[1], end[2]));
       }
       for (const im of e.impacts) view.effects.impact(im.pos, im.normal, im.material);
+      bulletSounds(e, isFirstPerson(p) && !def.pellets);
       break;
     }
     case 'hit': {
@@ -518,6 +618,26 @@ function handleEvent(e) {
 }
 
 
+// Where bullets land: a debris crack, sometimes a ricochet whine, and the
+// brass from our own gun tinkling on the floor a moment later. Throttled so
+// a spray doesn't turn into noise.
+let lastRic = 0, lastBrass = 0;
+function bulletSounds(e, ownBrass) {
+  const now = performance.now();
+  const im = e.impacts[e.impacts.length - 1];
+  if (im) {
+    audio.play('impact', { pos: im.pos, volume: 0.35, jitter: 0.12 });
+    if (now - lastRic > 120 && Math.random() < 0.3) {
+      lastRic = now;
+      audio.play('ric' + Math.floor(Math.random() * 3), { pos: im.pos, volume: 0.4, jitter: 0.08 });
+    }
+  }
+  if (ownBrass && now - lastBrass > 160) {
+    lastBrass = now;
+    timers.push({ t: game.time + 0.35 + Math.random() * 0.2, fn: () => audio.play('brass', { volume: 0.22, jitter: 0.1 }) });
+  }
+}
+
 function norm(v) {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];
@@ -589,9 +709,10 @@ function updateView(dt, alpha) {
   const cam = view.camera;
   let fov = settings.fov;
   let showVm = false;
-  // Share of the view punch the camera shows (settings.viewKick).
+  // Share of the view punch the camera shows (settings.viewKick, eased).
   const kick = settings.viewKick / 100;
   let punchP = 0, punchY = 0;
+  if (!(me && me.alive)) { shakeP = 0; shakeY = 0; }
   if (me && me.alive && mode !== 'menu') {
     const duck = lerp(me.prevDuck, me.duckAmount, alpha);
     const eye = STAND_EYE + (DUCK_EYE - STAND_EYE) * duck;
@@ -600,7 +721,10 @@ function updateView(dt, alpha) {
     const pz = lerp(me.prevPos[2], me.pos[2], alpha);
     punchP = lerp(me.prevPunch[0], me.punch[0], alpha) * DEG;
     punchY = lerp(me.prevPunch[1], me.punch[1], alpha) * DEG;
-    cam.rotation.set(input.pitch + punchP * kick, input.yaw + punchY * kick, 0);
+    const ease = 1 - Math.exp(-dt / SHAKE_EASE);
+    shakeP += (punchP * kick - shakeP) * ease;
+    shakeY += (punchY * kick - shakeY) * ease;
+    cam.rotation.set(input.pitch + shakeP, input.yaw + shakeY, 0);
     cam.position.set(px, py, pz);
     const def = game.activeDef(me);
     if (def?.zoomLevels && me.zoom > 0) {
@@ -658,7 +782,7 @@ function updateView(dt, alpha) {
     // The part of the recoil the camera isn't showing (screen shake setting)
     // moves the crosshair, so it still marks where the next bullet goes.
     const f = (innerHeight / 2) / Math.tan((fov * DEG) / 2);
-    const chOffset = me.alive ? [-Math.tan(punchY * (1 - kick)) * f, -Math.tan(punchP * (1 - kick)) * f] : null;
+    const chOffset = me.alive ? [-Math.tan(punchY - shakeY) * f, -Math.tan(punchP - shakeP) * f] : null;
     hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0, chOffset });
     hud.teamScores(game.teamKills, game.mode === 'teams' ? me.team : null);
     hud.goal(goalText());
