@@ -3,12 +3,12 @@
 // later without touching either side's game logic.
 //
 // client -> server
-//   { t: 'hello', name }
+//   { t: 'hello', name }                       the room's mode comes from its name (see roomMode)
 //   { t: 'cmds', seq, vt, cmds: [cmd, ...] }   seq = seq of the LAST cmd in the batch,
 //                                               vt = server time the client is viewing others at
 //   { t: 'ping', c }
 // server -> client
-//   { t: 'welcome', id, room, time, tickRate, snapRate }
+//   { t: 'welcome', id, mode, time, tickRate, snapEvery }
 //   { t: 'snap', time, ack, me, players: [...], events: [...] }
 //   { t: 'pong', c, time }
 //   { t: 'full' }  room is full
@@ -21,10 +21,16 @@ export const MAX_LAG_COMP = 0.2; // the server rewinds at most 200 ms
 export const MAX_HUMANS = 10;
 export const BOT_FILL = 0; // bots keep the room at this many players until humans fill it (0 = no bots)
 export const DEFAULT_ROOM = 'public';
+export const TEAMS_ROOM = 'public-teams';
+
+// A room plays Teams when its name ends in "teams"; every other room is FFA.
+export function roomMode(room) {
+  return /(^|-)teams$/.test(room) ? 'teams' : 'ffa';
+}
 
 // Everything the owning client needs to predict and draw itself.
 const OWN = [
-  'alive', 'respawnAt', 'pos', 'vel', 'yaw', 'pitch', 'onGround', 'ducked', 'duckAmount',
+  'team', 'alive', 'respawnAt', 'pos', 'vel', 'yaw', 'pitch', 'onGround', 'ducked', 'duckAmount',
   'stamina', 'jumpHeld', 'tagMul', 'health', 'armor', 'helmet', 'money', 'kills', 'deaths', 'headshots',
   'weapons', 'active', 'lastActive', 'nextAttack', 'deployEnd', 'reloading', 'reloadEnd',
   'shotsFired', 'pistolAcc', 'accuracy', 'lastFire', 'punch', 'zoom', 'spin', 'landSpeed',
@@ -58,8 +64,8 @@ export function sanitizeCmd(c) {
   let actions = null;
   if (Array.isArray(c.actions)) {
     actions = c.actions.slice(0, 4)
-      .filter((a) => a && a.type === 'buy' && typeof a.item === 'string')
-      .map((a) => ({ type: 'buy', item: a.item.slice(0, 24) }));
+      .filter((a) => a && ((a.type === 'buy' && typeof a.item === 'string') || (a.type === 'team' && (a.team === 'red' || a.team === 'blue'))))
+      .map((a) => (a.type === 'buy' ? { type: 'buy', item: a.item.slice(0, 24) } : { type: 'team', team: a.team }));
     if (!actions.length) actions = null;
   }
   return {

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game, emptyCmd } from '../src/sim/game.js';
-import { computeDamage, traceBullet } from '../src/sim/combat.js';
+import { computeDamage, traceBullet, isEnemy } from '../src/sim/combat.js';
 import { WEAPONS } from '../src/sim/weapons.js';
 import { World } from '../src/sim/world.js';
 import { U } from '../src/sim/constants.js';
@@ -115,4 +115,62 @@ test('bots play a match without errors and get kills', () => {
   const kills = g.players.reduce((s, p) => s + p.kills, 0);
   assert.ok(kills > 0, 'expected some kills in a minute of bot play');
   for (const p of g.players) for (const v of p.pos) assert.ok(Number.isFinite(v));
+});
+
+test('free-for-all: bots fight each other, not only the player', () => {
+  const g = new Game(YARD, { seed: 3 });
+  const nav = new NavGrid(g.world, YARD.bounds);
+  const brains = [];
+  for (let i = 0; i < 4; i++) {
+    const p = g.addPlayer({ name: 'bot' + i, isBot: true });
+    assert.equal(p.team, 'ffa');
+    brains.push(new BotBrain(g, p, nav, 'hard'));
+  }
+  let botOnBot = 0;
+  for (let i = 0; i < 128 * 60; i++) {
+    const cmds = new Map();
+    for (const b of brains) cmds.set(b.p.id, b.think(1 / 128));
+    g.tick(cmds);
+    for (const e of g.drainEvents()) if (e.type === 'kill' && e.attacker && e.attacker !== e.victim) botOnBot++;
+  }
+  assert.ok(botOnBot > 0, 'expected bots to kill each other in FFA');
+});
+
+test('teams: balanced sides, own-side spawns, and switching team', () => {
+  const g = new Game(YARD, { seed: 5, mode: 'teams' });
+  const ps = [];
+  for (let i = 0; i < 6; i++) ps.push(g.addPlayer({ name: 'p' + i }));
+  assert.deepEqual(ps.map((p) => p.team), ['red', 'blue', 'red', 'blue', 'red', 'blue']);
+  g.tick(new Map());
+  for (const p of ps) {
+    assert.ok(p.alive);
+    // Red spawns north (negative z), Blue south.
+    assert.ok(p.team === 'red' ? p.pos[2] < -15 : p.pos[2] > 20, `${p.team} spawned at z=${p.pos[2]}`);
+  }
+  const me = ps[0];
+  const deaths = me.deaths;
+  g.tick(new Map([[me.id, { ...emptyCmd(), actions: [{ type: 'team', team: 'blue' }] }]]));
+  assert.equal(me.team, 'blue');
+  assert.equal(me.alive, false);
+  assert.equal(me.deaths, deaths, 'switching team is not a death');
+  for (let i = 0; i < 128 * 1.2; i++) g.tick(new Map());
+  assert.ok(me.alive && me.pos[2] > 20, 'respawned on the Blue side');
+
+  // Teammates' bullets pass through each other.
+  const red = ps.filter((p) => p.team === 'red');
+  assert.ok(!isEnemy(red[0], red[1]));
+  // FFA again: everyone back on 'ffa', and switching team does nothing.
+  g.setMode('ffa');
+  assert.ok(g.players.every((p) => p.team === 'ffa'));
+  assert.equal(g.setTeam(me, 'red'), false);
+});
+
+test('team spawn points are clear of walls', () => {
+  for (const s of [...YARD.teamSpawns.red, ...YARD.teamSpawns.blue]) {
+    const [x, y, z] = s.pos;
+    for (const b of YARD.boxes) {
+      const inside = x > b.min[0] - 0.4 && x < b.max[0] + 0.4 && z > b.min[2] - 0.4 && z < b.max[2] + 0.4 && y + 0.05 < b.max[1] && y + 1.8 > b.min[1];
+      assert.ok(!inside, `spawn ${s.pos} overlaps a box ${b.min}..${b.max}`);
+    }
+  }
 });

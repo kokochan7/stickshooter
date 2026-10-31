@@ -88,6 +88,12 @@ export class Joint {
   }
 }
 
+// Body color per team. FFA (and anything else) keeps the white stickman.
+export const TEAM_COLORS = { red: 0xe0464a, blue: 0x3d7ee6 };
+export function teamColor(team) {
+  return TEAM_COLORS[team] ?? 0xffffff;
+}
+
 const THIGH = 0.47, SHIN = 0.47, UPPER_ARM = 0.32, FOREARM = 0.32;
 
 export class Stickman {
@@ -99,6 +105,7 @@ export class Stickman {
     const mat = toonMaterial(body);
     const outMat = new THREE.MeshBasicMaterial({ color: outline, side: THREE.BackSide });
     this.material = mat;
+    this.team = null;
 
     this.torso = new Limb(this.body, mat, 0.085, outMat);
     this.neck = new Limb(this.body, mat, 0.05, null);
@@ -169,6 +176,13 @@ export class Stickman {
   }
 
   setVisible(v) { this.root.visible = v; }
+
+  // Tint the body for the player's team (white in FFA).
+  setTeam(team) {
+    if (this.team === team) return;
+    this.team = team;
+    this.material.color.setHex(teamColor(team));
+  }
 
   die(sideSign) {
     this.deathT = 0;

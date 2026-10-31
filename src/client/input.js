@@ -8,7 +8,7 @@ export const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
   jump: 'Space', duck: 'ControlLeft', duckAlt: 'KeyC', walk: 'ShiftLeft',
   reload: 'KeyR', primary: 'Digit1', secondary: 'Digit2', lastWeapon: 'KeyQ',
-  buy: 'KeyB', scores: 'Tab', thirdPerson: 'KeyV',
+  buy: 'KeyB', scores: 'Tab', switchTeam: 'KeyM',
 };
 
 // Rebindable actions in the order the Controls tab lists them.
@@ -16,7 +16,7 @@ export const BIND_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
   jump: 'Jump', duck: 'Crouch', duckAlt: 'Crouch (alt)', walk: 'Walk',
   reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', lastWeapon: 'Last weapon',
-  buy: 'Buy menu', scores: 'Scoreboard', thirdPerson: 'Third person',
+  buy: 'Buy menu', scores: 'Scoreboard', switchTeam: 'Switch team',
 };
 
 // Short name for a KeyboardEvent.code, for the settings and HUD hints.

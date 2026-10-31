@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS = {
   showFps: true,
   bots: 0,
   difficulty: 'normal',
+  mode: 'ffa', // 'ffa' or 'teams', for practice and online
   version: 4,
 };
 
@@ -48,6 +49,8 @@ export function loadSettings() {
     s.sensitivity = clamp(+s.sensitivity || DEFAULT_SETTINGS.sensitivity, ...SENS_RANGE);
     s.fov = clamp(+s.fov || DEFAULT_SETTINGS.fov, ...FOV_RANGE);
     s.binds = { ...DEFAULT_BINDS, ...(saved.binds ?? {}) };
+    delete s.binds.thirdPerson; // third person was removed
+    if (s.mode !== 'teams') s.mode = 'ffa';
     return s;
   } catch {
     return { ...DEFAULT_SETTINGS, binds: { ...DEFAULT_BINDS } };
@@ -291,15 +294,42 @@ export class Hud {
     this.center.innerHTML = html;
   }
 
-  showScores(show, players, meId) {
+  // Top bar: your kills and deaths, plus the team scores (total kills) in Teams.
+  teamScores(players, myTeam) {
+    const el = $('team-score');
+    const teams = myTeam === 'red' || myTeam === 'blue';
+    const key = teams ? `${myTeam}:${teamKills(players, 'red')}:${teamKills(players, 'blue')}` : '';
+    if (this.last.teams === key) return;
+    this.last.teams = key;
+    el.classList.toggle('hidden', !teams);
+    if (!teams) return;
+    const [, red, blue] = key.split(':');
+    el.innerHTML = `<span class="ts red">${red}</span><span class="ts-you team-${myTeam}">${myTeam === 'red' ? 'RED' : 'BLUE'}</span><span class="ts blue">${blue}</span>`;
+  }
+
+  showScores(show, players, meId, mode = 'ffa') {
     this.scoreboard.classList.toggle('hidden', !show);
     if (!show) return;
-    const rows = [...players].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths).map((p) => {
+    const head = '<tr><th>PLAYER</th><th class="num">K</th><th class="num">D</th><th class="num">HS</th></tr>';
+    const table = (list) => list.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths).map((p) => {
       const hs = p.kills ? Math.round((p.headshots / p.kills) * 100) : 0;
       return `<tr class="${p.id === meId ? 'me' : ''} ${p.alive ? '' : 'dead'}"><td>${esc(p.name)}${p.isBot ? ' <small style="opacity:.5">BOT</small>' : ''}</td><td class="num">${p.kills}</td><td class="num">${p.deaths}</td><td class="num">${hs}%</td></tr>`;
     }).join('');
-    this.scoreboard.innerHTML = `<table><tr><th>PLAYER</th><th class="num">K</th><th class="num">D</th><th class="num">HS</th></tr>${rows}</table>`;
+    if (mode !== 'teams') {
+      this.scoreboard.innerHTML = `<table>${head}${table([...players])}</table>`;
+      return;
+    }
+    this.scoreboard.innerHTML = ['red', 'blue'].map((t) => {
+      const list = players.filter((p) => p.team === t);
+      return `<div class="sb-team ${t}"><div class="sb-title"><span>${t === 'red' ? 'RED TEAM' : 'BLUE TEAM'}</span><b>${teamKills(players, t)}</b></div><table>${head}${table(list)}</table></div>`;
+    }).join('');
   }
+}
+
+function teamKills(players, team) {
+  let n = 0;
+  for (const p of players) if (p.team === team) n += p.kills;
+  return n;
 }
 
 // Kill feed marks, drawn as tiny SVGs in the same flat white as the gun glyphs.
@@ -337,6 +367,10 @@ export class BuyMenu {
     this.list.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-n]');
       if (b) this.key(+b.dataset.n);
+    });
+    // A click anywhere outside the menu closes it.
+    this.el.addEventListener('click', (e) => {
+      if (this.open && !e.target.closest('.buy-card')) this.onClose?.();
     });
     this.list.addEventListener('pointerover', (e) => {
       const b = e.target.closest('button[data-n]');

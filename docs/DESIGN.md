@@ -42,7 +42,10 @@ The first build (PR #1) is a complete single-player loop:
 - Practice economy: everyone starts with $16,000 (the CS cap), +$300 per
   kill, respawn after 3 seconds with your last loadout re-bought.
 - HUD: health, armor, ammo, dynamic crosshair, kill feed, hit markers,
-  scoreboard (`Tab`), third-person view (`V`).
+  scoreboard (`Tab`, split by team in Teams mode). First person only.
+- Modes: Free for all (team `ffa`, white stickmen) and Teams (Red vs Blue,
+  tinted stickmen, `map.teamSpawns` per side, `M` switches team without
+  counting a death). Menu music is a streamed mp3 (`public/audio`).
 - Synthesized audio (no downloads), pooled effects (tracers, impacts,
   muzzle flash, shell casings).
 - Deployed as static assets on the `stickshooter` Cloudflare Worker.
@@ -422,7 +425,9 @@ Browser ──HTTPS──▶ Worker "stickshooter"   static assets (the game)
   empties, so empty rooms cost nothing.
 - **Room size:** up to 10 humans. Server-side bots (`BotBrain`, the same
   `bot.js`) fill the room up to 6 players total and leave as humans join.
-- **Mode:** free-for-all (team `ffa`) in v1.
+- **Mode:** from the room name (`roomMode` in protocol.js): `public` is
+  free-for-all (team `ffa`), `public-teams` is Red vs Blue. New players and
+  bots join the smaller team; a `team` cmd action switches sides.
 - **Later:** a room list / matchmaking registry (a small DO or KV that rooms
   report their player count to), so quick play can spread players over
   several rooms instead of one `public` room.
@@ -543,7 +548,8 @@ can't see) and stat-based flagging.
 1. **Practice** (today): offline vs bots, $16,000.
 2. **Free-for-all deathmatch** (online v1): respawns, bots fill the room.
    Reuses today's rules. Later: a time or kill limit and an end screen.
-3. **Team deathmatch**: 5v5, bots fill.
+3. **Team deathmatch** (done, practice and online): Red vs Blue, own-side
+   spawns, `M` to switch team. Later: a score limit and an end screen.
 4. **Round-based (CS style)**: buy time, round money, bomb or elimination
    rounds. Needs a round-state machine in `game.js` and a CS-style economy
    (round win/loss money, kill rewards per weapon class).

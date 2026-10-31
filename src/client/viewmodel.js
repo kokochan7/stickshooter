@@ -2,7 +2,7 @@
 // gun never clips into walls. Springs give the kick, sway and bob their feel.
 import * as THREE from 'three';
 import { buildGun } from './gunModels.js';
-import { toonMaterial, solveIK, Limb, Joint, stepRate } from './stickman.js';
+import { toonMaterial, solveIK, Limb, Joint, stepRate, teamColor } from './stickman.js';
 
 class Spring {
   constructor(stiffness = 180, damping = 18) {
@@ -42,6 +42,8 @@ export class ViewModel {
     this.rig.add(this.gunHolder);
 
     const mat = toonMaterial(0xffffff);
+    this.armMat = mat;
+    this.team = null;
     const out = new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide });
     this.arms = {};
     for (const s of ['L', 'R']) {
@@ -86,6 +88,13 @@ export class ViewModel {
   setAspect(a) {
     this.camera.aspect = a;
     this.camera.updateProjectionMatrix();
+  }
+
+  // First-person arms match the team color of the body.
+  setTeam(team) {
+    if (this.team === team) return;
+    this.team = team;
+    this.armMat.color.setHex(teamColor(team));
   }
 
   setWeapon(id) {

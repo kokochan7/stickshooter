@@ -80,6 +80,7 @@ export class OnlineSession {
     switch (msg.t) {
       case 'welcome':
         this.myId = msg.id;
+        this.game.mode = msg.mode ?? 'ffa';
         this.syncClock(msg.time);
         break;
       case 'snap':
@@ -130,7 +131,7 @@ export class OnlineSession {
       states.set(s.id, s);
       if (s.id === this.myId) continue;
       const p = g.getPlayer(s.id);
-      p.name = s.name; p.alive = s.alive; p.health = s.health;
+      p.name = s.name; p.team = s.team; p.alive = s.alive; p.health = s.health;
       p.kills = s.kills; p.deaths = s.deaths; p.headshots = s.headshots;
       p.onGround = s.onGround; p.ducked = s.ducked; p.reloading = s.reloading; p.zoom = s.zoom; p.spin = s.spin;
       p.active = s.active;

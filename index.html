@@ -26,6 +26,7 @@
     <div id="hud-frame">
       <div id="killfeed"></div>
       <div id="topbar"><span id="score-me">0</span><span class="sep">KILLS</span><span id="score-deaths">0</span><span class="sep">DEATHS</span></div>
+      <div id="team-score" class="hidden"></div>
       <div id="perf"><div id="fps"></div><div id="net" class="hidden"></div></div>
       <div class="hud-bl">
         <div class="money"><span>$</span><b id="money">0</b></div>
@@ -51,7 +52,11 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="cross" d="M16 9l6 6M22 9l-6 6"/></svg>
       </button>
       <h1 class="logo">STICK<span>SHOOTER</span></h1>
-      <p class="tag">Early build · online free-for-all is in testing</p>
+      <p class="tag">Early build · online play is in testing</p>
+      <div class="mode-pick" role="radiogroup" aria-label="Game mode">
+        <button class="mode-btn" data-mode="ffa" role="radio">FREE FOR ALL</button>
+        <button class="mode-btn" data-mode="teams" role="radio">TEAMS <small><i class="dot red"></i>vs<i class="dot blue"></i></small></button>
+      </div>
       <button id="play-online" class="btn primary online">PLAY ONLINE</button>
       <p id="net-status" class="net-status hidden"></p>
       <button id="play" class="btn primary">PRACTICE</button>
