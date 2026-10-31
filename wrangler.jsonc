@@ -1,9 +1,11 @@
 {
-  // Deploys the built game (dist/) as static assets on the "stickshooter" Worker,
-  // served at stickshooter.kennk.workers.dev.
-  // Multiplayer later: add a "main" script + a Durable Object for game rooms here.
+  // The "stickshooter" Worker at stickshooter.kennk.workers.dev:
+  // - dist/ (the built game) is served as static assets.
+  // - worker/index.js handles /api/* and /ws/*; each online room is a GameRoom
+  //   Durable Object running the same src/sim Game as the browser.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "stickshooter",
+  "main": "worker/index.js",
   "compatibility_date": "2025-10-01",
   // Build the game before every deploy/upload, so Workers Builds works even
   // when its build command is left empty.
@@ -12,6 +14,15 @@
   },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
-  }
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Everything else is served straight from the asset store without
+    // invoking the Worker.
+    "run_worker_first": ["/api/*", "/ws/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "GameRoom" }]
+  },
+  // SQLite-backed Durable Objects are available on the Workers free plan.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }]
 }

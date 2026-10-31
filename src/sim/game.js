@@ -1,7 +1,7 @@
 // Authoritative game state. Everything that decides the outcome of a fight
 // lives here and in the other sim/ modules; the client only draws it.
-// To add multiplayer, run Game on the server (e.g. a Cloudflare Durable Object),
-// send it each player's cmd per tick, and stream back players + events.
+// Online, the same Game runs inside a Cloudflare Durable Object (worker/room.js)
+// and clients mirror it from snapshots (src/net/online.js).
 import {
   U, TICK_DT, MAX_HEALTH, RESPAWN_TIME, START_MONEY, MAX_MONEY, KILL_REWARD,
   TAG_SPEED_MUL, TAG_RECOVER_TIME, STAND_EYE, DUCK_EYE,
@@ -9,7 +9,7 @@ import {
 import { WEAPONS, GEAR } from './weapons.js';
 import { World } from './world.js';
 import { movePlayer, aimDir, forwardVec, rightVec } from './movement.js';
-import { traceBullet, computeDamage } from './combat.js';
+import { traceBullet, computeDamage, isEnemy } from './combat.js';
 
 const DEG = Math.PI / 180;
 
@@ -46,6 +46,9 @@ export class Game {
     this.events = [];
     this.rand = mulberry32(seed >>> 0);
     this.nextId = 1;
+    // Optional lag compensation: (shooter) => restore(). The server sets this to
+    // rewind other players to what the shooter saw while their bullets trace.
+    this.lagComp = null;
   }
 
   addPlayer({ name, team, isBot = false }) {
@@ -92,7 +95,7 @@ export class Game {
   // ---------- Spawning / buying ----------
 
   spawn(p) {
-    const enemies = this.players.filter((o) => o.alive && o.team !== p.team);
+    const enemies = this.players.filter((o) => o.alive && isEnemy(p, o));
     let best = null, bestScore = -Infinity;
     for (const s of this.map.spawns) {
       let minD = 60, seen = 0;
@@ -183,25 +186,30 @@ export class Game {
       const cmd = cmds.get(p.id) ?? emptyCmd();
       if (cmd.actions) for (const a of cmd.actions) this.handleAction(p, a);
 
-      p.yaw = cmd.yaw;
-      p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, cmd.pitch));
-
-      // Recover from being shot.
-      if (p.tagMul < 1) p.tagMul = Math.min(1, p.tagMul + dt * (1 - TAG_SPEED_MUL) / TAG_RECOVER_TIME);
-
-      const def = this.activeDef(p);
-      let speed = def ? def.speed : 250;
-      if (def && def.scopedSpeed && p.zoom > 0) speed = def.scopedSpeed;
-      if (def && def.spinUp && p.spin > 0) speed *= 0.85;
-      movePlayer(this.world, p, cmd, dt, speed * U);
-      // Smooth stair steps for the camera.
-      p.stepOffset *= Math.max(0, 1 - dt * 14);
-
+      this.moveStep(p, cmd, dt);
       this.updateWeapon(p, cmd, dt);
 
       // Fell out of the world.
       if (p.pos[1] < -20) this.kill(p, null, null, false, false);
     }
+  }
+
+  // Look + movement for one tick. Also used by online clients to predict
+  // their own player between server snapshots.
+  moveStep(p, cmd, dt = TICK_DT) {
+    p.yaw = cmd.yaw;
+    p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, cmd.pitch));
+
+    // Recover from being shot.
+    if (p.tagMul < 1) p.tagMul = Math.min(1, p.tagMul + dt * (1 - TAG_SPEED_MUL) / TAG_RECOVER_TIME);
+
+    const def = this.activeDef(p);
+    let speed = def ? def.speed : 250;
+    if (def && def.scopedSpeed && p.zoom > 0) speed = def.scopedSpeed;
+    if (def && def.spinUp && p.spin > 0) speed *= 0.85;
+    movePlayer(this.world, p, cmd, dt, speed * U);
+    // Smooth stair steps for the camera.
+    p.stepOffset *= Math.max(0, 1 - dt * 14);
   }
 
   handleAction(p, a) {
@@ -374,6 +382,7 @@ export class Game {
     const ends = [];
     const impacts = [];
     const hitsByVictim = new Map();
+    const restore = this.lagComp ? this.lagComp(p) : null;
     for (let i = 0; i < pellets; i++) {
       let x, y;
       if (def.pellets) {
@@ -392,6 +401,7 @@ export class Game {
       ends.push(res.end);
       for (const im of res.impacts) impacts.push(im);
     }
+    if (restore) restore();
 
     this.emit({ type: 'shot', pid: p.id, weapon: def.id, origin, dir: fwd, ends, impacts });
 

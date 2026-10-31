@@ -4,6 +4,7 @@ import { emptyCmd } from './game.js';
 import { WEAPONS } from './weapons.js';
 import { STAND_EYE, DUCK_EYE } from './constants.js';
 import { forwardVec, rightVec } from './movement.js';
+import { isEnemy } from './combat.js';
 
 const DEG = Math.PI / 180;
 
@@ -237,7 +238,7 @@ export class BotBrain {
     let best = null, bestD = Infinity;
     const f = forwardVec(this.yaw);
     for (const o of g.players) {
-      if (o === p || !o.alive || o.team === p.team) continue;
+      if (!o.alive || !isEnemy(p, o)) continue;
       const dx = o.pos[0] - p.pos[0], dz = o.pos[2] - p.pos[2];
       const d = Math.hypot(dx, dz);
       if (d > 90) continue;

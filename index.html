@@ -25,6 +25,7 @@
     <div id="killfeed"></div>
     <div id="topbar"><span id="score-me">0</span><span class="sep">KILLS</span><span id="score-deaths">0</span><span class="sep">DEATHS</span></div>
     <div id="fps"></div>
+    <div id="net" class="hidden"></div>
     <div class="hud-bl">
       <div class="money"><span>$</span><b id="money">0</b></div>
       <div class="vitals">
@@ -45,8 +46,10 @@
   <div id="menu" class="screen">
     <div class="menu-card">
       <h1 class="logo">STICK<span>SHOOTER</span></h1>
-      <p class="tag">Practice vs bots · early build</p>
-      <button id="play" class="btn primary">PLAY</button>
+      <p class="tag">Early build · online free-for-all is in testing</p>
+      <button id="play" class="btn primary">PRACTICE VS BOTS</button>
+      <button id="play-online" class="btn primary online">PLAY ONLINE</button>
+      <p id="net-status" class="net-status hidden"></p>
       <div class="row">
         <label>Bots <select id="m-bots"></select></label>
         <label>Difficulty <select id="m-diff"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>

@@ -1,5 +1,8 @@
 // Entry point: wires the sim (src/sim) to rendering, audio, input and UI.
 //
+// Practice runs the Game locally with bots. Online, the Game is a mirror of a
+// server room (src/net/online.js) and only our own movement is simulated here.
+//
 // Loop: the sim ticks at a fixed 128 Hz; rendering runs at the display rate
 // (uncapped requestAnimationFrame, so 120/144 Hz screens get 120/144 FPS) and
 // interpolates player positions between ticks. Mouse look is applied every
@@ -15,6 +18,7 @@ import { GameView } from './client/scene.js';
 import { Audio } from './client/audio.js';
 import { Input, DEFAULT_BINDS } from './client/input.js';
 import { Hud, BuyMenu, SettingsPanel, loadSettings, renderGunIcons } from './client/hud.js';
+import { OnlineSession, roomUrl } from './net/online.js';
 
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -34,6 +38,7 @@ const buyMenu = new BuyMenu(icons, (item) => pendingActions.push({ type: 'buy', 
 new SettingsPanel(settings, onSettingChange);
 
 let me = null;
+let net = null; // OnlineSession while playing online
 const brains = new Map();
 let mode = 'menu'; // menu | playing | paused
 let thirdPerson = false;
@@ -68,18 +73,13 @@ function onSettingChange(k) {
   if (k === 'renderScale') view.resize();
   if (k === 'volume') audio.setVolume(settings.volume);
   if (k === 'name' && me) me.name = settings.name;
-  if (k === 'bots') setupBots();
-  if (k === 'difficulty') for (const b of brains.values()) b.setDifficulty(settings.difficulty);
+  if (k === 'bots' && !net) setupBots();
+  if (k === 'difficulty' && !net) for (const b of brains.values()) b.setDifficulty(settings.difficulty);
 }
 
 // ---------- Screens ----------
 
-function startPlaying() {
-  audio.unlock();
-  if (!me) {
-    me = game.addPlayer({ name: settings.name, team: 'white' });
-    me.respawnAt = game.time;
-  }
+function showPlaying() {
   $('menu').classList.add('hidden');
   $('pause').classList.add('hidden');
   hud.show(true);
@@ -87,14 +87,76 @@ function startPlaying() {
   mode = 'playing';
 }
 
-$('play').addEventListener('click', startPlaying);
-$('resume').addEventListener('click', startPlaying);
-$('quit').addEventListener('click', () => {
-  if (me) { game.removePlayer(me.id); view.removeView(me.id); me = null; }
+function startPlaying() {
+  audio.unlock();
+  if (net) return showPlaying();
+  if (!me) {
+    me = game.addPlayer({ name: settings.name, team: 'white' });
+    me.respawnAt = game.time;
+  }
+  showPlaying();
+}
+
+function clearPlayers() {
+  for (const p of [...game.players]) { game.removePlayer(p.id); view.removeView(p.id); }
+  brains.clear();
+  stepState.clear();
+  me = null;
+}
+
+function showMenu(status = '') {
   mode = 'menu';
+  if (buyMenu.open) setBuyMenu(false);
+  input.unlock();
   $('pause').classList.add('hidden');
   $('menu').classList.remove('hidden');
   hud.show(false);
+  hud.showScores(false);
+  $('play-online').disabled = false;
+  $('net-status').textContent = status;
+  $('net-status').classList.toggle('hidden', !status);
+}
+
+// Online: drop the local bots and mirror a server room instead.
+function goOnline() {
+  audio.unlock();
+  clearPlayers();
+  acc = 0;
+  $('play-online').disabled = true;
+  $('net-status').textContent = 'Connecting…';
+  $('net-status').classList.remove('hidden');
+  net = new OnlineSession(game, {
+    url: roomUrl(),
+    name: settings.name,
+    onWelcome: (p) => {
+      me = p;
+      input.setAngles(me.yaw, 0);
+      $('net').classList.remove('hidden');
+      showPlaying();
+    },
+    onClose: (reason) => leaveOnline(reason),
+    onRemove: (id) => { view.removeView(id); stepState.delete(id); },
+  });
+}
+
+function leaveOnline(status = '') {
+  net?.close();
+  net = null;
+  clearPlayers();
+  killInfo = null;
+  timers.length = 0;
+  $('net').classList.add('hidden');
+  setupBots();
+  showMenu(status);
+}
+
+$('play').addEventListener('click', startPlaying);
+$('play-online').addEventListener('click', goOnline);
+$('resume').addEventListener('click', startPlaying);
+$('quit').addEventListener('click', () => {
+  if (net) return leaveOnline();
+  if (me) { game.removePlayer(me.id); view.removeView(me.id); me = null; }
+  showMenu();
 });
 const openSettings = () => $('settings').classList.remove('hidden');
 $('open-settings').addEventListener('click', openSettings);
@@ -414,11 +476,35 @@ function escapeHtml(s) {
 
 // ---------- Main loop ----------
 
+// Online: same 128 Hz cmd cadence as practice, but the cmds go to the server
+// and only our own movement is predicted locally. The server keeps running
+// while we're paused, so we keep sending (empty) cmds.
+function netFrame(dt) {
+  if (net.ready) {
+    acc += dt;
+    let steps = 0;
+    while (acc >= TICK_DT) {
+      const cmd = mode === 'playing' ? input.buildCmd() : { ...emptyCmd(), yaw: input.yaw, pitch: input.pitch };
+      if (pendingActions.length) { cmd.actions = pendingActions; pendingActions = []; }
+      net.tick(cmd);
+      acc -= TICK_DT;
+      if (++steps >= 24) { acc = 0; break; }
+    }
+  }
+  net.interpolate();
+  game.time = net.serverTime();
+  for (const e of net.drainEvents()) handleEvent(e);
+  for (let i = timers.length - 1; i >= 0; i--) if (game.time >= timers[i].t) { timers[i].fn(); timers.splice(i, 1); }
+  if (net?.ready) $('net').textContent = `${Math.round(net.rtt)} ms · ${game.players.length} players`;
+}
+
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
 
-  if (mode !== 'paused') {
+  if (net) {
+    netFrame(dt);
+  } else if (mode !== 'paused') {
     acc += dt;
     let steps = 0;
     while (acc >= TICK_DT) {
@@ -445,4 +531,4 @@ $('loading').classList.add('hidden');
 requestAnimationFrame(frame);
 
 // Handy for debugging in the console.
-window.stickshooter = { game, view, settings, input, get me() { return me; } };
+window.stickshooter = { game, view, settings, input, get me() { return me; }, get net() { return net; } };

@@ -5,22 +5,26 @@ gunplay (damage, armor, hitboxes, range falloff, wall penetration, spray
 patterns) with an original look: a white stickman, low-poly guns and a
 bright toy-like arena.
 
-This first build is **practice vs bots** on one test map, "Yard". The code is
-split so online multiplayer can be added without rewriting the game rules.
+Two modes on one test map, "Yard": **practice vs bots** (runs entirely in the
+browser) and **online free-for-all** (an early test: one public room, filled
+with server bots until real players join).
 
 ## Play locally
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # sim tests (damage, armor, wallbangs, movement, bots)
+npm test           # sim + netcode tests
+npm run dev:server # wrangler dev on :8787: the Worker, rooms and the built game
+                   # (npm run dev proxies /api and /ws to it for online play)
 npm run build      # production build in dist/
 ```
 
 ## Deploy to Cloudflare
 
-`wrangler.jsonc` serves `dist/` as static assets on the `stickshooter`
-Worker (stickshooter.kennk.workers.dev).
+`wrangler.jsonc` deploys the `stickshooter` Worker
+(stickshooter.kennk.workers.dev): `dist/` as static assets plus the
+multiplayer Worker and its `GameRoom` Durable Object.
 
 ```bash
 npx wrangler login   # once
@@ -30,6 +34,26 @@ npm run deploy       # wrangler builds (npm run build) then deploys
 `wrangler.jsonc` runs `npm run build` itself before each deploy, so Workers
 Builds connected to this repo works with the default `npx wrangler deploy`
 deploy command and no build command.
+
+## Online multiplayer
+
+Same Worker, same deploy. `worker/index.js` handles `/api/*` and `/ws/*`;
+everything else is the static game.
+
+- **Rooms:** one `GameRoom` Durable Object per room (`worker/room.js`, binding
+  `ROOMS`). It runs the same `src/sim` Game as practice mode at 128 Hz, so the
+  server decides every hit with the CS 1.6 rules. Bots (the same `BotBrain`)
+  keep a room at 6 players until humans fill it; max 10 humans.
+- **Routes:** `GET /ws/:room` (WebSocket; the menu's PLAY ONLINE uses `public`),
+  `POST /api/rooms` (new random room id), `GET /api/health`.
+- **Netcode** (`src/net/`): clients send their inputs every 2 ticks with a
+  sequence number; the room sends 32 Hz snapshots + events with the last input
+  it used. The client predicts its own movement and replays unacknowledged
+  inputs on each snapshot, draws other players 100 ms in the past, and the
+  server rewinds other players to what the shooter saw (up to 200 ms) when
+  tracing bullets. Messages are JSON for now.
+- **Not yet:** local prediction of your own shots (muzzle flash/recoil wait for
+  the server), room browser, teams/rounds, binary snapshots.
 
 ## Controls
 
