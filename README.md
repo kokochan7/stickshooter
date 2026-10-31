@@ -111,7 +111,7 @@ between ticks. Mouse look is applied every frame. The map is one draw call,
 effects are pooled, sounds are generated at startup (no audio downloads), and
 the whole game is about 155 KB gzipped.
 
-**Multiplayer plan:** clients send the same `cmd` objects the bots produce;
+**Multiplayer plan** (details in [docs/DESIGN.md](docs/DESIGN.md)): clients send the same `cmd` objects the bots produce;
 a Cloudflare Durable Object runs `Game.tick()` for each room and streams
 player state + events back. The client already predicts by running the same
 sim locally, so the next step is a server, reconciliation and lag
