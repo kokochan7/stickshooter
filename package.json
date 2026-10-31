@@ -17,5 +17,8 @@
   "devDependencies": {
     "vite": "7.1.12",
     "wrangler": "4.45.0"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }
