@@ -5,9 +5,10 @@ gunplay (damage, armor, hitboxes, range falloff, wall penetration, spray
 patterns) with an original look: a white stickman, low-poly guns and a
 bright toy-like arena.
 
-Two modes on one test map, "Yard": **practice vs bots** (runs entirely in the
-browser) and **online free-for-all** (an early test: one public room, filled
-with server bots until real players join).
+Two modes on one test map, "Yard": **practice** (runs entirely in the
+browser, with 0 to 10 bots; 0 by default) and **online free-for-all** (an
+early test: one public room; `BOT_FILL` in `src/net/protocol.js` can fill it
+with server bots, and is 0 for now).
 
 ## Play locally
 
