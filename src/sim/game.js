@@ -6,7 +6,7 @@ import {
   U, TICK_DT, MAX_HEALTH, RESPAWN_TIME, START_MONEY, MAX_MONEY, KILL_REWARD,
   TAG_SPEED_MUL, TAG_RECOVER_TIME, STAND_EYE, DUCK_EYE, GRAVITY,
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
-  DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE,
+  DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE,
 } from './constants.js';
 import { WEAPONS, GEAR } from './weapons.js';
 import { World } from './world.js';
@@ -754,13 +754,16 @@ export class Game {
 
   kick(p, def, state) {
     const k = def.kick;
+    // Same pattern shape as CS 1.6, all of it scaled by RECOIL_SCALE.
+    const R = RECOIL_SCALE;
     if (k.punch) {
       const range = state === 'air' && k.airPunch ? k.airPunch : k.punch;
-      p.punch[0] += range[0] + this.rand() * (range[1] - range[0]);
+      p.punch[0] += (range[0] + this.rand() * (range[1] - range[0])) * R;
       return;
     }
-    const [upBase, latBase, upMod, latMod, upMax, latMax, dirChange] = k[state];
-    const s = def.kickScale;
+    let [upBase, latBase, upMod, latMod, upMax, latMax, dirChange] = k[state];
+    upMax *= R; latMax *= R;
+    const s = def.kickScale * R;
     let front, side;
     if (p.shotsFired === 1) { front = upBase; side = latBase; }
     else { front = p.shotsFired * upMod + upBase; side = p.shotsFired * latMod + latBase; }

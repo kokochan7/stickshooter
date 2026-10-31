@@ -4,7 +4,8 @@ import { Game, emptyCmd } from '../src/sim/game.js';
 import { computeDamage, traceBullet, isEnemy } from '../src/sim/combat.js';
 import { WEAPONS } from '../src/sim/weapons.js';
 import { World } from '../src/sim/world.js';
-import { U } from '../src/sim/constants.js';
+import { U, RECOIL_SCALE } from '../src/sim/constants.js';
+import { movePlayer } from '../src/sim/movement.js';
 import { YARD } from '../src/maps/yard.js';
 import { NavGrid } from '../src/sim/nav.js';
 import { BotBrain } from '../src/sim/bot.js';
@@ -173,4 +174,68 @@ test('team spawn points are clear of walls', () => {
       assert.ok(!inside, `spawn ${s.pos} overlaps a box ${b.min}..${b.max}`);
     }
   }
+});
+
+// A flat floor with nothing else on it, for movement tests.
+function flatWorld() {
+  return new World([{ min: [-500, -1, -500], max: [500, 0, 500], material: 'concrete' }]);
+}
+function runner() {
+  return { pos: [0, 0, 0], vel: [0, 0, 0], onGround: true, ducked: false, duckAmount: 0, stamina: 0, jumpHeld: false, stepOffset: 0 };
+}
+
+test('holding jump bunny hops: you jump again on every landing', () => {
+  const world = flatWorld();
+  const p = runner();
+  const cmd = { ...emptyCmd(), jump: true, yaw: 0 };
+  let jumps = 0, wasGround = true;
+  for (let i = 0; i < 128 * 3; i++) {
+    movePlayer(world, p, cmd, 1 / 128, 250 * U);
+    if (wasGround && !p.onGround) jumps++;
+    wasGround = p.onGround;
+  }
+  // Each hop is about 0.67 s of air time, so 3 s of holding is 4+ hops.
+  assert.ok(jumps >= 4, `only ${jumps} jumps`);
+});
+
+test('bunny hopping strafes build speed, capped at 1.7x run speed', () => {
+  const world = flatWorld();
+  const p = runner();
+  const max = 250 * U;
+  let yaw = 0, top = 0;
+  for (let i = 0; i < 128 * 20; i++) {
+    // Classic air strafe: hold a strafe key and turn the same way.
+    const side = Math.floor(i / 80) % 2 ? 1 : -1;
+    yaw -= side * 0.012;
+    if (i < 128) movePlayer(world, p, { ...emptyCmd(), fwd: 1, yaw }, 1 / 128, max);
+    else movePlayer(world, p, { ...emptyCmd(), side, jump: true, yaw }, 1 / 128, max);
+    top = Math.max(top, Math.hypot(p.vel[0], p.vel[2]));
+  }
+  assert.ok(top > max * 1.15, `hopping should beat run speed, top ${top / U} u/s`);
+  // The cap is applied at takeoff; air strafing can add a little after it.
+  assert.ok(top < max * 1.7 * 1.25, `top ${top / U} u/s`);
+});
+
+test('without jump held, landing still slows you down', () => {
+  const world = flatWorld();
+  const p = runner();
+  p.vel = [5, 0, 0];
+  movePlayer(world, p, { ...emptyCmd(), jump: true }, 1 / 128, 250 * U);
+  assert.equal(p.onGround, false);
+  let landed = null;
+  for (let i = 0; i < 200 && !landed; i++) {
+    const before = p.vel[0];
+    movePlayer(world, p, emptyCmd(), 1 / 128, 250 * U);
+    if (p.onGround) landed = { before, after: p.vel[0] };
+  }
+  assert.ok(landed && landed.after < landed.before * 0.85, JSON.stringify(landed));
+});
+
+test('recoil is the CS pattern scaled down by RECOIL_SCALE', () => {
+  const g = new Game(YARD, { seed: 2 });
+  const p = g.addPlayer({ name: 'me' });
+  p.shotsFired = 1;
+  p.punch = [0, 0];
+  g.kick(p, WEAPONS.ak47, 'stand');
+  assert.ok(Math.abs(p.punch[0] - WEAPONS.ak47.kick.stand[0] * RECOIL_SCALE) < 1e-9);
 });

@@ -24,9 +24,13 @@ export const DUCK_SPEED_MUL = 0.333;
 export const WALK_SPEED_MUL = 0.52;
 export const STEP_HEIGHT = 18 * U;
 export const DUCK_TIME = 0.2;
-// After landing a jump CS slows you down for a moment, which stops bunny hopping
-// from being faster than running.
+// Landing slows you down, unless you're holding jump to bunny hop.
 export const LAND_SPEED_MUL = 0.8;
+// Bunny hopping tops out at this multiple of the weapon's run speed (CS 1.6's
+// BUNNYJUMP_MAX_SPEED_FACTOR).
+export const BHOP_MAX_SPEED_MUL = 1.7;
+// Recoil is CS 1.6's KickBack, scaled down so sprays are easier to hold.
+export const RECOIL_SCALE = 0.75;
 // Footstep cadence at full running speed (seconds per step). CS 1.6 plays a
 // step every 300 ms when running and 400 ms when slower; we sit in between,
 // which reads closer to how CS sounds in game. The walk cycle and the gun bob

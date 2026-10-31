@@ -1,5 +1,5 @@
-// Keyboard + mouse input. Produces sim cmds; a touch input class can produce
-// the same shape later for iOS.
+// Keyboard + mouse input. Produces sim cmds; touch.js feeds the same object
+// on phones.
 import { emptyCmd } from '../sim/game.js';
 
 const DEG = Math.PI / 180;
@@ -32,6 +32,18 @@ export function keyName(code) {
   return code.replace(/^Key|^Digit/, '').replace(/^Numpad/, 'Num ');
 }
 
+// Keys the browser would act on in the middle of a match.
+function blockedShortcut(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return true;
+  if (/^F([1-9]|10)$/.test(e.code)) return true; // keep F11 (fullscreen) and F12 (dev tools)
+  return e.code === 'Backspace' || e.code === 'Quote' || e.code === 'Slash' || e.code === 'Space';
+}
+
+function isTyping(e) {
+  const t = e.target;
+  return t && (t.tagName === 'INPUT' && t.type === 'text' || t.tagName === 'TEXTAREA');
+}
+
 export class Input {
   constructor(target, settings) {
     this.target = target;
@@ -45,6 +57,9 @@ export class Input {
     this.locked = false;
     this.enabled = true;
     this.sensScale = 1;
+    // Touch controls (touch.js) write here; buildCmd merges it with the keys.
+    this.touch = { fwd: 0, side: 0, walk: false, fire: false, jump: false, duck: false };
+    this.inMatch = false; // set by main.js while a match is on screen
     this.menuKeys = false; // number keys go to the buy menu instead of weapon slots
     // While a menu is open we keep pointer lock (re-locking makes the browser
     // show its "press Esc to show your cursor" notice again) and the mouse
@@ -55,6 +70,11 @@ export class Input {
 
     addEventListener('keydown', (e) => {
       if (e.code === this.binds.scores || e.code === 'Tab' || (e.code === 'Space' && this.locked) || (e.code === 'Backspace' && this.menuKeys)) e.preventDefault();
+      // In a match, keep browser shortcuts from firing: Ctrl+S, Ctrl+D, F5,
+      // Alt+Left and so on. Crouch is Ctrl, so Ctrl+W/A/S/D happen all the
+      // time. Ctrl+W, Ctrl+T and Ctrl+N can't be stopped this way; the
+      // Keyboard Lock in fullscreen (main.js) handles those where supported.
+      if (this.inMatch && !isTyping(e) && blockedShortcut(e)) e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code);
       const b = this.binds;
@@ -160,13 +180,15 @@ export class Input {
     const b = this.binds;
     const cmd = emptyCmd();
     if (this.enabled) {
-      cmd.fwd = (this.has(b.forward) ? 1 : 0) - (this.has(b.back) ? 1 : 0);
-      cmd.side = (this.has(b.right) ? 1 : 0) - (this.has(b.left) ? 1 : 0);
-      cmd.jump = this.has(b.jump) || this.pending.jump;
-      cmd.duck = this.has(b.duck) || this.has(b.duckAlt) || this.has('ControlRight');
-      cmd.walk = this.has(b.walk) || this.has('ShiftRight');
+      const t = this.touch;
+      cmd.fwd = Math.max(-1, Math.min(1, (this.has(b.forward) ? 1 : 0) - (this.has(b.back) ? 1 : 0) + t.fwd));
+      cmd.side = Math.max(-1, Math.min(1, (this.has(b.right) ? 1 : 0) - (this.has(b.left) ? 1 : 0) + t.side));
+      // Holding jump keeps bunny hopping.
+      cmd.jump = this.has(b.jump) || this.pending.jump || t.jump;
+      cmd.duck = this.has(b.duck) || this.has(b.duckAlt) || this.has('ControlRight') || t.duck;
+      cmd.walk = this.has(b.walk) || this.has('ShiftRight') || ((t.fwd || t.side) && t.walk);
       // A click shorter than one tick still fires once.
-      cmd.fire = this.mouse.left || this.pending.fire;
+      cmd.fire = this.mouse.left || this.pending.fire || t.fire;
       cmd.alt = this.mouse.right || this.pending.alt;
       cmd.reload = this.pending.reload;
       cmd.slot = this.pending.slot;

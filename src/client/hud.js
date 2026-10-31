@@ -24,14 +24,19 @@ export const DEFAULT_SETTINGS = {
   showFps: true,
   bots: 0,
   difficulty: 'normal',
-  // How much recoil and getting shot move the camera, in percent. CS moves
-  // the whole view (100); the default is gentler because that much screen
-  // motion makes some people motion sick. Whatever the camera doesn't show,
-  // the crosshair shows instead, so you still see where the next bullet goes.
-  viewKick: 25,
+  // How much recoil and getting shot move the camera, in percent. 100 is the
+  // CS feel (the whole view kicks); the recoil itself is already scaled down
+  // (RECOIL_SCALE) and the camera eases into each kick instead of snapping.
+  // Whatever the camera doesn't show, the crosshair shows instead, so you
+  // still see where the next bullet goes.
+  viewKick: 100,
+  // Fullscreen during matches, which also lets the game take Ctrl+W, Ctrl+T
+  // and the like away from the browser (Keyboard Lock, Chrome and Edge).
+  fullscreen: true,
+  touchSens: 1, // look speed for touch controls
   hudScale: 1.3, // HUD size on top of fitting it to the screen
   mode: 'ffa', // 'ffa' or 'teams', for practice and online
-  version: 4,
+  version: 5,
 };
 
 // Sensitivity uses CS units (0.022 degrees per mouse count per point).
@@ -49,12 +54,15 @@ export function loadSettings() {
     // v3 narrowed the sensitivity range and dropped render scale and invert mouse.
     // v4 made the default sensitivity higher (1.5 -> 3).
     if ((saved.version ?? 1) < 4) delete saved.sensitivity;
+    // v5 brought the full camera kick back (it had defaulted to 25%).
+    if ((saved.version ?? 1) < 5) delete saved.viewKick;
     delete saved.renderScale;
     delete saved.invertY;
     const s = { ...DEFAULT_SETTINGS, ...saved, version: DEFAULT_SETTINGS.version };
     s.sensitivity = clamp(+s.sensitivity || DEFAULT_SETTINGS.sensitivity, ...SENS_RANGE);
     s.fov = clamp(+s.fov || DEFAULT_SETTINGS.fov, ...FOV_RANGE);
     s.viewKick = clamp(Number.isFinite(+s.viewKick) ? +s.viewKick : DEFAULT_SETTINGS.viewKick, 0, 100);
+    s.touchSens = clamp(+s.touchSens || DEFAULT_SETTINGS.touchSens, 0.3, 3);
     s.hudScale = clamp(+s.hudScale || DEFAULT_SETTINGS.hudScale, 0.8, 1.8);
     s.binds = { ...DEFAULT_BINDS, ...(saved.binds ?? {}) };
     delete s.binds.thirdPerson; // third person was removed
@@ -562,8 +570,10 @@ export class SettingsPanel {
         ['fov', 'Field of view', 'range', ...FOV_RANGE, 1, FOV_SHOWN_OFFSET],
         ['volume', 'Volume', 'range', 0, 1, 0.05],
         ['music', 'Menu music', 'range', 0, 1, 0.05],
-        ['viewKick', 'Recoil screen shake %', 'range', 0, 100, 5],
+        ['viewKick', 'Screen shake %', 'range', 0, 100, 5],
         ['hudScale', 'HUD size', 'range', 0.8, 1.8, 0.05],
+        ['touchSens', 'Touch look speed', 'range', 0.3, 3, 0.05],
+        ['fullscreen', 'Fullscreen in matches (blocks Ctrl+W)', 'check'],
         ['showFps', 'Show FPS', 'check'],
         ['antialias', 'Anti-aliasing (reload)', 'check'],
       ],
