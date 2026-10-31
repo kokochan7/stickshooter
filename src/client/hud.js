@@ -1,23 +1,27 @@
 // DOM HUD, buy menu, scoreboard and settings.
 import * as THREE from 'three';
-import { WEAPONS, SHOP_ORDER, GEAR, weaponRatings } from '../sim/weapons.js';
+import { WEAPONS, SHOP_ORDER, GEAR } from '../sim/weapons.js';
 import { buildGun } from './gunModels.js';
 
 const $ = (id) => document.getElementById(id);
 
 export const DEFAULT_SETTINGS = {
   name: 'Player',
-  sensitivity: 2.0,
+  sensitivity: 1.5,
   fov: 74,
-  renderScale: 1,
   volume: 0.6,
   antialias: true,
   showFps: true,
-  invertY: false,
   bots: 0,
   difficulty: 'normal',
-  version: 2,
+  version: 3,
 };
+
+// Sensitivity uses CS units (0.022 degrees per mouse count per point).
+export const SENS_RANGE = [0.5, 4];
+// The camera's vertical FOV is 60..80; the slider shows it as 90..110.
+export const FOV_RANGE = [60, 80];
+export const FOV_SHOWN_OFFSET = 30;
 
 const KEY = 'stickshooter.settings.v1';
 export function loadSettings() {
@@ -25,7 +29,14 @@ export function loadSettings() {
     const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
     // v2 made 0 bots the default; older saves always stored 5.
     if ((saved.version ?? 1) < 2) delete saved.bots;
-    return { ...DEFAULT_SETTINGS, ...saved, version: DEFAULT_SETTINGS.version };
+    // v3 narrowed the sensitivity range and dropped render scale and invert mouse.
+    if ((saved.version ?? 1) < 3) delete saved.sensitivity;
+    delete saved.renderScale;
+    delete saved.invertY;
+    const s = { ...DEFAULT_SETTINGS, ...saved, version: DEFAULT_SETTINGS.version };
+    s.sensitivity = clamp(+s.sensitivity || DEFAULT_SETTINGS.sensitivity, ...SENS_RANGE);
+    s.fov = clamp(+s.fov || DEFAULT_SETTINGS.fov, ...FOV_RANGE);
+    return s;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -34,9 +45,11 @@ export function saveSettings(s) {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ }
 }
 
-// Snapshot each gun model into a PNG for the shop.
+// Snapshot each gun model into a PNG for the shop, plus a flat white
+// silhouette of it for the kill feed.
 export function renderGunIcons(renderer) {
   const icons = {};
+  const glyphs = {};
   const W = 256, H = 128;
   const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 });
   rt.texture.colorSpace = THREE.SRGBColorSpace;
@@ -76,11 +89,51 @@ export function renderGunIcons(renderer) {
     }
     ctx.putImageData(img, 0, 0);
     icons[id] = canvas.toDataURL();
+    glyphs[id] = silhouette(canvas, img.data, W, H);
   }
   renderer.setRenderTarget(null);
   renderer.setClearColor(prevColor, prevAlpha);
   rt.dispose();
-  return icons;
+  return { icons, glyphs };
+}
+
+// Crop to the gun and fill it white. Drawn 44px tall for 22px on screen.
+function silhouette(src, data, W, H) {
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (data[(y * W + x) * 4 + 3] > 40) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return '';
+  const cw = x1 - x0 + 1, chh = y1 - y0 + 1;
+  const out = document.createElement('canvas');
+  out.height = 44;
+  out.width = Math.max(1, Math.round((cw / chh) * 44));
+  const g = out.getContext('2d');
+  g.drawImage(src, x0, y0, cw, chh, 0, 0, out.width, out.height);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, out.width, out.height);
+  return out.toDataURL();
+}
+
+// The HUD is laid out for a 1920x1080 screen. Scale it to the window, and on
+// screens wider than 16:9 keep it inside a centered 16:9 area so the corners
+// stay in view. The buy menu is scaled to fit the same way.
+function fitUi() {
+  const w = innerWidth, h = innerHeight;
+  const fw = Math.min(w, h * (16 / 9));
+  const scale = clamp(Math.min(fw / 1920, h / 1080), 0.5, 2);
+  const frame = $('hud-frame');
+  frame.style.width = `${fw / scale}px`;
+  frame.style.height = `${h / scale}px`;
+  frame.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  const buy = Math.min((w * 0.96) / 940, (h * 0.96) / 690, Math.max(1, scale * 1.1));
+  document.documentElement.style.setProperty('--buy-scale', String(buy));
 }
 
 export class Hud {
@@ -101,9 +154,24 @@ export class Hud {
     this.indicators = $('dmg-indicators');
     this.scoreboard = $('scoreboard');
     this.fps = $('fps');
+    this.net = $('net');
+    this.glyphs = {};
     this.last = {};
     this.fpsAcc = 0; this.fpsFrames = 0;
     setTimeout(() => { $('hint').style.opacity = '0'; }, 12000);
+    fitUi();
+    addEventListener('resize', fitUi);
+  }
+
+  // Shown under the FPS counter while online.
+  ping(ms) {
+    const v = ms === null ? null : Math.round(ms);
+    if (this.last.ping === v) return;
+    this.last.ping = v;
+    this.net.classList.toggle('hidden', v === null);
+    if (v === null) return;
+    this.net.textContent = `${v} ms PING`;
+    this.net.className = v < 70 ? 'good' : v < 140 ? 'ok' : 'bad';
   }
 
   show(v) { this.el.classList.toggle('hidden', !v); }
@@ -179,7 +247,11 @@ export class Hud {
     const row = document.createElement('div');
     row.className = 'kf' + (mine ? ' me' : '');
     const a = attacker ? `<span class="team-${attacker.team}">${esc(attacker.name)}</span>` : '';
-    row.innerHTML = `${a}<span class="w">${weapon ? esc(WEAPONS[weapon].name) : 'fell'}</span>${wallbang ? '<span class="hs">⟂ WALL</span>' : ''}${headshot ? '<span class="hs">◉ HS</span>' : ''}<span class="team-${victim.team}">${esc(victim.name)}</span>`;
+    const name = weapon ? WEAPONS[weapon].name : 'Fall';
+    const icon = weapon && this.glyphs[weapon]
+      ? `<img class="w" src="${this.glyphs[weapon]}" alt="${esc(name)}" title="${esc(name)}">`
+      : weapon ? `<span class="w-txt">${esc(name)}</span>` : FALL_ICON;
+    row.innerHTML = `${a}${icon}${wallbang ? WALL_ICON : ''}${headshot ? HEAD_ICON : ''}<span class="team-${victim.team}">${esc(victim.name)}</span>`;
     this.killfeed.appendChild(row);
     while (this.killfeed.children.length > 5) this.killfeed.firstChild.remove();
     setTimeout(() => row.remove(), 6000);
@@ -202,56 +274,170 @@ export class Hud {
   }
 }
 
+// Kill feed marks, drawn as tiny SVGs in the same flat white as the gun glyphs.
+const HEAD_ICON = '<svg class="kf-ic hs" viewBox="0 0 24 24" aria-label="Headshot"><circle cx="12" cy="10" r="7"/><path d="M8 17h8v4H8z"/><circle cx="9.3" cy="10" r="1.8" class="cut"/><circle cx="14.7" cy="10" r="1.8" class="cut"/></svg>';
+const WALL_ICON = '<svg class="kf-ic" viewBox="0 0 24 24" aria-label="Through a wall"><path d="M3 4h7v4H3zM12 4h9v4h-9zM3 10h4v4H3zM9 10h7v4H9zM18 10h3v4h-3zM3 16h7v4H3zM12 16h9v4h-9z"/><path d="M0 12h24" class="shot"/></svg>';
+const FALL_ICON = '<svg class="kf-ic" viewBox="0 0 24 24" aria-label="Fell"><path d="M12 3v13M6 11l6 6 6-6M4 21h16"/></svg>';
+
+// CS 1.6 style buy menu: number keys pick a category, then a weapon.
+// B 4 3 buys an M4A1, the same muscle memory as CS.
+const BUY_PAGES = [
+  { label: 'Handguns', title: 'Buy Handguns (Secondary Weapon)', cats: ['Pistols'] },
+  { label: 'Shotguns', title: 'Buy Shotguns (Primary Weapon)', cats: ['Shotguns'] },
+  { label: 'Sub-Machine Guns', title: 'Buy Sub-Machine Guns (Primary Weapon)', cats: ['SMGs'] },
+  { label: 'Rifles', title: 'Buy Rifles (Primary Weapon)', cats: ['Rifles', 'Snipers'] },
+  { label: 'Machine Guns', title: 'Buy Machine Guns (Primary Weapon)', cats: ['Heavy'] },
+  { label: 'Equipment', title: 'Buy Equipment', gear: true },
+].map((pg) => ({
+  ...pg,
+  items: pg.gear ? Object.keys(GEAR) : SHOP_ORDER.filter((id) => pg.cats.includes(WEAPONS[id].category)).sort((a, b) => WEAPONS[a].price - WEAPONS[b].price),
+}));
+
+const PEN_NAMES = ['None', 'Light', 'Medium', 'Heavy'];
+
 export class BuyMenu {
   constructor(icons, onBuy) {
     this.el = $('buymenu');
-    this.grid = $('buy-grid');
+    this.list = $('buy-list');
+    this.info = $('buy-info');
     this.icons = icons;
     this.onBuy = onBuy;
     this.open = false;
-    $('buy-close').addEventListener('click', () => this.onClose?.());
+    this.page = null; // index into BUY_PAGES, or null for the category list
+    this.sel = 0;
+    this.p = null;
+    this.list.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-n]');
+      if (b) this.key(+b.dataset.n);
+    });
+    this.list.addEventListener('pointerover', (e) => {
+      const b = e.target.closest('button[data-n]');
+      const n = b ? +b.dataset.n : 0;
+      if (n > 0 && n - 1 !== this.sel) { this.sel = n - 1; this.render(this.p, false); }
+    });
   }
 
-  render(p) {
-    const cats = {};
-    for (const id of SHOP_ORDER) (cats[WEAPONS[id].category] ??= []).push(id);
-    let html = '';
-    for (const [cat, ids] of Object.entries(cats)) {
-      html += `<div class="buy-section">${cat.toUpperCase()}</div>`;
-      for (const id of ids) {
-        const w = WEAPONS[id];
-        const r = weaponRatings(w);
-        const owned = p.weapons[w.slot]?.id === id;
-        const cant = !owned && p.money < w.price;
-        const bar = (label, v) => `<span>${label}</span><div class="bar"><i style="width:${Math.round(Math.max(0.05, Math.min(1, v)) * 100)}%"></i></div>`;
-        html += `<button class="item ${owned ? 'owned' : ''} ${cant ? 'cant' : ''}" data-id="${id}">
-          <span class="pr">$${w.price}</span>
-          <img src="${this.icons[id]}" alt="" />
-          <span class="nm">${w.name}</span>
-          <span class="meta">${w.pellets ? `${w.pellets}×${w.damage}` : w.damage} dmg · ${w.clip}/${w.reserve} · ${Math.round(60 / w.cycle)} rpm</span>
-          <div class="stats">${bar('DAMAGE', r.damage)}${bar('FIRE RATE', r.fireRate)}${bar('ACCURACY', r.accuracy)}${bar('RANGE', r.range)}${bar('MOBILITY', r.mobility)}</div>
-        </button>`;
-      }
+  // A number key (0-9) or 'back'. Returns true if the key was used.
+  key(n) {
+    if (n === 'back') {
+      if (this.page === null) this.onClose?.();
+      else { this.sel = this.page; this.page = null; this.render(this.p); }
+      return true;
     }
-    html += '<div class="buy-section">GEAR</div>';
-    for (const [id, g] of Object.entries(GEAR)) {
+    if (n === 0) { this.onClose?.(); return true; }
+    if (this.page === null) {
+      if (n > BUY_PAGES.length) return false;
+      this.page = n - 1;
+      this.sel = 0;
+      this.render(this.p);
+      return true;
+    }
+    const id = BUY_PAGES[this.page].items[n - 1];
+    if (!id) return false;
+    const state = this.itemState(id);
+    if (state.cant) {
+      // Not enough money: flash the row instead of closing.
+      const row = this.list.querySelector(`[data-n="${n}"]`);
+      row?.classList.remove('deny');
+      void row?.offsetWidth;
+      row?.classList.add('deny');
+      this.sel = n - 1;
+      this.render(this.p, false);
+      return true;
+    }
+    this.onBuy(id);
+    this.onClose?.();
+    return true;
+  }
+
+  itemState(id) {
+    const p = this.p;
+    if (GEAR[id]) {
       const owned = id === 'kevlar' ? p.armor >= 100 : p.armor >= 100 && p.helmet;
-      html += `<button class="item ${owned ? 'owned' : ''} ${p.money < g.price ? 'cant' : ''}" data-id="${id}">
-        <span class="pr">$${g.price}</span><span class="nm">${g.name}</span>
-        <span class="meta">${id === 'kevlar' ? 'Body armor. Cuts most body damage.' : 'Body armor + helmet. Protects against headshots too.'}</span></button>`;
+      const price = id === 'kevlarHelmet' && p.armor >= 100 && !p.helmet ? 350 : GEAR[id].price;
+      return { owned, price, cant: !owned && p.money < price };
     }
-    this.grid.innerHTML = html;
+    const w = WEAPONS[id];
+    const owned = p.weapons[w.slot]?.id === id;
+    return { owned, price: w.price, cant: !owned && p.money < w.price };
+  }
+
+  render(p, rebuildList = true) {
+    this.p = p;
+    if (!p) return;
     $('buy-money').textContent = p.money;
-    for (const b of this.grid.querySelectorAll('.item')) {
-      b.addEventListener('click', () => this.onBuy(b.dataset.id));
+    const pg = this.page === null ? null : BUY_PAGES[this.page];
+    $('buy-title').textContent = pg ? pg.title : 'Buy Menu';
+    let rows = '';
+    if (!pg) {
+      BUY_PAGES.forEach((c, i) => {
+        rows += `<button class="buy-row ${i === this.sel ? 'sel' : ''}" data-n="${i + 1}"><b>${i + 1}</b> ${c.label}</button>`;
+      });
+    } else {
+      pg.items.forEach((id, i) => {
+        const st = this.itemState(id);
+        const name = (WEAPONS[id] ?? GEAR[id]).name;
+        rows += `<button class="buy-row ${i === this.sel ? 'sel' : ''} ${st.cant ? 'cant' : ''} ${st.owned ? 'owned' : ''}" data-n="${i + 1}"><b>${i + 1}</b> ${name}<span class="pr">${st.owned ? 'OWNED' : `$${st.price}`}</span></button>`;
+      });
     }
+    if (rebuildList) {
+      this.list.innerHTML = `<div class="buy-rows">${rows}</div><button class="buy-row cancel" data-n="0"><b>0</b> Cancel</button>`;
+    } else {
+      this.list.querySelectorAll('.buy-row[data-n]').forEach((b) => b.classList.toggle('sel', +b.dataset.n === this.sel + 1));
+    }
+    this.info.innerHTML = pg ? this.itemInfo(pg.items[this.sel]) : this.pageInfo(BUY_PAGES[this.sel]);
+  }
+
+  pageInfo(c) {
+    const rows = c.items.map((id) => {
+      const it = WEAPONS[id] ?? GEAR[id];
+      return `<div class="kv"><span>${it.name}</span><span>$${it.price}</span></div>`;
+    }).join('');
+    const pic = c.gear ? '' : `<div class="buy-pic"><img src="${this.icons[c.items[c.items.length - 1]]}" alt=""></div>`;
+    return `${pic}<div class="buy-stats">${rows}</div><p class="buy-tip">Press a number to open a category. Backspace goes back, 0 or B closes.</p>`;
+  }
+
+  itemInfo(id) {
+    if (GEAR[id]) {
+      const st = this.itemState(id);
+      const kv = [
+        ['Price', `$${st.price}`],
+        ['Armor', '100 points'],
+        ['Protects', id === 'kevlar' ? 'Chest, stomach and arms' : 'Chest, stomach, arms and head'],
+        ['Damage absorbed', 'About half of each hit, more vs. weak guns'],
+      ];
+      if (id === 'kevlarHelmet' && st.price === 350) kv.push(['Note', 'You have a vest, so this is the helmet only']);
+      return `<div class="buy-pic gear">${id === 'kevlar' ? VEST_ART : VEST_ART + HELMET_ART}</div>${statsHtml(kv)}`;
+    }
+    const w = WEAPONS[id];
+    const st = this.itemState(id);
+    const mode = w.accuracy.type === 'sniper' ? 'Bolt action' : w.pellets ? (w.cycle > 0.5 ? 'Pump action' : 'Semi-automatic') : w.auto ? 'Automatic' : 'Semi-automatic';
+    const kv = [
+      ['Price', `$${w.price}${st.owned ? ' (owned, buy again to refill ammo)' : ''}`],
+      ['Slot', w.slot === 'primary' ? 'Primary' : 'Secondary'],
+      ['Damage', w.pellets ? `${w.pellets} pellets × ${w.damage}` : `${w.damage} per bullet`],
+      ['Armor Penetration', `${Math.round(Math.min(1, w.armorRatio * 0.5) * 100)}%`],
+      ['Clip Capacity', `${w.clip} / ${w.reserve} rounds`],
+      ['Rate of Fire', `${Math.round(60 / w.cycle)} RPM`],
+      ['Fire Mode', mode],
+      ['Wall Penetration', PEN_NAMES[w.penetration] ?? 'Heavy'],
+      ['Move Speed', `${Math.round((w.speed / 250) * 100)}%`],
+    ];
+    return `<div class="buy-pic"><img src="${this.icons[id]}" alt=""></div>${statsHtml(kv)}`;
   }
 
   show(v, p) {
     this.open = v;
     this.el.classList.toggle('hidden', !v);
-    if (v && p) this.render(p);
+    if (v) { this.page = null; this.sel = 0; this.render(p); }
   }
+}
+
+const VEST_ART = '<svg viewBox="0 0 64 64"><path d="M20 8h8l4 6 4-6h8l8 10-6 6v32H18V24l-6-6z"/></svg>';
+const HELMET_ART = '<svg viewBox="0 0 64 64"><path d="M10 40c0-14 10-24 22-24s22 10 22 24v4H10z"/><path d="M6 44h52v6H6z"/></svg>';
+
+function statsHtml(kv) {
+  return `<div class="buy-stats">${kv.map(([k, v]) => `<div class="kv"><span>${k}</span><span>: ${v}</span></div>`).join('')}</div>`;
 }
 
 export class SettingsPanel {
@@ -259,18 +445,17 @@ export class SettingsPanel {
     this.s = settings;
     this.onChange = onChange;
     this.form = $('settings-form');
+    // [key, label, type, min, max, step, shown offset]
     const rows = [
       ['name', 'Name', 'text'],
-      ['sensitivity', 'Sensitivity', 'range', 0.2, 8, 0.05],
-      ['fov', 'Field of view', 'range', 60, 100, 1],
-      ['renderScale', 'Render scale', 'range', 0.4, 1, 0.05],
+      ['sensitivity', 'Sensitivity', 'range', ...SENS_RANGE, 0.05],
+      ['fov', 'Field of view', 'range', ...FOV_RANGE, 1, FOV_SHOWN_OFFSET],
       ['volume', 'Volume', 'range', 0, 1, 0.05],
       ['showFps', 'Show FPS', 'check'],
-      ['invertY', 'Invert mouse', 'check'],
       ['antialias', 'Anti-aliasing (reload)', 'check'],
     ];
-    this.form.innerHTML = rows.map(([key, label, type, min, max, step]) => {
-      if (type === 'range') return `<div class="set-row"><span>${label}</span><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${settings[key]}"><output>${fmt(settings[key])}</output></div>`;
+    this.form.innerHTML = rows.map(([key, label, type, min, max, step, off = 0]) => {
+      if (type === 'range') return `<div class="set-row"><span>${label}</span><input type="range" data-k="${key}" data-off="${off}" min="${min + off}" max="${max + off}" step="${step}" value="${settings[key] + off}"><output>${fmt(settings[key] + off)}</output></div>`;
       if (type === 'check') return `<div class="set-row"><span>${label}</span><input type="checkbox" data-k="${key}" ${settings[key] ? 'checked' : ''}><span></span></div>`;
       return `<div class="set-row"><span>${label}</span><input type="text" maxlength="16" data-k="${key}" value="${esc(settings[key])}"></div>`;
     }).join('');
@@ -278,8 +463,11 @@ export class SettingsPanel {
       inp.addEventListener('input', () => {
         const k = inp.dataset.k;
         if (inp.type === 'checkbox') settings[k] = inp.checked;
-        else if (inp.type === 'range') { settings[k] = parseFloat(inp.value); inp.nextElementSibling.textContent = fmt(settings[k]); }
-        else settings[k] = inp.value.trim() || 'Player';
+        else if (inp.type === 'range') {
+          const shown = parseFloat(inp.value);
+          settings[k] = shown - +inp.dataset.off;
+          inp.nextElementSibling.textContent = fmt(shown);
+        } else settings[k] = inp.value.trim() || 'Player';
         saveSettings(settings);
         this.onChange(k);
       });
@@ -287,6 +475,9 @@ export class SettingsPanel {
   }
 }
 
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
 function fmt(v) {
   return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }

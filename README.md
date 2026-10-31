@@ -68,7 +68,7 @@ everything else is the static game.
 | Shift | Walk (silent footsteps, more accurate) |
 | R | Reload |
 | 1 / 2 / Q / wheel | Primary / pistol / last weapon |
-| B | Shop |
+| B | Buy menu (number keys pick a category, then a gun: B 4 3 = M4A1) |
 | Tab | Scoreboard |
 | V | Third-person view |
 | Esc | Pause |

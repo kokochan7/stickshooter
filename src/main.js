@@ -33,7 +33,8 @@ const audio = new Audio();
 audio.setVolume(settings.volume);
 const input = new Input(canvas, settings);
 const hud = new Hud();
-const icons = renderGunIcons(view.renderer);
+const { icons, glyphs } = renderGunIcons(view.renderer);
+hud.glyphs = glyphs;
 const buyMenu = new BuyMenu(icons, (item) => pendingActions.push({ type: 'buy', item }));
 new SettingsPanel(settings, onSettingChange);
 
@@ -70,7 +71,6 @@ function setupBots() {
 setupBots();
 
 function onSettingChange(k) {
-  if (k === 'renderScale') view.resize();
   if (k === 'volume') audio.setVolume(settings.volume);
   if (k === 'name' && me) me.name = settings.name;
   if (k === 'bots' && !net) setupBots();
@@ -131,7 +131,6 @@ function goOnline() {
     onWelcome: (p) => {
       me = p;
       input.setAngles(me.yaw, 0);
-      $('net').classList.remove('hidden');
       showPlaying();
     },
     onClose: (reason) => leaveOnline(reason),
@@ -145,7 +144,7 @@ function leaveOnline(status = '') {
   clearPlayers();
   killInfo = null;
   timers.length = 0;
-  $('net').classList.add('hidden');
+  hud.ping(null);
   setupBots();
   showMenu(status);
 }
@@ -174,6 +173,7 @@ input.on('lock', (locked) => {
 function setBuyMenu(open) {
   if (!me || !me.alive) open = false;
   buyMenu.show(open, me);
+  input.menuKeys = open;
   if (open) input.unlock();
   else if (mode === 'playing') input.lock();
 }
@@ -183,6 +183,8 @@ input.on('key', (code) => {
   if (mode !== 'playing') return;
   if (code === DEFAULT_BINDS.buy) setBuyMenu(!buyMenu.open);
   else if (code === 'Escape' && buyMenu.open) setBuyMenu(false);
+  else if (buyMenu.open && /^(Digit|Numpad)\d$/.test(code)) buyMenu.key(+code.slice(-1));
+  else if (buyMenu.open && code === 'Backspace') buyMenu.key('back');
   else if (code === DEFAULT_BINDS.thirdPerson) thirdPerson = !thirdPerson;
   else if (code === DEFAULT_BINDS.scores) hud.showScores(true, game.players, me?.id);
 });
@@ -492,7 +494,7 @@ function netFrame(dt) {
   game.time = net.serverTime();
   for (const e of net.drainEvents()) handleEvent(e);
   for (let i = timers.length - 1; i >= 0; i--) if (game.time >= timers[i].t) { timers[i].fn(); timers.splice(i, 1); }
-  if (net?.ready) $('net').textContent = `${Math.round(net.rtt)} ms · ${game.players.length} players`;
+  if (net?.ready) hud.ping(net.rtt);
 }
 
 function frame(now) {
@@ -528,4 +530,4 @@ $('loading').classList.add('hidden');
 requestAnimationFrame(frame);
 
 // Handy for debugging in the console.
-window.stickshooter = { game, view, settings, input, get me() { return me; }, get net() { return net; } };
+window.stickshooter = { game, view, settings, input, hud, get me() { return me; }, get net() { return net; } };

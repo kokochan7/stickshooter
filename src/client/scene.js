@@ -141,7 +141,7 @@ export class GameView {
 
   resize() {
     const w = innerWidth, h = innerHeight;
-    const ratio = Math.min(devicePixelRatio || 1, 2) * this.settings.renderScale;
+    const ratio = Math.min(devicePixelRatio || 1, 2);
     this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
