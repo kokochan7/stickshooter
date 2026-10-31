@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Stickman } from './stickman.js';
 import { Effects } from './effects.js';
 import { ViewModel } from './viewmodel.js';
+import { buildGun } from './gunModels.js';
 
 function gridTexture() {
   const S = 256;
@@ -134,6 +135,7 @@ export class GameView {
     this.shadowGeo = new THREE.PlaneGeometry(0.9, 0.9).rotateX(-Math.PI / 2);
     this.shadowMat = new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
     this.views = new Map();
+    this.dropViews = new Map(); // drop id -> gun model lying on the ground
 
     this.resize();
     addEventListener('resize', () => this.resize());
@@ -180,6 +182,29 @@ export class GameView {
     this.scene.remove(v.man.root);
     this.scene.remove(v.shadow);
     this.views.delete(id);
+  }
+
+  // Guns on the ground: lying on their side, spinning while they fall, and
+  // blinking for the last two seconds before they vanish.
+  syncDrops(drops, time) {
+    const seen = new Set();
+    for (const d of drops) {
+      seen.add(d.id);
+      let g = this.dropViews.get(d.id);
+      if (!g) {
+        g = buildGun(d.weapon.id).group;
+        g.rotation.order = 'YXZ';
+        this.scene.add(g);
+        this.dropViews.set(d.id, g);
+      }
+      g.position.set(d.pos[0], d.pos[1] + 0.03, d.pos[2]);
+      g.rotation.set(d.rest ? 0 : time * 9, d.yaw, Math.PI / 2);
+      const left = d.expiresAt - time;
+      g.visible = left > 2 || Math.floor(left * 8) % 2 === 0;
+    }
+    for (const [id, g] of this.dropViews) {
+      if (!seen.has(id)) { this.scene.remove(g); this.dropViews.delete(id); }
+    }
   }
 
   groundBelow(x, y, z) {

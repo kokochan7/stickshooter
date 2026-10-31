@@ -12,13 +12,13 @@ import { Game, emptyCmd } from './sim/game.js';
 import { NavGrid } from './sim/nav.js';
 import { BotBrain } from './sim/bot.js';
 import { WEAPONS } from './sim/weapons.js';
-import { TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED } from './sim/constants.js';
+import { TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT } from './sim/constants.js';
 import { YARD } from './maps/yard.js';
 import { GameView } from './client/scene.js';
 import { Audio } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
-import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons } from './client/hud.js';
+import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons, setHudScale } from './client/hud.js';
 import { OnlineSession, roomUrl, fetchRoomCounts } from './net/online.js';
 import { PUBLIC_ROOMS, pickRoom, roomMode } from './net/protocol.js';
 
@@ -33,7 +33,7 @@ const nav = new NavGrid(game.world, YARD.bounds);
 const view = new GameView(canvas, YARD, game.world, settings);
 const audio = new Audio();
 audio.setVolume(settings.volume);
-audio.sfxOn = false; // main menu: music only, no background gunfire
+audio.setSfx(false); // main menu: music only, no background gunfire
 const music = new MenuMusic(audio);
 music.set({ level: settings.music, muted: settings.musicMuted });
 const input = new Input(canvas, settings);
@@ -43,6 +43,15 @@ const { icons, glyphs } = renderGunIcons(view.renderer);
 hud.glyphs = glyphs;
 const buyMenu = new BuyMenu(icons, (item) => pendingActions.push({ type: 'buy', item }));
 new SettingsPanel(settings, onSettingChange);
+setHudScale(settings.hudScale);
+applyViewKick();
+
+// Recoil screen shake setting: the camera shows this share of the view punch
+// and the crosshair shows the rest. The gun's own kick and bob scale down
+// with it, but never all the way, so shooting still feels like something.
+function applyViewKick() {
+  view.viewModel.motion = 0.35 + 0.65 * (settings.viewKick / 100);
+}
 
 let me = null;
 let net = null; // OnlineSession while playing online
@@ -54,6 +63,9 @@ let acc = 0;
 let last = performance.now();
 let killInfo = null;
 let menuAngle = 0;
+let lastCount = null; // countdown number last shown, for its beep
+let goUntil = 0; // "GO!" stays up briefly after the countdown
+let scoresForced = null; // scoreboard title while it's held open to show the winner
 const timers = [];
 const stepState = new Map();
 
@@ -85,6 +97,8 @@ function onSettingChange(k) {
   if (k === 'music') music.set({ level: settings.music });
   if (k === 'binds') renderControls();
   if (k === 'name' && me) me.name = settings.name;
+  if (k === 'hudScale') setHudScale(settings.hudScale);
+  if (k === 'viewKick') applyViewKick();
   if (k === 'bots' && !net) setupBots();
   if (k === 'mode' && !net) setupBots();
   if (k === 'difficulty' && !net) for (const b of brains.values()) b.setDifficulty(settings.difficulty);
@@ -137,12 +151,13 @@ function renderControls() {
   $('controls').innerHTML = [
     `${k('forward')}${k('left')}${k('back')}${k('right')} move`, `${k('jump')} jump`,
     `${k('duck')} crouch`, `${k('walk')} walk`,
-    '<kbd>Mouse 1</kbd> fire', '<kbd>Mouse 2</kbd> scope',
+    '<kbd>Mouse 1</kbd> fire', '<kbd>Mouse 2</kbd> scope / stab',
     `${k('reload')} reload`, `${k('buy')} buy`,
+    `${k('melee')} knife`, `${k('drop')} drop / pick up`,
     `${k('scores')} scores`, `${k('switchTeam')} switch team`, '<kbd>Esc</kbd> pause',
   ].map((t) => `<div>${t}</div>`).join('');
   const teamHint = settings.mode === 'teams' ? ` &nbsp;·&nbsp; ${keyName(b.switchTeam)} — switch team` : '';
-  $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.lastWeapon)} — weapons${teamHint}`;
+  $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.melee)}/${keyName(b.lastWeapon)} — weapons &nbsp;·&nbsp; ${keyName(b.drop)} — drop / pick up${teamHint}`;
 }
 renderControls();
 
@@ -172,7 +187,7 @@ function showPlaying() {
   hud.show(true);
   input.lock();
   mode = 'playing';
-  audio.sfxOn = true;
+  audio.setSfx(true);
   music.set({ active: false });
 }
 
@@ -180,8 +195,10 @@ function startPlaying() {
   startAudio();
   if (net) return showPlaying();
   if (!me) {
+    // A fresh match with a short countdown, so it doesn't start the instant
+    // you click.
     me = game.addPlayer({ name: settings.name });
-    me.respawnAt = game.time;
+    game.restartMatch();
   }
   showPlaying();
 }
@@ -190,12 +207,13 @@ function clearPlayers() {
   for (const p of [...game.players]) { game.removePlayer(p.id); view.removeView(p.id); }
   brains.clear();
   stepState.clear();
+  game.drops = [];
   me = null;
 }
 
 function showMenu(status = '') {
   mode = 'menu';
-  audio.sfxOn = false;
+  audio.setSfx(false);
   music.set({ active: true });
   if (buyMenu.open) setBuyMenu(false);
   input.unlock();
@@ -271,6 +289,7 @@ canvas.addEventListener('click', () => { if (mode === 'playing' && !input.locked
 input.on('lock', (locked) => {
   if (!locked && mode === 'playing') {
     mode = 'paused'; // first, so closing the menu doesn't re-lock
+    audio.setSfx(false); // paused means quiet, even online where the match goes on
     if (buyMenu.open) setBuyMenu(false);
     $('pause').classList.remove('hidden');
   }
@@ -314,11 +333,23 @@ input.on('key', (code) => {
   else if (buyMenu.open && /^(Digit|Numpad)\d$/.test(code)) buyMenu.key(+code.slice(-1));
   else if (buyMenu.open && code === 'Backspace') buyMenu.key('back');
   else if (code === b.switchTeam) switchTeam();
-  else if (code === b.scores) hud.showScores(true, game.players, me?.id, game.mode);
+  else if (code === b.drop && !buyMenu.open) dropOrPickup();
+  else if (code === b.scores) showScoreboard(true);
 });
 input.on('keyup', (code) => {
-  if (code === settings.binds.scores) hud.showScores(false);
+  if (code === settings.binds.scores && scoresForced === null) showScoreboard(false);
 });
+
+function showScoreboard(show, title = '') {
+  hud.showScores(show, game.players, me?.id, game.mode, game.teamKills, title);
+}
+
+// G: pick up the gun in reach (swapping with yours), or drop the one in hand.
+function dropOrPickup() {
+  if (!me?.alive) return;
+  const d = game.pickupTarget(me, input.yaw);
+  pendingActions.push(d ? { type: 'pickup', id: d.id } : { type: 'drop' });
+}
 
 // ---------- Events from the sim ----------
 
@@ -400,11 +431,8 @@ function handleEvent(e) {
       const victim = game.getPlayer(e.victim);
       if (!victim) break;
       hud.kill({ attacker, victim, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, mine: me && (e.attacker === me.id || e.victim === me.id) });
-      const v = view.views.get(victim.id);
-      if (v) {
-        const side = e.dir ? Math.sign(e.dir[0] * Math.cos(victim.yaw) - e.dir[2] * Math.sin(victim.yaw)) || 1 : 1;
-        v.man.die(side);
-      }
+      // The stickman vanishes in a puff; its gun is left on the ground.
+      if (victim !== me && victim.pos[1] > -10) view.effects.poof([victim.pos[0], victim.pos[1] + 1.0, victim.pos[2]]);
       if (me && e.attacker === me.id && e.victim !== me.id) audio.play('killConfirm', { volume: 0.5 });
       if (me && e.victim === me.id) {
         killInfo = { attacker: e.attacker, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, pos: [...me.pos] };
@@ -437,7 +465,36 @@ function handleEvent(e) {
       if (p === me) audio.play('shell', { volume: 0.5 });
       break;
     case 'deploy':
-      if (p === me) { view.viewModel.deploy(); audio.play('deploy', { volume: 0.4 }); }
+      if (p === me) {
+        view.viewModel.deploy();
+        if (e.weapon === 'knife') audio.play('knifeDeploy', { volume: 0.35 });
+        else audio.play('deploy', { volume: 0.4 });
+      }
+      break;
+    case 'melee': {
+      const sound = e.hit === 'flesh' ? 'knifeHit' : e.hit === 'wall' ? 'knifeWall' : null;
+      const swing = e.kind === 'stab' ? 'knifeStab' : 'knifeSlash';
+      if (p === me) {
+        view.viewModel.melee(e.kind);
+        audio.play(swing, { volume: 0.55 });
+        if (sound) audio.play(sound, { volume: 0.7 });
+      } else if (p) {
+        const v = view.views.get(p.id);
+        if (v) v.man.kick = 1;
+        audio.play(swing, { pos: p.pos, volume: 0.5 });
+        if (sound) audio.play(sound, { pos: e.pos ?? p.pos, volume: 0.6 });
+      }
+      if (e.hit === 'wall' && e.pos) view.effects.impact(e.pos, e.normal, e.material);
+      break;
+    }
+    case 'pickup':
+      if (p === me) audio.play('magIn', { volume: 0.6 });
+      break;
+    case 'drop':
+      if (p === me && e.alive) audio.play('magOut', { volume: 0.5 });
+      break;
+    case 'matchEnd':
+      audio.play('win', { volume: 0.6 });
       break;
     case 'dry':
       if (p === me) audio.play('dry', { volume: 0.7 });
@@ -512,38 +569,38 @@ function updateView(dt, alpha) {
     const z = lerp(p.prevPos[2], p.pos[2], alpha);
     footsteps(p, dt, x, z);
     v.man.setTeam(p.team);
-    const visible = (p.alive || v.man.deathT >= 0) && p !== me;
+    const visible = p.alive && p !== me;
     v.man.setVisible(visible);
-    v.shadow.visible = visible && p.alive;
+    v.shadow.visible = visible;
     if (!visible) continue;
     const w = p.weapons[p.active];
     v.man.setWeapon(w ? w.id : null);
     const yaw = p === me ? input.yaw : p.yaw;
     const pitch = p === me ? input.pitch : p.pitch;
-    if (p.alive) {
-      v.man.update({
-        x, y, z, yaw, pitch, vx: p.vel[0], vz: p.vel[2],
-        duck: lerp(p.prevDuck, p.duckAmount, alpha), onGround: p.onGround, reloading: p.reloading, spin: p.spin,
-      }, dt);
-      v.shadow.position.set(x, view.groundBelow(x, y, z) + 0.01, z);
-    } else {
-      v.man.update({ x: p.pos[0], y: p.pos[1], z: p.pos[2], yaw: p.yaw, pitch: 0, vx: 0, vz: 0, duck: 0, onGround: true, reloading: false, spin: 0 }, dt);
-    }
+    v.man.update({
+      x, y, z, yaw, pitch, vx: p.vel[0], vz: p.vel[2],
+      duck: lerp(p.prevDuck, p.duckAmount, alpha), onGround: p.onGround, reloading: p.reloading, spin: p.spin,
+    }, dt);
+    v.shadow.position.set(x, view.groundBelow(x, y, z) + 0.01, z);
   }
+  view.syncDrops(game.drops, game.time);
 
   // Camera.
   const cam = view.camera;
   let fov = settings.fov;
   let showVm = false;
+  // Share of the view punch the camera shows (settings.viewKick).
+  const kick = settings.viewKick / 100;
+  let punchP = 0, punchY = 0;
   if (me && me.alive && mode !== 'menu') {
     const duck = lerp(me.prevDuck, me.duckAmount, alpha);
     const eye = STAND_EYE + (DUCK_EYE - STAND_EYE) * duck;
     const px = lerp(me.prevPos[0], me.pos[0], alpha);
     const py = lerp(me.prevPos[1], me.pos[1], alpha) - me.stepOffset + eye;
     const pz = lerp(me.prevPos[2], me.pos[2], alpha);
-    const punchP = lerp(me.prevPunch[0], me.punch[0], alpha) * DEG;
-    const punchY = lerp(me.prevPunch[1], me.punch[1], alpha) * DEG;
-    cam.rotation.set(input.pitch + punchP, input.yaw + punchY, 0);
+    punchP = lerp(me.prevPunch[0], me.punch[0], alpha) * DEG;
+    punchY = lerp(me.prevPunch[1], me.punch[1], alpha) * DEG;
+    cam.rotation.set(input.pitch + punchP * kick, input.yaw + punchY * kick, 0);
     cam.position.set(px, py, pz);
     const def = game.activeDef(me);
     if (def?.zoomLevels && me.zoom > 0) {
@@ -598,23 +655,76 @@ function updateView(dt, alpha) {
     }
     let reloadFrac = null;
     if (me.reloading && def && !def.shellReload) reloadFrac = 1 - (me.reloadEnd - game.time) / def.reload;
-    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 });
-    hud.teamScores(game.players, game.mode === 'teams' ? me.team : null);
-    const teamName = me.team === 'red' ? 'Red' : 'Blue';
-    if (performance.now() < teamMsgUntil) {
-      hud.message(`<span class="team-${me.team}">You joined ${teamName} team</span>`);
-    } else if (!me.alive) {
-      const k = killInfo;
-      const killer = k?.attacker ? game.getPlayer(k.attacker) : null;
-      const secs = Math.max(0, Math.ceil(me.respawnAt - game.time));
-      const how = k?.weapon ? `${WEAPONS[k.weapon].name}${k.headshot ? ' · headshot' : ''}${k.wallbang ? ' · through the wall' : ''}` : '';
-      hud.message(killer ? `Killed by ${escapeHtml(killer.name)}<small>${how} · respawning in ${secs}</small>` : `<small>Respawning in ${secs}</small>`);
-    } else {
-      hud.message('');
-    }
+    // The part of the recoil the camera isn't showing (screen shake setting)
+    // moves the crosshair, so it still marks where the next bullet goes.
+    const f = (innerHeight / 2) / Math.tan((fov * DEG) / 2);
+    const chOffset = me.alive ? [-Math.tan(punchY * (1 - kick)) * f, -Math.tan(punchP * (1 - kick)) * f] : null;
+    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0, chOffset });
+    hud.teamScores(game.teamKills, game.mode === 'teams' ? me.team : null);
+    hud.goal(goalText());
+    hud.message(centerMessage());
+    hud.prompt(pickupPrompt());
   } else {
     hud.update(dt, { p: null, showFps: settings.showFps });
   }
+}
+
+// What wins the match, under the top bar.
+function goalText() {
+  if (game.mode === 'teams') return `FIRST TEAM TO ${TEAM_KILL_LIMIT} KILLS`;
+  let lead = null;
+  for (const p of game.players) if (!lead || p.kills > lead.kills) lead = p;
+  const leader = lead && lead.kills > 0 ? ` · LEADER ${lead === me ? 'YOU' : lead.name.toUpperCase()} ${lead.kills}` : '';
+  return `FIRST TO ${FFA_KILL_LIMIT} KILLS${leader}`;
+}
+
+// Big text in the middle: the winner, the start countdown, or how you died.
+function centerMessage() {
+  const t = game.time, m = game.match;
+  if (m.state === 'over') {
+    // The winner goes on top of the final scoreboard, which stays up until
+    // the next match.
+    const secs = Math.max(0, Math.ceil(m.endsAt - t));
+    const who = m.winnerTeam
+      ? `<span class="win team-${m.winnerTeam}">${m.winnerTeam === 'red' ? 'RED' : 'BLUE'} TEAM WINS</span>`
+      : `<span class="win">${m.winner === me.id ? 'YOU WIN!' : `${escapeHtml(m.winnerName).toUpperCase()} WINS`}</span>`;
+    const title = `${who}<small>Next match in ${secs}</small>`;
+    if (scoresForced !== title) { scoresForced = title; showScoreboard(true, title); }
+    return '';
+  }
+  if (scoresForced !== null) { scoresForced = null; showScoreboard(false); }
+  if (me.alive && game.frozen(me)) {
+    const n = Math.max(1, Math.ceil(me.frozenUntil - t));
+    if (n !== lastCount) { lastCount = n; audio.play('beep', { volume: 0.5 }); }
+    return `<span class="count">${n}</span><small>Get ready</small>`;
+  }
+  if (lastCount !== null) {
+    lastCount = null;
+    if (me.alive) { goUntil = performance.now() + 700; audio.play('go', { volume: 0.55 }); }
+  }
+  if (performance.now() < goUntil) return '<span class="count go">GO!</span>';
+  if (performance.now() < teamMsgUntil) {
+    return `<span class="team-${me.team}">You joined ${me.team === 'red' ? 'Red' : 'Blue'} team</span>`;
+  }
+  if (!me.alive) {
+    const k = killInfo;
+    const killer = k?.attacker ? game.getPlayer(k.attacker) : null;
+    const secs = Math.max(0, Math.ceil(me.respawnAt - t));
+    const how = k?.weapon ? `${WEAPONS[k.weapon].name}${k.headshot ? ' · headshot' : ''}${k.wallbang ? ' · through the wall' : ''}` : '';
+    return killer ? `Killed by ${escapeHtml(killer.name)}<small>${how} · respawning in ${secs}</small>` : `<small>Respawning in ${secs}</small>`;
+  }
+  return '';
+}
+
+// "G  Pick up AK47" when a gun on the ground is in reach.
+function pickupPrompt() {
+  if (!me.alive || buyMenu.open) return '';
+  const d = game.pickupTarget(me, input.yaw);
+  if (!d) return '';
+  const def = WEAPONS[d.weapon.id];
+  const cur = me.weapons[def.slot];
+  const swap = cur ? ` <small style="opacity:.6">(drops your ${WEAPONS[cur.id].name})</small>` : '';
+  return `<kbd>${keyName(settings.binds.drop)}</kbd> Pick up ${def.name}${swap}`;
 }
 
 function escapeHtml(s) {

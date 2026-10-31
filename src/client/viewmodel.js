@@ -25,6 +25,7 @@ const HOLD = {
   rifle: new THREE.Vector3(0.13, -0.15, -0.44),
   pistol: new THREE.Vector3(0.09, -0.12, -0.5),
   heavy: new THREE.Vector3(0.15, -0.2, -0.4),
+  knife: new THREE.Vector3(0.19, -0.17, -0.38),
 };
 
 export class ViewModel {
@@ -81,6 +82,13 @@ export class ViewModel {
     this.rig.add(this.shell);
     this.pumpT = -1;
     this.spin = 0;
+    // Knife swing: kind 'slash' | 'stab', t counts up from 0.
+    this.meleeT = -1;
+    this.meleeKind = 'slash';
+    this.meleeDur = 0.3;
+    this.slashSide = 1;
+    // How much the gun kicks and bobs (the screen-shake setting); 1 = full.
+    this.motion = 1;
     this._v = Array.from({ length: 6 }, () => new THREE.Vector3());
     this._m = new THREE.Matrix4();
   }
@@ -111,7 +119,16 @@ export class ViewModel {
     this.reloadT = -1;
   }
 
+  // Knife swing. Slashes alternate right-to-left and left-to-right like CS.
+  melee(kind) {
+    this.meleeKind = kind;
+    this.meleeT = 0;
+    this.meleeDur = kind === 'stab' ? 0.55 : 0.3;
+    if (kind === 'slash') this.slashSide = -this.slashSide;
+  }
+
   fire(kickScale = 1) {
+    kickScale *= this.motion;
     const heavy = this.gun?.spec.hold === 'heavy';
     this.kickBack.v += (heavy ? 0.6 : 1.4) * kickScale;
     this.kickRot.v += (heavy ? 1.5 : 7) * kickScale;
@@ -131,7 +148,7 @@ export class ViewModel {
   }
 
   land(speed) {
-    this.drop.v -= Math.min(2.5, speed * 0.15);
+    this.drop.v -= Math.min(2.5, speed * 0.15) * this.motion;
   }
 
   // look: mouse delta this frame (pixels), move: horizontal speed m/s
@@ -149,8 +166,8 @@ export class ViewModel {
     const k = onGround ? Math.min(1, speed / 6) : 0;
     this.bobAmt += (k - this.bobAmt) * Math.min(1, dt * 8);
     if (onGround) this.bobT += dt * stepRate(speed);
-    const bobX = Math.sin(this.bobT) * 0.012 * this.bobAmt;
-    const bobY = -Math.abs(Math.sin(this.bobT)) * 0.014 * this.bobAmt;
+    const bobX = Math.sin(this.bobT) * 0.012 * this.bobAmt * this.motion;
+    const bobY = -Math.abs(Math.sin(this.bobT)) * 0.014 * this.bobAmt * this.motion;
 
     const kb = this.kickBack.update(dt);
     const kr = this.kickRot.update(dt);
@@ -165,12 +182,17 @@ export class ViewModel {
     const slap = this.slap.update(dt);
 
     const hold = HOLD[this.gun.spec.hold] ?? HOLD.rifle;
+    const mp = this.meleePose(dt);
     this.rig.position.set(
-      hold.x + sx + bobX + ks * 0.01 + rp.x,
-      hold.y + sy + bobY - drop * 0.4 + rp.y + slap * 0.01,
-      hold.z + kb * 0.04 + rp.z,
+      hold.x + sx + bobX + ks * 0.01 + rp.x + mp.x,
+      hold.y + sy + bobY - drop * 0.4 + rp.y + slap * 0.01 + mp.y,
+      hold.z + kb * 0.04 + rp.z + mp.z,
     );
-    this.rig.rotation.set(kr * 0.02 + drop * 0.6 + rp.pitch + slap * 0.04, sx * 2 + ks * 0.01 + rp.yaw, -sx * 1.5 + rp.roll);
+    this.rig.rotation.set(
+      kr * 0.02 + drop * 0.6 + rp.pitch + slap * 0.04 + mp.pitch,
+      sx * 2 + ks * 0.01 + rp.yaw + mp.yaw,
+      -sx * 1.5 + rp.roll + mp.roll,
+    );
 
     if (this.gun.spin) {
       this.spin += dt * spin * 50;
@@ -295,6 +317,41 @@ export class ViewModel {
       if (hold === 'pistol') rp.z = 0.025 * smooth((t - 0.68) / 0.03) * (1 - smooth((t - 0.71) / 0.1));
     }
     return rp;
+  }
+
+  // Knife rest pose (blade tipped up and in) plus the slash / stab motion.
+  meleePose(dt) {
+    const mp = this._mp ??= { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0 };
+    mp.x = mp.y = mp.z = mp.pitch = mp.yaw = mp.roll = 0;
+    if (this.gun.spec.hold !== 'knife') { this.meleeT = -1; return mp; }
+    mp.pitch = 0.45; mp.yaw = 0.25; mp.roll = -0.35;
+    if (this.meleeT < 0) return mp;
+    this.meleeT += dt;
+    const u = Math.min(1, this.meleeT / this.meleeDur);
+    if (u >= 1) { this.meleeT = -1; return mp; }
+    if (this.meleeKind === 'slash') {
+      // Wind up to one side, sweep across, settle back.
+      const s = this.slashSide;
+      const sweep = u < 0.15 ? smooth(u / 0.15) : 1 - 2 * smooth((u - 0.15) / 0.45);
+      const back = smooth((u - 0.6) / 0.4);
+      const a = sweep * (1 - back);
+      mp.x += a * 0.12 * s;
+      mp.y += Math.abs(a) * 0.02;
+      mp.z -= Math.sin(u * Math.PI) * 0.06;
+      mp.yaw += a * 0.9 * s;
+      mp.roll += a * 0.7 * s - Math.sin(u * Math.PI) * 0.6;
+      mp.pitch -= Math.sin(u * Math.PI) * 0.5;
+    } else {
+      // Pull back, then a hard forward stab, then recover.
+      const pull = smooth(u / 0.3) * (1 - smooth((u - 0.3) / 0.12));
+      const thrust = smooth((u - 0.3) / 0.12) * (1 - smooth((u - 0.55) / 0.45));
+      mp.z += pull * 0.06 - thrust * 0.2;
+      mp.y += pull * 0.03 - thrust * 0.01;
+      mp.x -= thrust * 0.06;
+      mp.pitch += pull * 0.2 - thrust * 0.75;
+      mp.yaw -= thrust * 0.2;
+    }
+    return mp;
   }
 
   limb(side, shoulder, hand, pole) {

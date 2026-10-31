@@ -4,12 +4,14 @@
 // and clients mirror it from snapshots (src/net/online.js).
 import {
   U, TICK_DT, MAX_HEALTH, RESPAWN_TIME, START_MONEY, MAX_MONEY, KILL_REWARD,
-  TAG_SPEED_MUL, TAG_RECOVER_TIME, STAND_EYE, DUCK_EYE,
+  TAG_SPEED_MUL, TAG_RECOVER_TIME, STAND_EYE, DUCK_EYE, GRAVITY,
+  FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
+  DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE,
 } from './constants.js';
 import { WEAPONS, GEAR } from './weapons.js';
 import { World } from './world.js';
 import { movePlayer, aimDir, forwardVec, rightVec } from './movement.js';
-import { traceBullet, computeDamage, isEnemy } from './combat.js';
+import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
 
 const DEG = Math.PI / 180;
 
@@ -30,6 +32,9 @@ function makeWeapon(id) {
   const def = WEAPONS[id];
   return { id, clip: def.clip, reserve: def.reserve };
 }
+
+// Slots in the order the number keys use them: 1 primary, 2 pistol, 3 knife.
+export const SLOTS = ['primary', 'secondary', 'melee'];
 
 // Small seeded RNG so a server and clients could agree on spread later.
 function mulberry32(seed) {
@@ -55,6 +60,21 @@ export class Game {
     // Optional lag compensation: (shooter) => restore(). The server sets this to
     // rewind other players to what the shooter saw while their bullets trace.
     this.lagComp = null;
+    // Guns lying on the ground: { id, weapon: { id, clip, reserve }, pos, vel,
+    // yaw, rest, expiresAt, noPickup: { pid, until } }.
+    this.drops = [];
+    this.nextDropId = 1;
+    // 'live' while playing, 'over' while the winner is shown.
+    this.match = { state: 'live', endsAt: 0, winner: null, winnerTeam: null, winnerName: '' };
+    this.teamKills = { red: 0, blue: 0 };
+  }
+
+  killLimit() {
+    return this.mode === 'teams' ? TEAM_KILL_LIMIT : FFA_KILL_LIMIT;
+  }
+
+  frozen(p) {
+    return p.frozenUntil > this.time;
   }
 
   addPlayer({ name, team = this.defaultTeam(), isBot = false }) {
@@ -66,7 +86,7 @@ export class Game {
       stepOffset: 0, stamina: 0, jumpHeld: false,
       health: MAX_HEALTH, armor: 0, helmet: false,
       money: START_MONEY, kills: 0, deaths: 0, headshots: 0,
-      weapons: { primary: null, secondary: null }, active: 'secondary', lastActive: 'primary',
+      weapons: { primary: null, secondary: null, melee: null }, active: 'secondary', lastActive: 'primary',
       loadout: { primary: null, secondary: 'usp', armor: null },
       nextAttack: 0, deployEnd: 0, reloading: false, reloadEnd: 0, shellNext: 0,
       shotsFired: 0, decreaseShotsAt: 0, delayFire: false, pistolAcc: 0.9, accuracy: 0.2, lastFire: -10,
@@ -74,6 +94,7 @@ export class Game {
       zoom: 0, resumeZoomAt: 0, resumeZoom: 0,
       spin: 0, fireHeld: false, altHeld: false, reloadHeld: false,
       tagMul: 1, lastHitDir: null, lastAttacker: null, lastHurtTime: -10,
+      nextStab: 0, lastMelee: -10, frozenUntil: 0, life: 0,
     };
     this.players.push(p);
     return p;
@@ -98,6 +119,46 @@ export class Game {
     const order = [...this.players.filter((p) => !p.isBot), ...this.players.filter((p) => p.isBot)];
     for (const p of order) p.team = null;
     for (const p of order) p.team = this.defaultTeam();
+    this.resetScores();
+  }
+
+  // ---------- Match ----------
+
+  resetScores() {
+    this.match = { state: 'live', endsAt: 0, winner: null, winnerTeam: null, winnerName: '' };
+    this.teamKills = { red: 0, blue: 0 };
+    this.drops = [];
+    for (const p of this.players) { p.kills = 0; p.deaths = 0; p.headshots = 0; p.money = START_MONEY; }
+  }
+
+  // A fresh match: scores reset and everyone respawns, frozen for START_DELAY.
+  restartMatch() {
+    this.resetScores();
+    for (const p of this.players) this.spawn(p);
+    for (const p of this.players) p.frozenUntil = this.time + START_DELAY;
+    this.emit({ type: 'matchStart' });
+  }
+
+  // Someone joining a match in progress spawns right away, frozen for
+  // START_DELAY so they get a moment to look around and buy.
+  join(p) {
+    this.spawn(p);
+    p.frozenUntil = this.time + START_DELAY;
+  }
+
+  endMatch(winner, winnerTeam) {
+    this.match = {
+      state: 'over', endsAt: this.time + MATCH_OVER_TIME,
+      winner: winner?.id ?? null, winnerTeam: winnerTeam ?? null, winnerName: winner?.name ?? '',
+    };
+    // Everyone stops where they are until the next match.
+    for (const p of this.players) p.frozenUntil = this.match.endsAt + 1;
+    this.emit({ type: 'matchEnd', winner: this.match.winner, team: winnerTeam ?? null, name: this.match.winnerName });
+  }
+
+  // What clients need to show the match state (sent in every snapshot).
+  matchInfo() {
+    return { ...this.match, teamKills: this.teamKills };
   }
 
   // Change sides in teams mode (the Switch team key). A living player is
@@ -157,12 +218,14 @@ export class Game {
     p.health = MAX_HEALTH;
     p.armor = 0; p.helmet = false;
     p.ducked = false; p.duckAmount = 0; p.onGround = true;
-    p.weapons = { primary: null, secondary: makeWeapon('usp') };
+    p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife') };
     p.active = 'secondary';
+    p.life++;
     p.punch = [0, 0]; p.prevPunch = [0, 0];
     p.zoom = 0; p.spin = 0; p.reloading = false; p.shotsFired = 0;
     p.tagMul = 1;
-    p.deployEnd = this.time + 0.3; p.nextAttack = this.time + 0.3;
+    p.deployEnd = this.time + 0.3; p.nextAttack = this.time + 0.3; p.nextStab = this.time + 0.3;
+    if (this.match.state === 'over') p.frozenUntil = this.match.endsAt + 1;
 
     // Re-buy the last loadout (practice convenience).
     const lo = p.loadout;
@@ -212,6 +275,7 @@ export class Game {
     this.time += TICK_DT;
     this.tickCount++;
     const dt = TICK_DT;
+    if (this.match.state === 'over' && this.time >= this.match.endsAt) this.restartMatch();
 
     for (const p of this.players) {
       p.prevPos[0] = p.pos[0]; p.prevPos[1] = p.pos[1]; p.prevPos[2] = p.pos[2];
@@ -228,16 +292,20 @@ export class Game {
       if (cmd.actions) for (const a of cmd.actions) this.handleAction(p, a);
 
       this.moveStep(p, cmd, dt);
-      this.updateWeapon(p, cmd, dt);
+      // Frozen (match start / match over): look, switch and buy, but no shooting.
+      this.updateWeapon(p, this.frozen(p) ? { ...cmd, fire: false, alt: false } : cmd, dt);
+      this.touchDrops(p);
 
       // Fell out of the world.
       if (p.pos[1] < -20) this.kill(p, null, null, false, false);
     }
+    this.updateDrops(dt);
   }
 
   // Look + movement for one tick. Also used by online clients to predict
   // their own player between server snapshots.
   moveStep(p, cmd, dt = TICK_DT) {
+    if (this.frozen(p)) cmd = { ...cmd, fwd: 0, side: 0, jump: false };
     p.yaw = cmd.yaw;
     p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, cmd.pitch));
 
@@ -256,6 +324,122 @@ export class Game {
   handleAction(p, a) {
     if (a.type === 'buy') this.buy(p, a.item);
     else if (a.type === 'team') this.setTeam(p, a.team);
+    else if (a.type === 'drop') this.dropWeapon(p, p.active, true);
+    else if (a.type === 'pickup') this.pickup(p, a.id);
+  }
+
+  // ---------- Dropped guns ----------
+
+  // Take the gun out of a slot and put it on the ground. Thrown forward when
+  // dropped on purpose (G), or falls where you stood when you die. The knife
+  // never drops. Returns the drop or null.
+  dropWeapon(p, slot, thrown, { switchAway = true } = {}) {
+    const w = p.weapons[slot];
+    if (!w || WEAPONS[w.id].melee) return null;
+    p.weapons[slot] = null;
+    let pos, vel;
+    if (thrown) {
+      const f = aimDir(p.yaw, Math.max(-0.5, Math.min(0.6, p.pitch)));
+      const eye = this.eyePos(p);
+      pos = [eye[0] + f[0] * 0.45, eye[1] - 0.25 + f[1] * 0.45, eye[2] + f[2] * 0.45];
+      vel = [f[0] * 4.5 + p.vel[0], f[1] * 4.5 + 1.6 + p.vel[1] * 0.5, f[2] * 4.5 + p.vel[2]];
+    } else {
+      pos = [p.pos[0], p.pos[1] + 1.0, p.pos[2]];
+      vel = [p.vel[0] * 0.5 + (this.rand() - 0.5), 1, p.vel[2] * 0.5 + (this.rand() - 0.5)];
+    }
+    const d = {
+      id: this.nextDropId++, weapon: w, pos, vel, yaw: p.yaw + (this.rand() - 0.5) * 0.8, rest: false,
+      expiresAt: this.time + DROP_LIFETIME, noPickup: { pid: p.id, until: this.time + 0.8 },
+    };
+    this.drops.push(d);
+    if (this.drops.length > 32) this.drops.shift();
+    if (p.alive && p.active === slot) {
+      p.reloading = false; p.zoom = 0; p.resumeZoomAt = 0; p.spin = 0;
+      if (switchAway) this.switchTo(p, SLOTS.find((s) => p.weapons[s]) ?? 'melee', true);
+    }
+    this.emit({ type: 'drop', pid: p.id, weapon: w.id, alive: p.alive });
+    return d;
+  }
+
+  canPickup(p, d, range = PICKUP_RANGE) {
+    if (!p.alive || (d.noPickup.pid === p.id && this.time < d.noPickup.until)) return false;
+    const dy = d.pos[1] - p.pos[1];
+    return dy > -1 && dy < 2 && Math.hypot(d.pos[0] - p.pos[0], d.pos[2] - p.pos[2]) < range;
+  }
+
+  // The drop a G press would pick up: the nearest one in reach, favoring the
+  // one you're looking at. Used by the client to choose between pick up and
+  // drop, and for the "G Pick up" prompt.
+  pickupTarget(p, yaw = p.yaw) {
+    let best = null, bestScore = Infinity;
+    const f = forwardVec(yaw);
+    for (const d of this.drops) {
+      if (!this.canPickup(p, d)) continue;
+      const dx = d.pos[0] - p.pos[0], dz = d.pos[2] - p.pos[2];
+      const dist = Math.hypot(dx, dz);
+      const facing = dist > 0.01 ? (dx * f[0] + dz * f[2]) / dist : 1;
+      const score = dist - facing * 0.6;
+      if (score < bestScore) { bestScore = score; best = d; }
+    }
+    return best;
+  }
+
+  pickup(p, id) {
+    const d = this.drops.find((x) => x.id === id);
+    if (!d || !this.canPickup(p, d)) return false;
+    this.takeDrop(p, d);
+    return true;
+  }
+
+  // Swap: what you had in that slot goes on the ground in its place.
+  takeDrop(p, d) {
+    const slot = WEAPONS[d.weapon.id].slot;
+    this.drops = this.drops.filter((x) => x !== d);
+    if (p.weapons[slot]) this.dropWeapon(p, slot, true, { switchAway: false });
+    p.weapons[slot] = d.weapon;
+    this.switchTo(p, slot, true);
+    this.emit({ type: 'pickup', pid: p.id, weapon: d.weapon.id });
+  }
+
+  // CS: walking over a gun picks it up if that slot is empty.
+  touchDrops(p) {
+    if (!p.alive || !this.drops.length) return;
+    for (const d of this.drops) {
+      const slot = WEAPONS[d.weapon.id].slot;
+      if (!p.weapons[slot] && this.canPickup(p, d, TOUCH_RANGE)) { this.takeDrop(p, d); return; }
+    }
+  }
+
+  updateDrops(dt) {
+    if (!this.drops.length) return;
+    this.drops = this.drops.filter((d) => this.time < d.expiresAt && d.pos[1] > -20);
+    for (const d of this.drops) {
+      if (d.rest) continue;
+      const v = d.vel;
+      v[1] -= GRAVITY * dt;
+      const sp = Math.hypot(v[0], v[1], v[2]);
+      const step = sp * dt;
+      if (step < 1e-6) continue;
+      const dir = [v[0] / sp, v[1] / sp, v[2] / sp];
+      const h = this.world.raycast(d.pos[0], d.pos[1], d.pos[2], dir[0], dir[1], dir[2], step + 0.03);
+      if (!h) {
+        d.pos[0] += v[0] * dt; d.pos[1] += v[1] * dt; d.pos[2] += v[2] * dt;
+        continue;
+      }
+      const t = Math.max(0, h.t - 0.03);
+      d.pos[0] += dir[0] * t; d.pos[1] += dir[1] * t; d.pos[2] += dir[2] * t;
+      const n = h.normal;
+      if (n[1] > 0.5) {
+        // Landed: lie flat on the floor, right at the surface.
+        d.pos[0] += dir[0] * (h.t - t); d.pos[1] += dir[1] * (h.t - t); d.pos[2] += dir[2] * (h.t - t);
+        d.rest = true;
+        d.vel = [0, 0, 0];
+      } else {
+        // Bounce off walls, losing most of the speed.
+        const vn = v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
+        for (let i = 0; i < 3; i++) v[i] = (v[i] - 1.5 * vn * n[i]) * 0.5;
+      }
+    }
   }
 
   activeWeapon(p) {
@@ -305,6 +489,7 @@ export class Game {
     const w = this.activeWeapon(p);
     if (!w) return;
     const def = WEAPONS[w.id];
+    if (def.melee) { this.updateMelee(p, cmd, def); return; }
 
     // Spray counter decays when the trigger is released (CS ItemPostFrame).
     if (!cmd.fire) {
@@ -391,6 +576,57 @@ export class Game {
       }
       this.fire(p, w, def);
     }
+  }
+
+  // Knife: Mouse 2 stabs, Mouse 1 slashes; both repeat while held (CS
+  // checks the stab first).
+  updateMelee(p, cmd, def) {
+    const t = this.time;
+    p.fireHeld = !!cmd.fire;
+    p.altHeld = !!cmd.alt;
+    p.reloading = false;
+    if (t < p.deployEnd) return;
+    if (cmd.alt && t >= p.nextStab) this.melee(p, def, 'stab');
+    else if (cmd.fire && t >= p.nextAttack) this.melee(p, def, 'slash');
+  }
+
+  melee(p, def, kind) {
+    const t = this.time;
+    const m = def.melee[kind];
+    const yaw = p.yaw + p.punch[1] * DEG;
+    const fwd = aimDir(yaw, p.pitch + p.punch[0] * DEG);
+    const right = rightVec(yaw);
+    const up = cross(right, fwd);
+    const origin = this.eyePos(p);
+    const restore = this.lagComp ? this.lagComp(p) : null;
+    const res = traceMelee(this.world, this.players, p, origin, fwd, right, up, m.range);
+    if (restore) restore();
+
+    const hit = !!res;
+    let dmg = 0, backstab = false;
+    if (res?.victim) {
+      // CS: a slash after a pause hits harder than one in a quick combo.
+      dmg = kind === 'slash' && p.nextAttack + 0.4 < t ? m.firstDamage : m.damage;
+      if (kind === 'stab') {
+        const v = res.victim, vf = forwardVec(v.yaw);
+        const lx = v.pos[0] - p.pos[0], lz = v.pos[2] - p.pos[2], l = Math.hypot(lx, lz) || 1;
+        if ((lx * vf[0] + lz * vf[2]) / l > 0.8) { dmg *= m.backstabMul; backstab = true; }
+      }
+    }
+    this.emit({
+      type: 'melee', pid: p.id, kind, hit: res?.victim ? 'flesh' : res?.wall ? 'wall' : null, backstab,
+      pos: res?.victim ? res.point : res?.wall?.pos ?? null, normal: res?.wall?.normal ?? null, material: res?.wall?.material ?? null,
+    });
+    if (res?.victim) this.damage(res.victim, p, dmg, res.group, res.point, def, false, fwd);
+
+    if (kind === 'slash') {
+      p.nextAttack = t + (hit ? m.hitCycle : m.missCycle);
+      p.nextStab = Math.max(p.nextStab, t + m.altDelay);
+    } else {
+      p.nextAttack = p.nextStab = t + (hit ? m.hitCycle : m.missCycle);
+    }
+    p.lastFire = t;
+    p.lastMelee = t;
   }
 
   fire(p, w, def) {
@@ -542,6 +778,8 @@ export class Game {
   }
 
   damage(victim, attacker, raw, group, point, def, wallbang, dir) {
+    // Nobody can be hurt while frozen at the start or end of a match.
+    if (this.frozen(victim)) return;
     const { damage, armorHit } = computeDamage(victim, raw, group, def);
     victim.health -= damage;
     victim.tagMul = TAG_SPEED_MUL;
@@ -570,15 +808,33 @@ export class Game {
       attacker.kills++;
       if (headshot) attacker.headshots++;
       attacker.money = Math.min(MAX_MONEY, attacker.money + KILL_REWARD);
+      if (attacker.team in this.teamKills && this.match.state === 'live') this.teamKills[attacker.team]++;
     }
     this.emit({
       type: 'kill', attacker: attacker?.id ?? null, victim: victim.id, weapon: def?.id ?? null,
       headshot, wallbang, dir: victim.lastHitDir,
     });
+    // The body vanishes and its best gun stays on the ground (CS drops the
+    // primary, or the pistol if there's no primary).
+    const slot = victim.weapons.primary ? 'primary' : victim.weapons.secondary ? 'secondary' : null;
+    if (slot) this.dropWeapon(victim, slot, false);
+
+    if (attacker && attacker !== victim && this.match.state === 'live') {
+      if (this.mode === 'teams') {
+        if (this.teamKills[attacker.team] >= TEAM_KILL_LIMIT) this.endMatch(null, attacker.team);
+      } else if (attacker.kills >= FFA_KILL_LIMIT) {
+        this.endMatch(attacker, null);
+      }
+    }
   }
 
   // Helpers used by bots and the client.
   forward(p) { return forwardVec(p.yaw); }
+
+  // Headshot kills as a share of all kills, 0-100.
+  static hsPercent(p) {
+    return p.kills ? Math.round((p.headshots / p.kills) * 100) : 0;
+  }
 }
 
 function cross(a, b) {

@@ -179,3 +179,33 @@ function dominantAxis(d) {
   if (ay >= az) return [0, Math.sign(d[1]), 0];
   return [0, 0, Math.sign(d[2])];
 }
+
+// Knife trace (CS 1.6 FindHullIntersection, approximated): a ray along the
+// aim, then a small fan of rays around it standing in for the hull trace CS
+// falls back to, so a slash that's slightly off still connects. Returns
+// { victim, group, point, dist } for a player, { wall } for a wall, or null.
+const MELEE_FAN = [[0, 0], [0.12, 0], [-0.12, 0], [0, 0.1], [0, -0.1], [0.22, 0], [-0.22, 0], [0.1, 0.1], [-0.1, 0.1], [0.1, -0.1], [-0.1, -0.1]];
+export function traceMelee(world, players, shooter, origin, dir, right, up, range) {
+  const maxD = range * U;
+  let best = null;
+  for (const [ox, oy] of MELEE_FAN) {
+    const d = [dir[0] + right[0] * ox + up[0] * oy, dir[1] + right[1] * ox + up[1] * oy, dir[2] + right[2] * ox + up[2] * oy];
+    const l = Math.hypot(d[0], d[1], d[2]);
+    d[0] /= l; d[1] /= l; d[2] /= l;
+    const wh = world.raycast(origin[0], origin[1], origin[2], d[0], d[1], d[2], maxD);
+    const lim = wh ? wh.t : maxD;
+    for (const p of players) {
+      if (p === shooter || !p.alive || (shooter && !isEnemy(shooter, p))) continue;
+      const h = rayPlayer(p, origin, d, lim);
+      if (h && (!best?.victim || h.t < best.dist)) {
+        best = { victim: p, group: h.group, dist: h.t, point: [origin[0] + d[0] * h.t, origin[1] + d[1] * h.t, origin[2] + d[2] * h.t] };
+      }
+    }
+    // The center ray decides what wall we hit if no one is in reach.
+    if (!best && wh && ox === 0 && oy === 0) {
+      best = { wall: { pos: [origin[0] + d[0] * wh.t, origin[1] + d[1] * wh.t, origin[2] + d[2] * wh.t], normal: wh.normal, material: wh.box.material } };
+    }
+    if (best?.victim && ox === 0 && oy === 0) break; // dead center hit wins
+  }
+  return best;
+}

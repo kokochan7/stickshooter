@@ -233,6 +233,20 @@ const SPECS = {
   },
 };
 
+// Knife: rubber grip, small guard, clip-point blade with a darker spine.
+// Not in the shop; it's drawn in hand, in the kill feed and nowhere else.
+SPECS.knife = () => ({
+  parts: [
+    B(0.026, 0.032, 0.11, 0, 0, 0.0, BLACK),
+    B(0.03, 0.036, 0.012, 0, 0, 0.058, GUNMETAL),
+    B(0.034, 0.05, 0.012, 0, 0.004, -0.058, METAL),
+    B(0.007, 0.034, 0.15, 0, 0.004, -0.137, SILVER),
+    B(0.008, 0.008, 0.15, 0, 0.022, -0.137, METAL),
+    B(0.007, 0.024, 0.04, 0, 0.0, -0.222, SILVER, 0.5),
+  ],
+  muzzle: [0, 0, -0.24], fore: [-0.16, -0.32, 0.12], hold: 'knife', eject: [0, 0, 0],
+});
+
 let sharedMaterial = null;
 export function gunMaterial() {
   sharedMaterial ??= new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });

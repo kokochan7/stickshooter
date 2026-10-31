@@ -257,8 +257,10 @@ export class Stickman {
       const hold = this.gun.spec.hold;
       if (hold === 'pistol') this.gun.group.position.set(0.02, 0.02, -0.5 + this.kick * 0.05);
       else if (hold === 'heavy') this.gun.group.position.set(0.12, -0.2, -0.22 + this.kick * 0.03);
+      else if (hold === 'knife') this.gun.group.position.set(0.12, -0.1, -0.36 - this.kick * 0.15);
       else this.gun.group.position.set(0.09, -0.07, -0.24 + this.kick * 0.05);
-      this.gun.group.rotation.x = this.kick * 0.15;
+      // A knife swing reads from far away as a big chop.
+      this.gun.group.rotation.x = hold === 'knife' ? 0.5 - this.kick * 1.4 : this.kick * 0.15;
       if (s.reloading) {
         this.gun.group.rotation.x = -0.5;
         this.gun.group.position.y -= 0.08;
@@ -271,6 +273,7 @@ export class Stickman {
       const handR = v[4].copy(this.gun.grip).applyMatrix4(m);
       const handL = v[5].copy(this.gun.fore).applyMatrix4(m);
       if (s.reloading) handL.set(-0.05, chest.y - 0.25, chest.z - 0.2);
+      if (hold === 'knife') handL.set(-0.22, chest.y - 0.5, chest.z - 0.05);
       this.arm('R', 1, chest, handR);
       this.arm('L', -1, chest, handL);
     } else {

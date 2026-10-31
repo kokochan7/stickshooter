@@ -1,7 +1,7 @@
 // Bot brain: looks at the game state and produces the same cmd a human client
 // would send. Bots never touch game state directly except to buy on spawn.
 import { emptyCmd } from './game.js';
-import { WEAPONS } from './weapons.js';
+import { WEAPONS, weaponValue } from './weapons.js';
 import { STAND_EYE, DUCK_EYE } from './constants.js';
 import { forwardVec, rightVec } from './movement.js';
 import { isEnemy } from './combat.js';
@@ -65,6 +65,7 @@ export class BotBrain {
     this.crouchFire = false;
     this.wobblePhase = [Math.random() * 10, Math.random() * 10];
     this.lastHurtSeen = this.p.lastHurtTime;
+    this.dropGoal = null; // id of a gun on the ground worth more than ours
   }
 
   think(dt) {
@@ -76,7 +77,10 @@ export class BotBrain {
       cmd.yaw = p.yaw; cmd.pitch = p.pitch;
       return cmd;
     }
-    if (!this.wasAlive) {
+    // A new life (respawn, or a new match respawning everyone at once).
+    if (this.life !== p.life) {
+      this.reset();
+      this.life = p.life;
       this.wasAlive = true;
       this.yaw = p.yaw; this.pitch = 0;
       this.buyLoadout();
@@ -94,6 +98,11 @@ export class BotBrain {
 
     let moveDir = null; // world-space [x, z]
     let wantFire = false;
+
+    // Out of ammo: switch to a gun that still has some, or the knife.
+    if (w && !def.melee && w.clip === 0 && w.reserve === 0) {
+      cmd.slot = ['primary', 'secondary'].find((s) => s !== p.active && weaponValue(p.weapons[s]) > 0) ?? 'melee';
+    }
     const tgt = this.target ? g.getPlayer(this.target) : null;
 
     if (tgt && tgt.alive && this.targetVisible) {
@@ -136,7 +145,9 @@ export class BotBrain {
         else this.altToggle = false;
       }
 
-      if (ready && w && w.clip > 0 && !p.reloading) {
+      if (def?.melee) {
+        wantFire = t >= this.reactionUntil && dist < 1.25;
+      } else if (ready && w && w.clip > 0 && !p.reloading) {
         if (def.auto && !def.pellets && !def.zoomLevels) {
           if (t >= this.burstPauseUntil) {
             if (this.burstLeft <= 0) {
@@ -152,7 +163,12 @@ export class BotBrain {
 
       // Movement in a fight: stop to shoot accurately, strafe in between.
       const close = def?.pellets || def?.id === 'uzi' || def?.id === 'p90';
-      if (wantFire) {
+      if (def?.melee) {
+        // Knife: run straight at them, weaving a little.
+        const f = forwardVec(this.yaw), r = rightVec(this.yaw);
+        const weave = Math.sin(t * 3 + this.wobblePhase[0]) * 0.35;
+        moveDir = [f[0] + r[0] * weave, f[2] + r[2] * weave];
+      } else if (wantFire) {
         moveDir = null;
         cmd.duck = this.crouchFire && dist > 15;
       } else {
@@ -171,14 +187,23 @@ export class BotBrain {
       // --- Roam / hunt ---
       let goal = null;
       if (this.lastSeenPos && t - this.lastSeenTime < 6) goal = this.lastSeenPos;
-      if (!this.path || this.pathIdx >= this.path.length || t >= this.repathAt) {
+      // A better gun on the ground beats hunting.
+      const drop = this.dropGoal ? g.drops.find((d) => d.id === this.dropGoal) : null;
+      if (this.dropGoal && !drop) { this.dropGoal = null; this.path = null; }
+      if (drop) {
+        goal = drop.pos;
+        const dd = Math.hypot(drop.pos[0] - p.pos[0], drop.pos[2] - p.pos[2]);
+        if (g.canPickup(p, drop)) cmd.actions = [{ type: 'pickup', id: drop.id }];
+        else if (dd < 3) { moveDir = [(drop.pos[0] - p.pos[0]) / dd, (drop.pos[2] - p.pos[2]) / dd]; this.path = []; }
+      }
+      if (!moveDir && (!this.path || this.pathIdx >= this.path.length || t >= this.repathAt)) {
         const dest = goal ?? this.nav.randomOpenPoint(Math.random);
         this.path = this.nav.findPath(p.pos[0], p.pos[2], dest[0], dest[2] ?? dest[1]);
         this.pathIdx = 0;
-        this.repathAt = t + (goal ? 1.5 : 8);
+        this.repathAt = t + (drop ? 1 : goal ? 1.5 : 8);
         if (!this.path && goal) this.lastSeenPos = null;
       }
-      if (this.path && this.pathIdx < this.path.length) {
+      if (!moveDir && this.path && this.pathIdx < this.path.length) {
         const wp = this.path[this.pathIdx];
         const dx = wp[0] - p.pos[0], dz = wp[1] - p.pos[2];
         const d = Math.hypot(dx, dz);
@@ -256,7 +281,7 @@ export class BotBrain {
     let best = null, bestD = Infinity;
     const f = forwardVec(this.yaw);
     for (const o of g.players) {
-      if (!o.alive || !isEnemy(p, o)) continue;
+      if (!o.alive || !isEnemy(p, o) || g.frozen(o)) continue;
       const dx = o.pos[0] - p.pos[0], dz = o.pos[2] - p.pos[2];
       const d = Math.hypot(dx, dz);
       if (d > 90) continue;
@@ -291,6 +316,26 @@ export class BotBrain {
     } else {
       this.targetVisible = false;
     }
+    const prev = this.dropGoal;
+    this.dropGoal = this.pickDrop()?.id ?? null;
+    if (this.dropGoal !== prev) this.path = null;
+  }
+
+  // The gun on the ground most worth walking to: worth more than what we
+  // carry in that slot, and not too far.
+  pickDrop() {
+    const g = this.game, p = this.p;
+    let best = null, bestScore = 0;
+    for (const d of g.drops) {
+      const slot = WEAPONS[d.weapon.id].slot;
+      const gain = weaponValue(d.weapon) - weaponValue(p.weapons[slot]);
+      if (gain <= 0 || (d.noPickup.pid === p.id && g.time < d.noPickup.until)) continue;
+      const dist = Math.hypot(d.pos[0] - p.pos[0], d.pos[2] - p.pos[2]);
+      if (dist > 20 || Math.abs(d.pos[1] - p.pos[1]) > 3) continue;
+      const score = gain - dist * 60;
+      if (score > bestScore) { bestScore = score; best = d; }
+    }
+    return best;
   }
 
   buyLoadout() {

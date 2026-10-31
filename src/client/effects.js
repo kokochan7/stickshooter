@@ -193,6 +193,16 @@ export class Effects {
     }
   }
 
+  // A dead stickman vanishes in a soft white puff.
+  poof(pos) {
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2, s = 0.6 + Math.random() * 1.4;
+      const g = 0.85 + Math.random() * 0.15;
+      this.spawnParticle(pos[0] + (Math.random() - 0.5) * 0.3, pos[1] + (Math.random() - 0.5) * 1.2, pos[2] + (Math.random() - 0.5) * 0.3,
+        Math.cos(a) * s, 0.3 + Math.random() * 0.9, Math.sin(a) * s, [g, g, g], 0.45 + Math.random() * 0.35, 0.12 + Math.random() * 0.1, -0.1, 0.6);
+    }
+  }
+
   addHole(pos, normal, material) {
     const i = this.hNext;
     this.hNext = (this.hNext + 1) % MAX_HOLES;

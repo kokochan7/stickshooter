@@ -187,6 +187,21 @@ W.minigun = {
   },
 };
 
+// CS 1.6 knife (wpn_knife.cpp). Mouse 1 slashes (20 on the first swing, 15
+// when swinging again right away, 48 units of reach). Mouse 2 stabs (65, 32
+// units of reach, x3 from behind). Hitgroup multipliers and armor apply like
+// they do for bullets. Always carried, can't be bought or dropped.
+W.knife = {
+  name: 'Knife', slot: 'melee', category: 'Melee', price: 0,
+  damage: 15, range: 48, bullet: null, penetration: 0, armorRatio: 1.0,
+  cycle: 0.4, auto: true, clip: 0, reserve: 0, deploy: 0.5, speed: 250,
+  accuracy: { type: 'none' }, kick: { punch: [0, 0] },
+  melee: {
+    slash: { damage: 15, firstDamage: 20, range: 48, hitCycle: 0.4, missCycle: 0.35, altDelay: 0.5 },
+    stab: { damage: 65, range: 32, hitCycle: 1.1, missCycle: 1.0, backstabMul: 3 },
+  },
+};
+
 for (const [id, w] of Object.entries(W)) {
   w.id = id;
   w.runThreshold ??= 140;
@@ -216,4 +231,12 @@ export function weaponRatings(w) {
     range: w.pellets ? 0.15 : Math.pow(w.rangeMod, 6),
     mobility: (w.speed - 180) / 70,
   };
+}
+
+// What a carried or dropped gun is worth to a bot deciding whether to swap:
+// its price, or nothing once it's out of ammo.
+export function weaponValue(w) {
+  const d = w && W[w.id];
+  if (!d || d.melee) return 0;
+  return w.clip + w.reserve > 0 ? d.price : 0;
 }

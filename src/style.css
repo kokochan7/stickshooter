@@ -249,3 +249,19 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 .buy-stats .kv span:first-child { color: rgba(255, 217, 138, .8); }
 .buy-stats .kv span:last-child { color: #ffd98a; }
 .buy-tip { margin: auto 0 0; font-size: 12px; color: rgba(255, 217, 138, .55); font-weight: 600; }
+
+/* ---------- Match: goal line, countdown, winner, pickup prompt ---------- */
+#top { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#top #topbar, #top #team-score { position: static; transform: none; }
+#goal { font: 800 11px var(--body); letter-spacing: 1.5px; color: rgba(255,255,255,.75); text-shadow: 0 1px 2px #000; }
+#goal:empty { display: none; }
+#center-msg .count { display: block; font: 400 110px/1 var(--title); color: #fff; text-shadow: 0 6px 0 #1b1f27, 0 10px 30px rgba(0,0,0,.5); animation: countPop .5s ease-out; }
+#center-msg .count.go { color: var(--accent); }
+#scoreboard .sb-head .win { display: block; font: 400 52px/1.05 var(--title); letter-spacing: 1px; color: var(--accent); text-shadow: 0 4px 0 #1b1f27; }
+#scoreboard .sb-head .win.team-red { color: #ff5a5f; }
+#scoreboard .sb-head .win.team-blue { color: #4f95ff; }
+#scoreboard .sb-head small { display: block; font: 700 14px var(--body); letter-spacing: 1px; color: var(--muted); margin-top: 6px; }
+@keyframes countPop { from { transform: scale(1.5); opacity: 0; } }
+#prompt { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: var(--panel); font-weight: 700; font-size: 16px; }
+#prompt kbd { font-size: 13px; padding: 3px 8px; background: var(--accent); color: var(--accent-ink); }
+#scoreboard .sb-head { text-align: center; font: 400 24px var(--title); letter-spacing: 1px; color: var(--accent); margin: 0 0 10px; }

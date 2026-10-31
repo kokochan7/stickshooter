@@ -69,3 +69,20 @@ export const ARMOR_BONUS = 0.5;
 // Being shot slows you down briefly ("tagging").
 export const TAG_SPEED_MUL = 0.55;
 export const TAG_RECOVER_TIME = 0.6;
+
+// Match rules. Free for all: first player to FFA_KILL_LIMIT kills wins.
+// Teams: first team to TEAM_KILL_LIMIT kills wins. After a win the scoreboard
+// stays up for MATCH_OVER_TIME, then a new match starts. Every match start, and
+// every join, freezes you for START_DELAY (you can look around and buy, but
+// not move, shoot or be hurt) so the game doesn't begin the instant you click.
+export const FFA_KILL_LIMIT = 25;
+export const TEAM_KILL_LIMIT = 50;
+export const MATCH_OVER_TIME = 8;
+export const START_DELAY = 3;
+
+// Dropped guns lie on the ground this long before they disappear.
+export const DROP_LIFETIME = 10;
+// How close you have to be to pick a gun up (meters, from your feet).
+export const PICKUP_RANGE = 1.6;
+// Walking over a gun picks it up when that slot is empty, like CS.
+export const TOUCH_RANGE = 0.8;

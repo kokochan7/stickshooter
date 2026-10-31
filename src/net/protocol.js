@@ -9,12 +9,14 @@
 //   { t: 'ping', c }
 // server -> client
 //   { t: 'welcome', id, mode, time, tickRate, snapEvery }
-//   { t: 'snap', time, ack, me, players: [...], events: [...] }
+//   { t: 'snap', time, ack, me, players: [...], events: [...], match, drops: [...] }
+//     match = Game.matchInfo(): state 'live' | 'over', endsAt, winner, winnerTeam, teamKills
+//     drops = guns on the ground: { id, w, pos, yaw, exp }
 //   { t: 'pong', c, time }
 //   { t: 'full' }  room is full
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -49,6 +51,7 @@ const OWN = [
   'stamina', 'jumpHeld', 'tagMul', 'health', 'armor', 'helmet', 'money', 'kills', 'deaths', 'headshots',
   'weapons', 'active', 'lastActive', 'nextAttack', 'deployEnd', 'reloading', 'reloadEnd',
   'shotsFired', 'pistolAcc', 'accuracy', 'lastFire', 'punch', 'zoom', 'spin', 'landSpeed',
+  'nextStab', 'frozenUntil', 'life',
 ];
 // What other clients need to draw, interpolate and list someone.
 const OTHER = [
@@ -64,6 +67,11 @@ function pick(p, keys) {
 
 export function packOwn(p) { return pick(p, OWN); }
 
+// Guns on the ground, as everyone sees them (ammo stays on the server).
+export function packDrops(drops) {
+  return drops.map((d) => ({ id: d.id, w: d.weapon.id, pos: d.pos, yaw: d.yaw, exp: d.expiresAt }));
+}
+
 export function packOther(p) {
   const o = pick(p, OTHER);
   // Others only need the active gun's id to draw it.
@@ -75,12 +83,10 @@ export function packOther(p) {
 // Cmd fields the server accepts; anything else a client sends is dropped.
 export function sanitizeCmd(c) {
   const num = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : 0);
-  const slot = c.slot === 'primary' || c.slot === 'secondary' ? c.slot : null;
+  const slot = c.slot === 'primary' || c.slot === 'secondary' || c.slot === 'melee' ? c.slot : null;
   let actions = null;
   if (Array.isArray(c.actions)) {
-    actions = c.actions.slice(0, 4)
-      .filter((a) => a && ((a.type === 'buy' && typeof a.item === 'string') || (a.type === 'team' && (a.team === 'red' || a.team === 'blue'))))
-      .map((a) => (a.type === 'buy' ? { type: 'buy', item: a.item.slice(0, 24) } : { type: 'team', team: a.team }));
+    actions = c.actions.slice(0, 4).map(cleanAction).filter(Boolean);
     if (!actions.length) actions = null;
   }
   return {
@@ -89,6 +95,15 @@ export function sanitizeCmd(c) {
     reload: !!c.reload, slot, lastWeapon: !!c.lastWeapon,
     yaw: num(c.yaw, -1e6, 1e6), pitch: num(c.pitch, -Math.PI / 2, Math.PI / 2), actions,
   };
+}
+
+function cleanAction(a) {
+  if (!a) return null;
+  if (a.type === 'buy' && typeof a.item === 'string') return { type: 'buy', item: a.item.slice(0, 24) };
+  if (a.type === 'team' && (a.team === 'red' || a.team === 'blue')) return { type: 'team', team: a.team };
+  if (a.type === 'drop') return { type: 'drop' };
+  if (a.type === 'pickup' && Number.isInteger(a.id)) return { type: 'pickup', id: a.id };
+  return null;
 }
 
 export function cleanName(name) {
