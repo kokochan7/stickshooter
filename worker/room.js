@@ -62,6 +62,9 @@ export class GameRoom extends DurableObject {
     return { player: null, queue: [], last: emptyCmd(), ack: 0, viewTime: 0 };
   }
 
+  // RPC for GET /api/rooms.
+  humanCount() { return this.humans(); }
+
   humans() {
     let n = 0;
     for (const c of this.clients.values()) if (c.player) n++;
@@ -78,6 +81,13 @@ export class GameRoom extends DurableObject {
     try { msg = JSON.parse(data); } catch { return; }
 
     if (msg.t === 'hello' && !c.player) {
+      // A tab still running an older build can't play with the new one, and
+      // would otherwise end up alone; tell it to refresh.
+      if (msg.v !== PROTOCOL_VERSION) {
+        ws.close(4002, 'A new version is out. Refresh the page to play online.');
+        this.clients.delete(ws);
+        return;
+      }
       const mode = ws.deserializeAttachment()?.mode;
       if (mode && !this.humans() && this.game.mode !== mode) this.game.setMode(mode);
       const p = this.game.addPlayer({ name: cleanName(msg.name) });

@@ -186,6 +186,7 @@ export class Hud {
     this.scoreboard = $('scoreboard');
     this.fps = $('fps');
     this.net = $('net');
+    this.roomInfo = $('room-info');
     this.glyphs = {};
     this.last = {};
     this.fpsAcc = 0; this.fpsFrames = 0;
@@ -203,6 +204,15 @@ export class Hud {
     if (v === null) return;
     this.net.textContent = `${v} ms PING`;
     this.net.className = v < 70 ? 'good' : v < 140 ? 'ok' : 'bad';
+  }
+
+  // Mode and head count of the online room, above the ping.
+  room(mode, players = 0) {
+    const text = mode ? `${mode === 'teams' ? 'TEAMS' : 'FFA'} · ${players} ONLINE` : '';
+    if (this.last.room === text) return;
+    this.last.room = text;
+    this.roomInfo.textContent = text;
+    this.roomInfo.classList.toggle('hidden', !text);
   }
 
   show(v) { this.el.classList.toggle('hidden', !v); }
