@@ -46,6 +46,10 @@ export class Input {
     this.enabled = true;
     this.sensScale = 1;
     this.menuKeys = false; // number keys go to the buy menu instead of weapon slots
+    // While a menu is open we keep pointer lock (re-locking makes the browser
+    // show its "press Esc to show your cursor" notice again) and the mouse
+    // drives this virtual cursor instead of the aim.
+    this.cursor = null; // { x, y } in viewport pixels, or null when off
     this.listeners = {};
     this.binds = settings.binds;
 
@@ -70,6 +74,10 @@ export class Input {
 
     target.addEventListener('mousedown', (e) => {
       if (!this.locked) return;
+      if (this.cursor) {
+        if (e.button === 0) this.emit('cursorClick', this.cursor);
+        return;
+      }
       if (e.button === 0) { this.mouse.left = true; this.pending.fire = true; }
       if (e.button === 2) { this.mouse.right = true; this.pending.alt = true; }
     });
@@ -79,6 +87,13 @@ export class Input {
     });
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('mousemove', (e) => {
+      if (this.cursor && this.locked) {
+        const c = this.cursor;
+        c.x = Math.min(Math.max(c.x + e.movementX, 0), innerWidth - 1);
+        c.y = Math.min(Math.max(c.y + e.movementY, 0), innerHeight - 1);
+        this.emit('cursor', c);
+        return;
+      }
       if (!this.locked || !this.enabled) return;
       this.frameDX += e.movementX;
       this.frameDY += e.movementY;
@@ -91,7 +106,7 @@ export class Input {
       if (this.pitch < -lim) this.pitch = -lim;
     });
     target.addEventListener('wheel', (e) => {
-      if (!this.locked) return;
+      if (!this.locked || this.cursor) return;
       this.pending.lastWeapon = true;
       e.preventDefault();
     }, { passive: false });
@@ -106,7 +121,16 @@ export class Input {
   on(name, fn) { (this.listeners[name] ??= []).push(fn); }
   emit(name, v) { for (const fn of this.listeners[name] ?? []) fn(v); }
 
+  // Turn the virtual cursor on (starting mid-screen) or off.
+  setCursor(on) {
+    this.cursor = on ? { x: innerWidth / 2, y: innerHeight / 2 } : null;
+    if (on) this.mouse.left = this.mouse.right = false;
+    this.emit('cursor', this.cursor);
+  }
+
   async lock() {
+    // Already locked: asking again would re-show the browser's notice.
+    if (document.pointerLockElement === this.target) return;
     try {
       await this.target.requestPointerLock({ unadjustedMovement: true });
     } catch {

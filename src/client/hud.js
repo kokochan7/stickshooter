@@ -376,6 +376,9 @@ export class BuyMenu {
     this.p = null;
     this.list.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-n]');
+      // Stop here: key() rebuilds the rows, so the detached target would look
+      // like a click outside the card to the handler below.
+      e.stopPropagation();
       if (b) this.key(+b.dataset.n);
     });
     // A click anywhere outside the menu closes it.

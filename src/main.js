@@ -267,19 +267,42 @@ $('pause-settings').addEventListener('click', openSettings);
 $('close-settings').addEventListener('click', () => $('settings').classList.add('hidden'));
 canvas.addEventListener('click', () => { if (mode === 'playing' && !input.locked && !buyMenu.open) input.lock(); });
 
+// Losing pointer lock mid-game (Esc, alt-tab) pauses, closing the buy menu.
 input.on('lock', (locked) => {
-  if (!locked && mode === 'playing' && !buyMenu.open) {
-    mode = 'paused';
+  if (!locked && mode === 'playing') {
+    mode = 'paused'; // first, so closing the menu doesn't re-lock
+    if (buyMenu.open) setBuyMenu(false);
     $('pause').classList.remove('hidden');
   }
+});
+
+// The buy menu keeps pointer lock and uses a virtual cursor. Releasing and
+// re-locking would make Chrome/Edge show "press Esc to show your cursor"
+// after every purchase.
+const vcursor = $('vcursor');
+let hoverEl = null;
+input.on('cursor', (c) => {
+  vcursor.classList.toggle('hidden', !c);
+  if (!c) { hoverEl = null; return; }
+  vcursor.style.transform = `translate(${c.x}px, ${c.y}px)`;
+  const el = document.elementFromPoint(c.x, c.y);
+  if (el && el !== hoverEl) {
+    hoverEl = el;
+    el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+  }
+});
+input.on('cursorClick', (c) => {
+  const el = document.elementFromPoint(c.x, c.y);
+  if (el && el !== vcursor) el.click();
 });
 
 function setBuyMenu(open) {
   if (!me || !me.alive) open = false;
   buyMenu.show(open, me);
   input.menuKeys = open;
-  if (open) input.unlock();
-  else if (mode === 'playing') input.lock();
+  // Without pointer lock the real mouse cursor already works on the menu.
+  input.setCursor(open && input.locked);
+  if (!open && mode === 'playing') input.lock();
 }
 buyMenu.onClose = () => setBuyMenu(false);
 
