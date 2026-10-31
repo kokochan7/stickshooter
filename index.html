@@ -34,7 +34,7 @@
       <div id="perf"><div id="fps"></div><div id="room-info" class="hidden"></div><div id="net" class="hidden"></div></div>
       <div class="hud-bl">
         <div id="bomb-tag" class="hidden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v9H3z"/><path d="M6 6h5v3H6zM13 6h5v3h-5z" opacity=".7"/></svg>BOMB</div>
-        <div class="money"><span>$</span><b id="money">0</b></div>
+        <div class="money"><span>$</span><b id="money">0</b><em id="money-pop"></em></div>
         <div class="vitals">
           <div class="vital"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><b id="health">100</b></div>
           <div class="vital armor"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z"/></svg><b id="armor">0</b><i id="helmet" title="Helmet">H</i></div>
@@ -46,6 +46,7 @@
         <div id="reload-bar"><i></i></div>
       </div>
       <div id="center-msg"></div>
+      <div id="multikill"></div>
       <div id="prompt" class="hidden"></div>
       <div id="task-bar" class="hidden"><span id="task-label"></span><div><i></i></div></div>
       <div id="hint"></div>
@@ -59,23 +60,35 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="cross" d="M16 9l6 6M22 9l-6 6"/></svg>
       </button>
       <h1 class="logo">STICK<span>SHOOTER</span></h1>
-      <p class="tag">Early build · online play is in testing</p>
       <div class="mode-pick" role="radiogroup" aria-label="Game mode">
         <button class="mode-btn" data-mode="ffa" role="radio">FREE FOR ALL</button>
         <button class="mode-btn" data-mode="teams" role="radio">TEAMS <small><i class="dot red"></i>vs<i class="dot blue"></i></small></button>
       </div>
-      <div class="map-pick" role="radiogroup" aria-label="Map"></div>
-      <p id="map-note" class="map-note"></p>
       <button id="play-online" class="btn primary online">PLAY ONLINE</button>
       <p id="net-status" class="net-status hidden"></p>
       <button id="play" class="btn primary">PRACTICE</button>
+      <button id="open-maps" class="btn map-open"><i id="map-swatch"></i><span>MAP</span><b id="map-name">Yard</b><small id="map-kind">DM</small></button>
+      <p id="map-note" class="map-note"></p>
       <div class="row">
-        <label>Bots <select id="m-bots"></select></label>
+        <label>Bots <input id="m-bots" type="number" min="0" max="32" step="1" inputmode="numeric" /></label>
         <label>Difficulty <select id="m-diff"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
       </div>
       <button id="open-settings" class="btn">SETTINGS</button>
-      <div id="controls" class="controls"></div>
     </div>
+  </div>
+
+  <div id="maps" class="screen hidden">
+    <div class="menu-card">
+      <h2>MAP</h2>
+      <div class="map-pick" role="radiogroup" aria-label="Map"></div>
+      <p id="maps-note" class="map-note"></p>
+      <button id="close-maps" class="btn primary">DONE</button>
+    </div>
+  </div>
+
+  <div id="console" class="hidden">
+    <div id="console-log" aria-live="polite"></div>
+    <div class="console-row"><span>&gt;</span><input id="console-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type help, Enter to run, ~ to close" /></div>
   </div>
 
   <div id="pause" class="screen hidden">

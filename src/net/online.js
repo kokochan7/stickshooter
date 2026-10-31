@@ -40,9 +40,11 @@ function lerpAngle(a, b, t) {
 
 export class OnlineSession {
   // onMap(mapId) runs before onWelcome when the room plays another map.
-  constructor(game, { url, name, map, onWelcome, onClose, onRemove, onMap }) {
+  // onAdmin({ ok, lines, auth }) gets admin console replies.
+  constructor(game, { url, name, map, onWelcome, onClose, onRemove, onMap, onAdmin }) {
     this.game = game;
     this.onMap = onMap;
+    this.onAdmin = onAdmin;
     this.onWelcome = onWelcome;
     this.onClose = onClose;
     this.onRemove = onRemove; // (playerId) => void, to drop its view
@@ -102,6 +104,14 @@ export class OnlineSession {
         break;
       case 'snap':
         this.applySnapshot(msg);
+        break;
+      case 'map':
+        // An admin changed the map; the room restarts the match on it.
+        this.onMap?.(msg.map);
+        this.snaps = [];
+        break;
+      case 'admin':
+        this.onAdmin?.(msg);
         break;
       case 'pong':
         this.rtt = performance.now() - msg.c;

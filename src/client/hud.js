@@ -59,6 +59,7 @@ export function loadSettings() {
     s.touchSens = clamp(+s.touchSens || DEFAULT_SETTINGS.touchSens, 0.3, 3);
     s.binds = { ...DEFAULT_BINDS, ...(saved.binds ?? {}) };
     delete s.binds.thirdPerson; // third person was removed
+    s.bots = clamp(Math.round(+s.bots) || 0, 0, 32);
     if (s.mode !== 'teams') s.mode = 'ffa';
     if (typeof s.map !== 'string') s.map = DEFAULT_SETTINGS.map; // unknown ids fall back in getMap
     return s;
@@ -318,6 +319,24 @@ export class Hud {
     this.killfeed.appendChild(row);
     while (this.killfeed.children.length > 5) this.killfeed.firstChild.remove();
     setTimeout(() => row.remove(), 6000);
+  }
+
+  // "+$750" next to the money after a kill.
+  moneyPop(amount) {
+    const el = $('money-pop');
+    el.textContent = `+$${amount}`;
+    el.classList.remove('show');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('show');
+  }
+
+  // DOUBLE KILL, TRIPLE KILL... in the middle of the screen.
+  multiKill(text, level) {
+    const el = $('multikill');
+    el.textContent = text;
+    el.className = '';
+    void el.offsetWidth;
+    el.className = `show m${Math.min(6, level)}`;
   }
 
   message(html) {

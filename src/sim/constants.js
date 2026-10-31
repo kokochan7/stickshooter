@@ -54,7 +54,16 @@ export const MAX_ARMOR = 100;
 export const RESPAWN_TIME = 3;
 export const START_MONEY = 16000; // practice mode: everything is affordable
 export const MAX_MONEY = 16000;
-export const KILL_REWARD = 300;
+// Kill money. Free for all pays the same for every kill. Teams pays more for
+// each kill you get in the same round (in team deathmatch a "round" is one
+// life): KILL_REWARD, then + KILL_STREAK_STEP per kill, up to KILL_REWARD_MAX.
+export const KILL_REWARD = 500;
+export const KILL_STREAK_STEP = 250;
+export const KILL_REWARD_MAX = 2500;
+export const FFA_KILL_REWARD = 800;
+// Kills this close together (seconds) chain into a double kill, triple
+// kill and so on, announced by voice.
+export const MULTI_KILL_WINDOW = 4;
 
 // Hit group damage multipliers from CS 1.6.
 export const HITGROUP_MUL = {

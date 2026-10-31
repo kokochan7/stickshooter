@@ -47,7 +47,7 @@ canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
   letter-spacing: 1px; color: #fff; text-shadow: 0 4px 0 #1b1f27, 0 8px 24px rgba(0,0,0,.35);
 }
 .logo span { display: block; color: var(--accent); }
-.tag { margin: 0 0 20px; color: var(--muted); font-size: 14px; font-weight: 500; }
+.logo { margin-bottom: 18px; }
 h2 { font-family: var(--title); font-weight: 400; font-size: 32px; margin: 0 0 16px; letter-spacing: 1px; }
 
 .btn {
@@ -79,12 +79,11 @@ h2 { font-family: var(--title); font-weight: 400; font-size: 32px; margin: 0 0 1
 .dot.blue { background: #4f95ff; }
 .row { display: flex; gap: 10px; margin: 10px 0; }
 .row label { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 700; text-align: left; }
-select, input[type=text] {
+select, input[type=text], input[type=number] {
   background: rgba(255,255,255,.08); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
   padding: 9px 10px; font: 600 14px var(--body);
 }
 select option { background: var(--panel-solid); }
-.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 16px; font-size: 12.5px; color: var(--muted); text-align: left; }
 kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4px; border-radius: 6px; background: rgba(255,255,255,.1); color: var(--text); font: 700 11px var(--body); text-align: center; }
 
 /* Settings */
@@ -178,6 +177,17 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 .hud-br { position: absolute; right: 20px; bottom: 18px; text-align: right; }
 .money { font: 800 22px var(--body); color: #8dff9c; text-shadow: 0 2px 4px rgba(0,0,0,.5); margin-bottom: 6px; }
 .money span { opacity: .8; margin-right: 2px; }
+.money { position: relative; }
+/* "+$750" after a kill, floating up from the money. */
+#money-pop { position: absolute; left: 100%; bottom: 0; margin-left: 10px; font-style: normal; font-size: 20px; color: #b8ffbf; white-space: nowrap; opacity: 0; }
+#money-pop.show { animation: moneyPop 1.4s ease-out; }
+@keyframes moneyPop { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }
+/* DOUBLE KILL, TRIPLE KILL... */
+#multikill { position: absolute; left: 50%; top: 23%; transform: translateX(-50%); font: 400 64px/1 var(--title); letter-spacing: 2px; color: var(--accent); text-shadow: 0 5px 0 #1b1f27, 0 0 28px rgba(255,170,40,.55); white-space: nowrap; opacity: 0; pointer-events: none; }
+#multikill.show { animation: multiKill 1.8s ease-out; }
+#multikill.m4, #multikill.m5 { color: #ff8a3d; }
+#multikill.m6 { color: #ff4d4d; }
+@keyframes multiKill { 0% { opacity: 0; transform: translateX(-50%) scale(1.6); } 10% { opacity: 1; transform: translateX(-50%) scale(.96); } 18% { transform: translateX(-50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1); } }
 .vitals { display: flex; gap: 10px; }
 .vital { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 14px; background: var(--panel); }
 .vital svg { width: 22px; height: 22px; fill: #fff; }
@@ -306,7 +316,7 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
   background: rgba(10,12,16,.92); font: 700 18px var(--body); padding: 24px; z-index: 2;
 }
 @media (orientation: portrait) { #touch .t-rotate { display: flex; } }
-body.touch #hint, body.touch #controls { display: none; }
+body.touch #hint { display: none; }
 body.touch #vcursor { display: none; }
 .pause-hint { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
 .pause-hint kbd { font: 700 11px var(--body); padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.1); }
@@ -316,7 +326,16 @@ body.touch .pause-hint { display: none; }
 body.touch .hud-br { bottom: auto; top: 18px; }
 body.touch #perf { top: 140px; }
 
-/* ---------- Map picker (main menu) ---------- */
+/* ---------- Map picker (MAP button under PRACTICE opens it) ---------- */
+#maps .menu-card { width: min(560px, 100%); }
+.btn.map-open { display: flex; align-items: center; gap: 10px; padding: 11px 14px; text-align: left; }
+.btn.map-open i { width: 34px; height: 22px; flex: none; border-radius: 6px; background: var(--sw, #888); box-shadow: inset 0 -6px 0 var(--sw2, #555); }
+.btn.map-open span { color: var(--muted); font-size: 13px; }
+.btn.map-open b { flex: 1; }
+.btn.map-open small { font-size: 10px; letter-spacing: .6px; color: var(--muted); }
+#maps .map-btn { padding: 12px 4px 10px; font-size: 13px; }
+#maps .map-btn i { height: 40px; }
+@media (max-width: 520px) { #maps .map-pick { grid-template-columns: repeat(3, 1fr); } }
 .map-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 0 0 4px; }
 .map-btn {
   position: relative; padding: 7px 4px 6px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.04);
@@ -346,3 +365,15 @@ body.touch #perf { top: 140px; }
 #center-msg .alert { display: block; font: 400 40px/1.1 var(--title); color: #ff5a5f; text-shadow: 0 4px 0 #1b1f27; }
 #center-msg .alert.good { color: #6fe08a; }
 .kf-ic.bomb { fill: #ff7a5a; }
+
+/* ---------- Admin console (~) ---------- */
+#console { position: fixed; left: 0; right: 0; top: 0; z-index: 40; max-height: 46vh; display: flex; flex-direction: column;
+  background: rgba(12,14,18,.92); border-bottom: 2px solid var(--accent); font: 500 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #dfe6ee; }
+#console.hidden { display: none; }
+#console-log { flex: 1; overflow-y: auto; padding: 10px 14px 4px; white-space: pre-wrap; }
+#console-log .err { color: #ff8a8a; }
+#console-log .ok { color: #b8ffbf; }
+#console-log .in { color: var(--accent); }
+.console-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px 10px; }
+.console-row span { color: var(--accent); font-weight: 700; }
+#console-input { flex: 1; background: transparent; border: 0; outline: 0; color: #fff; font: inherit; padding: 4px 0; border-radius: 0; }

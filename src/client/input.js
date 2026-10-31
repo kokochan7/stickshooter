@@ -62,6 +62,7 @@ export class Input {
     this.touch = { fwd: 0, side: 0, walk: false, fire: false, jump: false, duck: false, use: false };
     this.inMatch = false; // set by main.js while a match is on screen
     this.menuKeys = false; // number keys go to the buy menu instead of weapon slots
+    this.typing = false; // the admin console has the keyboard (only ~ and Esc get through)
     // While a menu is open we keep pointer lock (re-locking makes the browser
     // show its "press Esc to show your cursor" notice again) and the mouse
     // drives this virtual cursor instead of the aim.
@@ -70,6 +71,13 @@ export class Input {
     this.binds = settings.binds;
 
     addEventListener('keydown', (e) => {
+      // ~ opens the admin console; don't let it type a ` into the console box.
+      if (e.code === 'Backquote' && this.inMatch) e.preventDefault();
+      // While the console is open it has the keyboard; only ~ and Esc reach the game.
+      if (this.typing) {
+        if (!e.repeat && (e.code === 'Backquote' || e.code === 'Escape')) this.emit('key', e.code);
+        return;
+      }
       if (e.code === this.binds.scores || e.code === 'Tab' || (e.code === 'Space' && this.locked) || (e.code === 'Backspace' && this.menuKeys)) e.preventDefault();
       // In a match, keep browser shortcuts from firing: Ctrl+S, Ctrl+D, F5,
       // Alt+Left and so on. Crouch is Ctrl, so Ctrl+W/A/S/D happen all the

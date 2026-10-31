@@ -87,9 +87,35 @@ everything else is the static game.
 | M | Switch team (Teams mode) |
 | E | Use: hold to plant or defuse the bomb, press to lead or stop a hostage |
 | Esc | Pause |
+| ~ | Admin console (see below) |
 
 Every key above except Esc can be rebound in Settings → Controls. Settings
 also has a crosshair editor (length, gap, thickness, dot, outline, dynamic).
+
+## Admin console
+
+Press **~** in a match to open the console. Type `help` for the list:
+`money`, `addbot`, `removebot`, `bots <n>` (max 32), `difficulty`, `give <gun>`,
+`heal`, `god`, `slay`, `map <id>`, `restart`, `players`.
+
+- **Practice:** the commands work right away on your own game.
+- **Online:** only the admin can run them. The room checks a password against
+  the Worker secret `ADMIN_KEY`; type `login <password>` once and the browser
+  remembers it (`logout` forgets it). Set or change the secret with
+  `npx wrangler secret put ADMIN_KEY`, or in the Cloudflare dashboard under
+  Workers & Pages → stickshooter → Settings → Variables and Secrets (type
+  Secret). Without the secret, online admin is off. For `wrangler dev`, put
+  `ADMIN_KEY=...` in `.dev.vars` (git-ignored).
+
+## Kill money and multi-kills
+
+- Free for all pays a flat $800 per kill.
+- Teams pays $500 for your first kill of the round, then $250 more for each
+  kill after it, up to $2500. In team deathmatch a "round" is one life.
+- Kills within 4 s of each other chain into DOUBLE, TRIPLE, MULTI, ULTRA and
+  MONSTER KILL, with a voice line. The voice lines in
+  `public/audio/announcer/` are original: generated with the Apache-2.0
+  Kokoro TTS model, then pitched down with an arena echo in ffmpeg.
 
 ## Weapons
 
