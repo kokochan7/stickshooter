@@ -121,13 +121,49 @@ function blip(ctx, f1, f2, len = 0.12) {
   });
 }
 
+// Swish of a blade through the air: band-passed noise whose pitch sweeps up
+// and back down. Higher and longer for the "shing" of drawing the knife.
+function whoosh(ctx, len, f0, f1, q = 0.12) {
+  return makeBuffer(ctx, len, (d, n) => {
+    let lp = 0, bp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      const f = f0 + (f1 - f0) * Math.sin(t * Math.PI);
+      const k = Math.min(0.95, (2 * Math.PI * f) / SR);
+      lp += (rnd() - lp) * k;
+      bp += (lp - bp) * q * 4;
+      d[i] = (lp - bp) * Math.sin(t * Math.PI) ** 1.5;
+    }
+  });
+}
+
+function tone(ctx, freq, len) {
+  return makeBuffer(ctx, len, (d, n) => {
+    for (let i = 0; i < n; i++) {
+      const t = i / SR;
+      d[i] = (Math.sin(2 * Math.PI * freq * t) + 0.25 * Math.sin(4 * Math.PI * freq * t)) * Math.min(1, t / 0.004) * Math.exp(-t / (len * 0.45));
+    }
+  });
+}
+
 export class Audio {
   constructor() {
     this.ctx = null;
     this.buffers = {};
     this.volume = 0.6;
     this.listener = { x: 0, y: 0, z: 0, yaw: 0 };
-    this.sfxOn = true; // off on the main menu, where only the music plays
+    this.sfxOn = true; // off on the main menu and while paused
+    this.sfx = null; // game sounds go through this gain, so pausing can cut them at once
+  }
+
+  // Game sounds on or off. Off also silences sounds already playing.
+  setSfx(on) {
+    this.sfxOn = on;
+    if (!this.sfx) return;
+    const g = this.sfx.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(on ? 1 : 0, now + 0.05);
   }
 
   // Must be called from a user gesture (iOS requirement).
@@ -142,6 +178,9 @@ export class Audio {
       const comp = this.ctx.createDynamicsCompressor();
       comp.threshold.value = -10; comp.knee.value = 8; comp.ratio.value = 4;
       this.master.connect(comp).connect(this.ctx.destination);
+      this.sfx = this.ctx.createGain();
+      this.sfx.gain.value = this.sfxOn ? 1 : 0;
+      this.sfx.connect(this.master);
       this.build();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -171,6 +210,14 @@ export class Audio {
     [92, 104, 98, 110].forEach((f, i) => { b['step' + i] = footstep(c, f); });
     b.land = thud(c, 80, 0.05, 1.4, 0.14);
     b.buy = blip(c, 700, 1100, 0.1);
+    b.knifeSlash = whoosh(c, 0.22, 900, 3200);
+    b.knifeStab = whoosh(c, 0.3, 500, 1800);
+    b.knifeDeploy = whoosh(c, 0.32, 3500, 9000, 0.3);
+    b.knifeHit = thud(c, 120, 0.05, 1.8, 0.16);
+    b.knifeWall = ding(c, 2700, 0.035, 0.16);
+    b.beep = tone(c, 880, 0.14);
+    b.go = tone(c, 1320, 0.3);
+    b.win = blip(c, 600, 1400, 0.45);
     b.spin = makeBuffer(c, 0.5, (d, n) => {
       let ph = 0;
       for (let i = 0; i < n; i++) {
@@ -216,7 +263,7 @@ export class Audio {
       }
     }
     g.gain.value = gain;
-    node.connect(this.master);
+    node.connect(this.sfx);
     src.start();
   }
 }

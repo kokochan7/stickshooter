@@ -24,6 +24,12 @@ export const DEFAULT_SETTINGS = {
   showFps: true,
   bots: 0,
   difficulty: 'normal',
+  // How much recoil and getting shot move the camera, in percent. CS moves
+  // the whole view (100); the default is gentler because that much screen
+  // motion makes some people motion sick. Whatever the camera doesn't show,
+  // the crosshair shows instead, so you still see where the next bullet goes.
+  viewKick: 25,
+  hudScale: 1.3, // HUD size on top of fitting it to the screen
   mode: 'ffa', // 'ffa' or 'teams', for practice and online
   version: 4,
 };
@@ -48,6 +54,8 @@ export function loadSettings() {
     const s = { ...DEFAULT_SETTINGS, ...saved, version: DEFAULT_SETTINGS.version };
     s.sensitivity = clamp(+s.sensitivity || DEFAULT_SETTINGS.sensitivity, ...SENS_RANGE);
     s.fov = clamp(+s.fov || DEFAULT_SETTINGS.fov, ...FOV_RANGE);
+    s.viewKick = clamp(Number.isFinite(+s.viewKick) ? +s.viewKick : DEFAULT_SETTINGS.viewKick, 0, 100);
+    s.hudScale = clamp(+s.hudScale || DEFAULT_SETTINGS.hudScale, 0.8, 1.8);
     s.binds = { ...DEFAULT_BINDS, ...(saved.binds ?? {}) };
     delete s.binds.thirdPerson; // third person was removed
     if (s.mode !== 'teams') s.mode = 'ffa';
@@ -102,7 +110,7 @@ export function renderGunIcons(renderer) {
   const prevColor = renderer.getClearColor(new THREE.Color());
   const prevAlpha = renderer.getClearAlpha();
   renderer.setClearColor(0x000000, 0);
-  for (const id of SHOP_ORDER) {
+  for (const id of [...SHOP_ORDER, 'knife']) {
     const gun = buildGun(id);
     const box = new THREE.Box3().setFromObject(gun.group);
     const size = box.getSize(new THREE.Vector3());
@@ -158,10 +166,15 @@ function silhouette(src, data, W, H) {
 // The HUD is laid out for a 1920x1080 screen. Scale it to the window, and on
 // screens wider than 16:9 keep it inside a centered 16:9 area so the corners
 // stay in view. The buy menu is scaled to fit the same way.
+let hudScale = DEFAULT_SETTINGS.hudScale;
+export function setHudScale(v) {
+  hudScale = v;
+  fitUi();
+}
 function fitUi() {
   const w = innerWidth, h = innerHeight;
   const fw = Math.min(w, h * (16 / 9));
-  const scale = clamp(Math.min(fw / 1920, h / 1080), 0.5, 2);
+  const scale = clamp(Math.min(fw / 1920, h / 1080), 0.5, 2) * hudScale;
   const frame = $('hud-frame');
   frame.style.width = `${fw / scale}px`;
   frame.style.height = `${h / scale}px`;
@@ -223,7 +236,7 @@ export class Hud {
     $(id).textContent = value;
   }
 
-  update(dt, { p, def, w, spreadPx, reloadFrac, showFps, scoped }) {
+  update(dt, { p, def, w, spreadPx, reloadFrac, showFps, scoped, chOffset }) {
     // FPS counter (twice a second).
     this.fpsAcc += dt; this.fpsFrames++;
     if (this.fpsAcc >= 0.5) {
@@ -236,6 +249,7 @@ export class Hud {
     this.set('money', String(p.money));
     this.set('score-me', String(p.kills));
     this.set('score-deaths', String(p.deaths));
+    this.set('score-hs', `${p.kills ? Math.round((p.headshots / p.kills) * 100) : 0}%`);
     $('helmet').style.display = p.helmet ? '' : 'none';
     $('health').parentElement.classList.toggle('low', p.health <= 25);
     if (def && w) {
@@ -243,6 +257,7 @@ export class Hud {
       this.set('clip', String(w.clip));
       this.set('reserve', String(w.reserve));
       $('clip').classList.toggle('low', w.clip <= Math.ceil(def.clip * 0.2));
+      $('clip').parentElement.classList.toggle('hidden', !!def.melee);
     }
     const rb = $('reload-bar');
     rb.style.opacity = reloadFrac !== null ? '1' : '0';
@@ -255,6 +270,13 @@ export class Hud {
       if (this.last.ch !== key) { this.last.ch = key; styleCrosshair(this.crosshair, cs, spreadPx); }
     }
     this.crosshair.style.display = scoped || !p.alive || def?.zoomLevels ? 'none' : '';
+    // Recoil the camera doesn't show moves the crosshair instead.
+    const ox = Math.round(chOffset?.[0] ?? 0), oy = Math.round(chOffset?.[1] ?? 0);
+    const chKey = `${ox},${oy}`;
+    if (this.last.chOff !== chKey) {
+      this.last.chOff = chKey;
+      this.crosshair.style.transform = ox || oy ? `translate(${ox}px, ${oy}px)` : '';
+    }
     this.scope.classList.toggle('hidden', !scoped);
 
     if (this.hitTime > 0) {
@@ -304,11 +326,27 @@ export class Hud {
     this.center.innerHTML = html;
   }
 
-  // Top bar: your kills and deaths, plus the team scores (total kills) in Teams.
-  teamScores(players, myTeam) {
+  // Text under the top bar: what wins the match.
+  goal(text) {
+    if (this.last.goal === text) return;
+    this.last.goal = text;
+    $('goal').textContent = text;
+  }
+
+  // "G  Pick up AK47" when a gun is in reach.
+  prompt(html) {
+    if (this.last.prompt === html) return;
+    this.last.prompt = html;
+    const el = $('prompt');
+    el.innerHTML = html;
+    el.classList.toggle('hidden', !html);
+  }
+
+  // Team scores (kills) under the top bar in Teams.
+  teamScores(kills, myTeam) {
     const el = $('team-score');
     const teams = myTeam === 'red' || myTeam === 'blue';
-    const key = teams ? `${myTeam}:${teamKills(players, 'red')}:${teamKills(players, 'blue')}` : '';
+    const key = teams ? `${myTeam}:${kills.red}:${kills.blue}` : '';
     if (this.last.teams === key) return;
     this.last.teams = key;
     el.classList.toggle('hidden', !teams);
@@ -317,29 +355,24 @@ export class Hud {
     el.innerHTML = `<span class="ts red">${red}</span><span class="ts-you team-${myTeam}">${myTeam === 'red' ? 'RED' : 'BLUE'}</span><span class="ts blue">${blue}</span>`;
   }
 
-  showScores(show, players, meId, mode = 'ffa') {
+  showScores(show, players, meId, mode = 'ffa', kills = { red: 0, blue: 0 }, title = '') {
     this.scoreboard.classList.toggle('hidden', !show);
     if (!show) return;
+    const top = title ? `<div class="sb-head">${title}</div>` : '';
     const head = '<tr><th>PLAYER</th><th class="num">K</th><th class="num">D</th><th class="num">HS</th></tr>';
     const table = (list) => list.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths).map((p) => {
       const hs = p.kills ? Math.round((p.headshots / p.kills) * 100) : 0;
       return `<tr class="${p.id === meId ? 'me' : ''} ${p.alive ? '' : 'dead'}"><td>${esc(p.name)}${p.isBot ? ' <small style="opacity:.5">BOT</small>' : ''}</td><td class="num">${p.kills}</td><td class="num">${p.deaths}</td><td class="num">${hs}%</td></tr>`;
     }).join('');
     if (mode !== 'teams') {
-      this.scoreboard.innerHTML = `<table>${head}${table([...players])}</table>`;
+      this.scoreboard.innerHTML = `${top}<table>${head}${table([...players])}</table>`;
       return;
     }
-    this.scoreboard.innerHTML = ['red', 'blue'].map((t) => {
+    this.scoreboard.innerHTML = top + ['red', 'blue'].map((t) => {
       const list = players.filter((p) => p.team === t);
-      return `<div class="sb-team ${t}"><div class="sb-title"><span>${t === 'red' ? 'RED TEAM' : 'BLUE TEAM'}</span><b>${teamKills(players, t)}</b></div><table>${head}${table(list)}</table></div>`;
+      return `<div class="sb-team ${t}"><div class="sb-title"><span>${t === 'red' ? 'RED TEAM' : 'BLUE TEAM'}</span><b>${kills[t]}</b></div><table>${head}${table(list)}</table></div>`;
     }).join('');
   }
-}
-
-function teamKills(players, team) {
-  let n = 0;
-  for (const p of players) if (p.team === team) n += p.kills;
-  return n;
 }
 
 // Kill feed marks, drawn as tiny SVGs in the same flat white as the gun glyphs.
@@ -529,6 +562,8 @@ export class SettingsPanel {
         ['fov', 'Field of view', 'range', ...FOV_RANGE, 1, FOV_SHOWN_OFFSET],
         ['volume', 'Volume', 'range', 0, 1, 0.05],
         ['music', 'Menu music', 'range', 0, 1, 0.05],
+        ['viewKick', 'Recoil screen shake %', 'range', 0, 100, 5],
+        ['hudScale', 'HUD size', 'range', 0.8, 1.8, 0.05],
         ['showFps', 'Show FPS', 'check'],
         ['antialias', 'Anti-aliasing (reload)', 'check'],
       ],

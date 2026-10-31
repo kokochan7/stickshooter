@@ -387,6 +387,38 @@ distinct headshot sound, a dynamic crosshair that opens with spread and
 recoil, and a damage-direction indicator. Online play must keep all of these
 instant on the shooter's screen (see 6.3).
 
+**Recoil screen shake** (Settings > General, `viewKick`, default 25%). CS
+moves the whole camera by the view punch, which made a player motion sick
+after ten minutes. The sim is unchanged (bullets still follow view + punch),
+but the camera only shows `viewKick`% of the punch and the crosshair moves by
+the rest, so it still marks where the next bullet lands. At 100% it's plain
+CS. The viewmodel's kick, bob and landing dip scale with it too (35% to
+100%). Getting shot (aim punch) goes through the same path.
+
+### 5.10 Knife
+
+Slot 3, always carried, never dropped or bought. CS 1.6 `wpn_knife` numbers:
+
+| | Damage | Reach | Next attack (hit / miss) |
+|---|---|---|---|
+| Slash (Mouse 1) | 20 first swing, 15 in a quick combo | 48 u | 0.4 / 0.35 s (stab 0.5 s) |
+| Stab (Mouse 2) | 65, x3 from behind (195) | 32 u | 1.1 / 1.0 s |
+
+Hitgroup multipliers and armor (armorRatio 1.0) apply as for bullets. The
+trace is a center ray plus a small fan standing in for CS's hull trace. A
+backstab is when the attacker is within ~37 degrees of directly behind the
+victim (CS: dot of line of sight and victim forward > 0.8).
+
+### 5.11 Dropped guns
+
+When you die your stickman vanishes in a puff and your primary (or pistol, if
+no primary) is left on the ground for 10 s (`DROP_LIFETIME`); it blinks for
+the last 2 s. `G` picks up the gun in reach (1.6 m), swapping it for what you
+carry in that slot, or throws your current gun if there's nothing to pick up.
+Walking over a gun picks it up when that slot is empty, like CS. Bots walk to
+a gun within 20 m when it's worth more (price, 0 if out of ammo) than the one
+in that slot, and switch to another gun or the knife when they run dry.
+
 ## 6. Multiplayer plan (Cloudflare Workers + Durable Objects)
 
 > Status: v1 is being built now in a separate branch. Sections 6.2 to 6.5
@@ -553,10 +585,18 @@ can't see) and stat-based flagging.
 ### 6.9 Modes
 
 1. **Practice** (today): offline vs bots, $16,000.
-2. **Free-for-all deathmatch** (online v1): respawns, bots fill the room.
-   Reuses today's rules. Later: a time or kill limit and an end screen.
+2. **Free-for-all deathmatch** (done): respawns, first to 25 kills wins
+   (`FFA_KILL_LIMIT`).
 3. **Team deathmatch** (done, practice and online): Red vs Blue, own-side
-   spawns, `M` to switch team. Later: a score limit and an end screen.
+   spawns, `M` to switch team, first team to 50 kills wins (`TEAM_KILL_LIMIT`).
+
+Both modes: the winner and final scoreboard show for 8 s
+(`MATCH_OVER_TIME`) with everyone frozen, then a new match starts. Every
+match start, and every join (PRACTICE, PLAY ONLINE, or joining a room in
+progress), freezes you for 3 s (`START_DELAY`) with a 3-2-1 countdown: you
+can look around and buy but not move, shoot or be hurt. The first person
+into an empty online room starts a fresh match. Snapshots carry the match
+state and the guns on the ground (protocol v3).
 4. **Round-based (CS style)**: buy time, round money, bomb or elimination
    rounds. Needs a round-state machine in `game.js` and a CS-style economy
    (round win/loss money, kill rewards per weapon class).

@@ -13,7 +13,7 @@ import { TICK_DT, TICK_RATE } from '../src/sim/constants.js';
 import { YARD } from '../src/maps/yard.js';
 import {
   PROTOCOL_VERSION, SNAP_EVERY, MAX_LAG_COMP, MAX_HUMANS, BOT_FILL,
-  packOwn, packOther, sanitizeCmd, cleanName, roomMode,
+  packOwn, packOther, packDrops, sanitizeCmd, cleanName, roomMode,
 } from '../src/net/protocol.js';
 
 const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil'];
@@ -90,10 +90,14 @@ export class GameRoom extends DurableObject {
       }
       const mode = ws.deserializeAttachment()?.mode;
       if (mode && !this.humans() && this.game.mode !== mode) this.game.setMode(mode);
+      const first = !this.humans();
       const p = this.game.addPlayer({ name: cleanName(msg.name) });
-      p.respawnAt = this.game.time;
       c.player = p;
       this.fillBots();
+      // The first person into an empty room starts a fresh match; anyone
+      // else joins the one in progress. Either way there's a short countdown.
+      if (first) this.game.restartMatch();
+      else this.game.join(p);
       ws.send(JSON.stringify({
         t: 'welcome', v: PROTOCOL_VERSION, id: p.id, mode: this.game.mode, time: this.game.time,
         tickRate: TICK_RATE, snapEvery: SNAP_EVERY,
@@ -201,12 +205,14 @@ export class GameRoom extends DurableObject {
   broadcast() {
     const g = this.game;
     const players = g.players.map(packOther);
+    const match = g.matchInfo();
+    const drops = packDrops(g.drops);
     const events = this.pendingEvents;
     this.pendingEvents = [];
     for (const [ws, c] of this.clients) {
       if (!c.player) continue;
       try {
-        ws.send(JSON.stringify({ t: 'snap', time: g.time, ack: c.ack, me: packOwn(c.player), players, events }));
+        ws.send(JSON.stringify({ t: 'snap', time: g.time, ack: c.ack, me: packOwn(c.player), players, events, match, drops }));
       } catch { /* closed; webSocketClose cleans up */ }
     }
   }
