@@ -8,7 +8,7 @@ export const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
   jump: 'Space', duck: 'ControlLeft', duckAlt: 'KeyC', walk: 'ShiftLeft',
   reload: 'KeyR', primary: 'Digit1', secondary: 'Digit2', melee: 'Digit3', lastWeapon: 'KeyQ',
-  drop: 'KeyG', buy: 'KeyB', scores: 'Tab', switchTeam: 'KeyM',
+  drop: 'KeyG', buy: 'KeyB', scores: 'Tab', switchTeam: 'KeyM', use: 'KeyE',
 };
 
 // Rebindable actions in the order the Controls tab lists them.
@@ -17,6 +17,7 @@ export const BIND_LABELS = {
   jump: 'Jump', duck: 'Crouch', duckAlt: 'Crouch (alt)', walk: 'Walk',
   reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', melee: 'Knife', lastWeapon: 'Last weapon',
   drop: 'Drop / pick up gun', buy: 'Buy menu', scores: 'Scoreboard', switchTeam: 'Switch team',
+  use: 'Use (plant, defuse, hostages)',
 };
 
 // Short name for a KeyboardEvent.code, for the settings and HUD hints.
@@ -58,7 +59,7 @@ export class Input {
     this.enabled = true;
     this.sensScale = 1;
     // Touch controls (touch.js) write here; buildCmd merges it with the keys.
-    this.touch = { fwd: 0, side: 0, walk: false, fire: false, jump: false, duck: false };
+    this.touch = { fwd: 0, side: 0, walk: false, fire: false, jump: false, duck: false, use: false };
     this.inMatch = false; // set by main.js while a match is on screen
     this.menuKeys = false; // number keys go to the buy menu instead of weapon slots
     // While a menu is open we keep pointer lock (re-locking makes the browser
@@ -193,6 +194,7 @@ export class Input {
       cmd.reload = this.pending.reload;
       cmd.slot = this.pending.slot;
       cmd.lastWeapon = this.pending.lastWeapon;
+      cmd.use = this.has(b.use) || t.use;
     }
     cmd.yaw = this.yaw;
     cmd.pitch = this.pitch;

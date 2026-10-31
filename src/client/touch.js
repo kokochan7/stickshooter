@@ -28,6 +28,7 @@ const BUTTONS = [
   ['swap', '⇄', 'lastWeapon', ''],
   ['knife', 'KNIFE', 'melee', ''],
   ['drop', 'G', 'drop', ''],
+  ['use', 'USE', 'use', ''],
   ['buy', 'BUY', 'buy', 'top'],
   ['scores', 'TAB', 'scores', 'top'],
   ['pause', 'II', 'pause', 'top'],
@@ -77,7 +78,7 @@ export class TouchControls {
     this.stickEl.classList.add('hidden');
     for (const b of this.el.querySelectorAll('.t-btn.on')) b.classList.remove('on');
     const t = this.input.touch;
-    t.fwd = 0; t.side = 0; t.walk = false; t.fire = false; t.jump = false; t.duck = false;
+    t.fwd = 0; t.side = 0; t.walk = false; t.fire = false; t.jump = false; t.duck = false; t.use = false;
     this.el.querySelector('.t-duck').classList.remove('lit');
   }
 
@@ -169,6 +170,7 @@ export class TouchControls {
     const inp = this.input, p = inp.pending, t = inp.touch;
     switch (id) {
       case 'fire': t.fire = true; p.fire = true; break;
+      case 'use': t.use = true; break;
       case 'alt': p.alt = true; break;
       case 'jump': t.jump = true; p.jump = true; break;
       case 'duck': t.duck = !t.duck; break; // crouch toggles: holding a button and moving is awkward
@@ -188,6 +190,7 @@ export class TouchControls {
     const t = this.input.touch;
     if (id === 'fire') t.fire = false;
     if (id === 'jump') t.jump = false;
+    if (id === 'use') t.use = false;
     if (id === 'scores') this.actions.scores(false);
     this.held.delete(id);
   }

@@ -124,7 +124,9 @@ const teamSpawns = {
 };
 
 export const YARD = {
+  id: 'yard',
   name: 'Yard',
+  type: 'dm',
   boxes,
   spawns,
   teamSpawns,

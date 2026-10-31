@@ -28,10 +28,12 @@
       <div id="top">
         <div id="topbar"><span id="score-me">0</span><span class="sep">KILLS</span><span id="score-deaths">0</span><span class="sep">DEATHS</span><span id="score-hs">0%</span><span class="sep">HS</span></div>
         <div id="team-score" class="hidden"></div>
+        <div id="round-timer" class="hidden"></div>
         <div id="goal"></div>
       </div>
       <div id="perf"><div id="fps"></div><div id="room-info" class="hidden"></div><div id="net" class="hidden"></div></div>
       <div class="hud-bl">
+        <div id="bomb-tag" class="hidden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v9H3z"/><path d="M6 6h5v3H6zM13 6h5v3h-5z" opacity=".7"/></svg>BOMB</div>
         <div class="money"><span>$</span><b id="money">0</b></div>
         <div class="vitals">
           <div class="vital"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><b id="health">100</b></div>
@@ -45,6 +47,7 @@
       </div>
       <div id="center-msg"></div>
       <div id="prompt" class="hidden"></div>
+      <div id="task-bar" class="hidden"><span id="task-label"></span><div><i></i></div></div>
       <div id="hint"></div>
       <div id="scoreboard" class="hidden panel"></div>
     </div>
@@ -61,6 +64,8 @@
         <button class="mode-btn" data-mode="ffa" role="radio">FREE FOR ALL</button>
         <button class="mode-btn" data-mode="teams" role="radio">TEAMS <small><i class="dot red"></i>vs<i class="dot blue"></i></small></button>
       </div>
+      <div class="map-pick" role="radiogroup" aria-label="Map"></div>
+      <p id="map-note" class="map-note"></p>
       <button id="play-online" class="btn primary online">PLAY ONLINE</button>
       <p id="net-status" class="net-status hidden"></p>
       <button id="play" class="btn primary">PRACTICE</button>

@@ -53,6 +53,29 @@ The first build (PR #1) is a complete single-player loop:
 The player stickman is white with no headband or vest. Skins come later
 (see section 7).
 
+### Maps and objective rounds (PR #12)
+
+- `src/maps/index.js` lists the maps. `type` is `dm`, `bomb` or `hostage`.
+  New maps are written with `src/maps/builder.js` (walls with doors,
+  buildings, stairs, crates, pines, palms, water, footbridges and high
+  bridges you can wade under). Water is a hole in the ground with a riverbed
+  0.4 m down, so you can always step out; wading is 0.78x speed.
+- Teams on a `bomb`/`hostage` map turns on `src/sim/objective.js`: rounds
+  (4 s buy freeze, 1:55 bomb / 2:30 hostage, 5 s round end, first to 8),
+  one life per round (late joiners within 20 s still spawn), spectating a
+  teammate while dead. Bomb: given to a random Red human (else bot), E held
+  3 s inside site A/B plants it, 35 s timer, Blue defuses in 10 s (5 s with
+  the $200 kit), blast is 500 damage falling off to 0 at 20 m. Hostages:
+  Blue presses E to lead one (they path-find with the nav grid), leading it
+  into the rescue zone rescues it; all rescued wins, time out is a Red win.
+  Hostages can't be shot yet.
+- The nav grid now stores a floor height per cell (lowest surface with
+  headroom) and only lets bots step up 0.46 m, so bots use stairs and
+  bridges, wade through water, and never target crate tops.
+- Snapshots carry `obj` (round, rounds, bomb, hostages). `hello` carries the
+  map the client wants; the first human in an empty room sets it, and
+  `welcome` tells the client which map the room plays. Protocol v5.
+
 ## 3. Architecture
 
 ```

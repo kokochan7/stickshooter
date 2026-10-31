@@ -3,20 +3,22 @@
 // later without touching either side's game logic.
 //
 // client -> server
-//   { t: 'hello', v, name }                    v = PROTOCOL_VERSION; the room's mode comes from its name (see roomMode)
+//   { t: 'hello', v, name, map }               v = PROTOCOL_VERSION; the room's mode comes from its name (see roomMode);
+//                                               map is used if the room is empty, otherwise you join the room's map
 //   { t: 'cmds', seq, vt, cmds: [cmd, ...] }   seq = seq of the LAST cmd in the batch,
 //                                               vt = server time the client is viewing others at
 //   { t: 'ping', c }
 // server -> client
-//   { t: 'welcome', id, mode, time, tickRate, snapEvery }
-//   { t: 'snap', time, ack, me, players: [...], events: [...], match, drops: [...] }
+//   { t: 'welcome', id, mode, map, time, tickRate, snapEvery }
+//   { t: 'snap', time, ack, me, players: [...], events: [...], match, drops: [...], obj }
+//     obj = Game.objectiveInfo(): rounds, the bomb and the hostages (null outside objective rounds)
 //     match = Game.matchInfo(): state 'live' | 'over', endsAt, winner, winnerTeam, teamKills
 //     drops = guns on the ground: { id, w, pos, yaw, exp }
 //   { t: 'pong', c, time }
 //   { t: 'full' }  room is full
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -51,12 +53,12 @@ const OWN = [
   'stamina', 'jumpHeld', 'tagMul', 'health', 'armor', 'helmet', 'money', 'kills', 'deaths', 'headshots',
   'weapons', 'active', 'lastActive', 'nextAttack', 'deployEnd', 'reloading', 'reloadEnd',
   'shotsFired', 'pistolAcc', 'accuracy', 'lastFire', 'punch', 'zoom', 'spin', 'landSpeed',
-  'nextStab', 'frozenUntil', 'life',
+  'nextStab', 'frozenUntil', 'life', 'task', 'defuser', 'useHeld',
 ];
 // What other clients need to draw, interpolate and list someone.
 const OTHER = [
   'id', 'name', 'team', 'isBot', 'alive', 'pos', 'vel', 'yaw', 'pitch', 'onGround', 'ducked', 'duckAmount',
-  'health', 'kills', 'deaths', 'headshots', 'active', 'reloading', 'zoom', 'spin',
+  'health', 'kills', 'deaths', 'headshots', 'active', 'reloading', 'zoom', 'spin', 'task',
 ];
 
 function pick(p, keys) {
@@ -92,7 +94,7 @@ export function sanitizeCmd(c) {
   return {
     fwd: Math.sign(num(c.fwd, -1, 1)), side: Math.sign(num(c.side, -1, 1)),
     jump: !!c.jump, duck: !!c.duck, walk: !!c.walk, fire: !!c.fire, alt: !!c.alt,
-    reload: !!c.reload, slot, lastWeapon: !!c.lastWeapon,
+    reload: !!c.reload, slot, lastWeapon: !!c.lastWeapon, use: !!c.use,
     yaw: num(c.yaw, -1e6, 1e6), pitch: num(c.pitch, -Math.PI / 2, Math.PI / 2), actions,
   };
 }
@@ -104,6 +106,11 @@ function cleanAction(a) {
   if (a.type === 'drop') return { type: 'drop' };
   if (a.type === 'pickup' && Number.isInteger(a.id)) return { type: 'pickup', id: a.id };
   return null;
+}
+
+// A map id from a client: only maps we have.
+export function cleanMap(id, maps) {
+  return typeof id === 'string' && Object.hasOwn(maps, id) ? id : null;
 }
 
 export function cleanName(name) {

@@ -210,17 +210,6 @@ function shellLoad() {
   return lofi(drive(d, 1.8));
 }
 
-// Spent brass hitting concrete: little bright tinks.
-function brass() {
-  const n = Math.floor(SR * 0.35);
-  const d = new Float32Array(n);
-  const modes = [[4100, 1], [6900, 0.6], [9300, 0.3]];
-  mixInto(d, metal(n, modes, 0.03, 0.3), 1);
-  mixInto(d, metal(n, modes.map(([f, a]) => [f * 1.04, a]), 0.02, 0.2), 0.5, 0.09);
-  mixInto(d, metal(n, modes.map(([f, a]) => [f * 0.97, a]), 0.012, 0.1), 0.25, 0.16);
-  return lofi(d);
-}
-
 // Pulling out a gun: a grab rustle and a light clack.
 function deploy() {
   const n = Math.floor(SR * 0.2);
@@ -292,6 +281,42 @@ function footstep(v) {
   mixInto(d, sweep(Math.floor(SR * 0.08), 260 + v * 15, 110 + v * 6, 0.01, 0.018), 0.55);
   mixInto(d, grit(0.05, 2600 + v * 220, 1.1, 0.008), 0.55, 0.028 + v * 0.004);
   return lofi(drive(d, 1.8));
+}
+
+// Wading: a wet slosh instead of a heel tick.
+function splash(v) {
+  const n = Math.floor(SR * 0.3);
+  const d = env(biquad(biquad(noise(n), 'bp', 900 + v * 160, 0.6), 'lp', 3200), 0.07, 0.01);
+  mixInto(d, env(biquad(noise(Math.floor(SR * 0.12)), 'hp', 2500), 0.03, 0.004), 0.35, 0.03);
+  mixInto(d, sweep(Math.floor(SR * 0.1), 180 + v * 20, 90, 0.02, 0.03), 0.4);
+  return lofi(drive(d, 1.4));
+}
+
+// Big low boom with a long gritty tail: the bomb going off.
+function explosion() {
+  const n = Math.floor(SR * 2.4);
+  const d = env(biquad(noise(n), 'lp', 900, 0.7), 0.5, 0.004);
+  mixInto(d, sweep(Math.floor(SR * 1.2), 90, 28, 0.01, 0.45), 1.6);
+  mixInto(d, env(biquad(noise(Math.floor(SR * 0.4)), 'bp', 2400, 0.6), 0.08, 0.001), 0.6);
+  return lofi(drive(d, 3.2));
+}
+
+// Keypad press while arming the bomb.
+function keypad(f) {
+  const n = Math.floor(SR * 0.09);
+  const d = tone(f, 0.09);
+  mixInto(d, metal(n, [[3100, 0.4]], 0.006, 0.6), 0.4);
+  return lofi(d);
+}
+
+// Wire snip + click when the bomb is defused.
+function defused() {
+  const n = Math.floor(SR * 0.4);
+  const d = new Float32Array(n);
+  mixInto(d, metal(n, [[2900, 1], [4700, 0.6]], 0.012, 1), 0.9);
+  mixInto(d, tone(660, 0.18), 0.5, 0.12);
+  mixInto(d, tone(990, 0.22), 0.5, 0.24);
+  return lofi(d);
 }
 
 // Landing from a jump: heavier scuff plus a gear rattle.
@@ -404,7 +429,6 @@ export function buildAll() {
   b.magIn = magIn();
   b.bolt = bolt();
   b.shell = shellLoad();
-  b.brass = brass();
   b.deploy = deploy();
   b.zoom = zoomClick();
   b.hitBody = fleshHit();
@@ -418,6 +442,15 @@ export function buildAll() {
   b.hurt = hurt();
   for (let i = 0; i < 4; i++) b['step' + i] = footstep(i);
   b.land = land();
+  for (let i = 0; i < 4; i++) b['splash' + i] = splash(i);
+  b.bombBeep = tone(1760, 0.09);
+  b.keypad0 = keypad(1180);
+  b.keypad1 = keypad(1320);
+  b.keypad2 = keypad(1480);
+  b.explode = explosion();
+  b.defused = defused();
+  b.rescue = blip(800, 1600, 0.25);
+  b.alert = blip(500, 900, 0.35);
   b.buy = blip(700, 1100, 0.1);
   b.knifeSlash = whoosh(0.22, 700, 2600);
   b.knifeStab = whoosh(0.3, 400, 1500, 1.6);
@@ -484,7 +517,7 @@ export class Audio {
   }
 
   // pos: world position or null for 2D (local player) sounds.
-  play(name, { pos = null, volume = 1, rate = 1, jitter = 0.04 } = {}) {
+  play(name, { pos = null, volume = 1, rate = 1, jitter = 0.04, range = 0 } = {}) {
     if (!this.ctx || !this.sfxOn || !this.buffers[name]) return;
     const c = this.ctx;
     const src = c.createBufferSource();
@@ -497,7 +530,11 @@ export class Audio {
       const L = this.listener;
       const dx = pos[0] - L.x, dz = pos[2] - L.z;
       const dist = Math.hypot(dx, pos[1] - L.y, dz);
-      gain *= 1 / (1 + dist * 0.07);
+      // range: the sound fades out completely at this distance (footsteps),
+      // instead of the usual long tail.
+      if (range > 0) gain *= Math.max(0, 1 - dist / range) ** 2;
+      else gain *= 1 / (1 + dist * 0.07);
+      if (gain < 0.003) return;
       if (c.createStereoPanner) {
         // Right vector of the listener.
         const rx = Math.cos(L.yaw), rz = -Math.sin(L.yaw);

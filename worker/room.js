@@ -7,13 +7,12 @@
 // reconcile its prediction.
 import { DurableObject } from 'cloudflare:workers';
 import { Game, emptyCmd } from '../src/sim/game.js';
-import { NavGrid } from '../src/sim/nav.js';
 import { BotBrain } from '../src/sim/bot.js';
 import { TICK_DT, TICK_RATE } from '../src/sim/constants.js';
-import { YARD } from '../src/maps/yard.js';
+import { MAPS, getMap, DEFAULT_MAP } from '../src/maps/index.js';
 import {
   PROTOCOL_VERSION, SNAP_EVERY, MAX_LAG_COMP, MAX_HUMANS, BOT_FILL,
-  packOwn, packOther, packDrops, sanitizeCmd, cleanName, roomMode,
+  packOwn, packOther, packDrops, sanitizeCmd, cleanName, cleanMap, roomMode,
 } from '../src/net/protocol.js';
 
 const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil'];
@@ -28,8 +27,7 @@ const LOOP_MS = 1000 / 64;
 export class GameRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    this.game = new Game(YARD);
-    this.nav = new NavGrid(this.game.world, YARD.bounds);
+    this.game = new Game(getMap(DEFAULT_MAP));
     this.clients = new Map(); // ws -> client
     this.brains = new Map(); // bot id -> BotBrain
     this.history = []; // recent tick states for lag compensation
@@ -64,6 +62,7 @@ export class GameRoom extends DurableObject {
 
   // RPC for GET /api/rooms.
   humanCount() { return this.humans(); }
+  roomInfo() { return { humans: this.humans(), map: this.game.map.id }; }
 
   humans() {
     let n = 0;
@@ -89,8 +88,11 @@ export class GameRoom extends DurableObject {
         return;
       }
       const mode = ws.deserializeAttachment()?.mode;
-      if (mode && !this.humans() && this.game.mode !== mode) this.game.setMode(mode);
       const first = !this.humans();
+      // The first person into an empty room picks the map.
+      const map = cleanMap(msg.map, MAPS);
+      if (first && map && map !== this.game.map.id) this.game.setMap(MAPS[map]);
+      if (mode && first && this.game.mode !== mode) this.game.setMode(mode);
       const p = this.game.addPlayer({ name: cleanName(msg.name) });
       c.player = p;
       this.fillBots();
@@ -99,7 +101,7 @@ export class GameRoom extends DurableObject {
       if (first) this.game.restartMatch();
       else this.game.join(p);
       ws.send(JSON.stringify({
-        t: 'welcome', v: PROTOCOL_VERSION, id: p.id, mode: this.game.mode, time: this.game.time,
+        t: 'welcome', v: PROTOCOL_VERSION, id: p.id, mode: this.game.mode, map: this.game.map.id, time: this.game.time,
         tickRate: TICK_RATE, snapEvery: SNAP_EVERY,
       }));
       this.start();
@@ -142,7 +144,7 @@ export class GameRoom extends DurableObject {
       const used = new Set(this.game.players.map((p) => p.name));
       const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Bot ${this.brains.size + 1}`;
       const p = this.game.addPlayer({ name, isBot: true });
-      this.brains.set(p.id, new BotBrain(this.game, p, this.nav, 'normal'));
+      this.brains.set(p.id, new BotBrain(this.game, p, null, 'normal'));
     }
   }
 
@@ -207,12 +209,13 @@ export class GameRoom extends DurableObject {
     const players = g.players.map(packOther);
     const match = g.matchInfo();
     const drops = packDrops(g.drops);
+    const obj = g.objectiveInfo();
     const events = this.pendingEvents;
     this.pendingEvents = [];
     for (const [ws, c] of this.clients) {
       if (!c.player) continue;
       try {
-        ws.send(JSON.stringify({ t: 'snap', time: g.time, ack: c.ack, me: packOwn(c.player), players, events, match, drops }));
+        ws.send(JSON.stringify({ t: 'snap', time: g.time, ack: c.ack, me: packOwn(c.player), players, events, match, drops, obj }));
       } catch { /* closed; webSocketClose cleans up */ }
     }
   }
@@ -259,6 +262,7 @@ function mergePresses(from, into) {
   into.jump ||= from.jump;
   into.reload ||= from.reload;
   into.lastWeapon ||= from.lastWeapon;
+  into.use ||= from.use;
   into.slot ??= from.slot;
   if (from.actions) into.actions = [...from.actions, ...(into.actions ?? [])];
 }

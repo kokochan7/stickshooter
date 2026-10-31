@@ -5,14 +5,23 @@ gunplay (damage, armor, hitboxes, range falloff, wall penetration, spray
 patterns) with an original look: a white stickman, low-poly guns and a
 bright toy-like arena.
 
-Two ways to play on one test map, "Yard": **practice** (runs entirely in the
+Five maps, picked on the main menu: **Yard** (deathmatch), **Canal** and
+**Dunes** (bomb defusal), **Harbor** and **Frost** (hostage rescue). Teams on a
+bomb or hostage map plays CS-style rounds: one life per round, a short buy
+time, first to 8 rounds. Red plants the bomb at site A or B (or guards the
+hostages); Blue defends and defuses (or leads the hostages to the rescue zone).
+Free for all is plain deathmatch on every map. Canal, Harbor and Frost have
+shallow water you can wade through (slower, splashy footsteps) and bridges.
+
+Two ways to play: **practice** (runs entirely in the
 browser, with 0 to 10 bots; 0 by default) and **online** (an early test:
 `BOT_FILL` in `src/net/protocol.js` can fill rooms with server bots, and is 0
 for now). Both play either **Free for all** (everyone, bots included, fights
 everyone; white stickmen) or **Teams** (Red vs Blue, tinted stickmen, each team
 spawns on its own side; `M` switches team). Online, FFA is the `public` room and
 Teams is `public-teams`; the menu shows how many people are in each, and
-PLAY ONLINE joins the other mode's room if yours is empty and it isn't.
+PLAY ONLINE joins the other mode's room if yours is empty and it isn't. The
+first person into an empty room picks its map; everyone after joins that map.
 
 ## Play locally
 
@@ -76,6 +85,7 @@ everything else is the static game.
 | B | Buy menu (number keys pick a category, then a gun: B 4 3 = M4A1) |
 | Tab | Scoreboard |
 | M | Switch team (Teams mode) |
+| E | Use: hold to plant or defuse the bomb, press to lead or stop a hostage |
 | Esc | Pause |
 
 Every key above except Esc can be rebound in Settings → Controls. Settings

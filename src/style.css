@@ -297,6 +297,7 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #touch .t-swap   { right: calc(212px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 20px; }
 #touch .t-knife  { right: calc(222px + env(safe-area-inset-right)); bottom: calc(130px + env(safe-area-inset-bottom)); --s: 50px; font-size: 10px; }
 #touch .t-drop   { right: calc(36px + env(safe-area-inset-right)); bottom: calc(250px + env(safe-area-inset-bottom)); --s: 44px; }
+#touch .t-use    { right: calc(98px + env(safe-area-inset-right)); bottom: calc(272px + env(safe-area-inset-bottom)); --s: 44px; font-size: 10px; }
 #touch .t-pause  { left: calc(12px + env(safe-area-inset-left)); }
 #touch .t-buy    { left: calc(64px + env(safe-area-inset-left)); }
 #touch .t-scores { left: calc(116px + env(safe-area-inset-left)); }
@@ -314,3 +315,34 @@ body.touch .pause-hint { display: none; }
    FPS readout drops below the pause / buy / scores buttons. */
 body.touch .hud-br { bottom: auto; top: 18px; }
 body.touch #perf { top: 140px; }
+
+/* ---------- Map picker (main menu) ---------- */
+.map-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 0 0 4px; }
+.map-btn {
+  position: relative; padding: 7px 4px 6px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.04);
+  color: var(--muted); font: 800 12px var(--body); letter-spacing: .5px; cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.map-btn i { display: block; height: 22px; margin: 0 auto 4px; width: 100%; border-radius: 6px; background: var(--sw); box-shadow: inset 0 -6px 0 var(--sw2); }
+.map-btn small { display: block; font-size: 9px; font-weight: 700; letter-spacing: .4px; opacity: .8; margin-top: 1px; }
+.map-btn:hover { color: var(--text); }
+.map-btn.on { color: var(--text); border-color: var(--accent); background: rgba(255,210,63,.12); }
+.map-note { margin: 0 0 8px; min-height: 16px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.map-note b { color: var(--text); }
+
+/* ---------- Objective rounds ---------- */
+#round-timer { font: 400 30px/1 var(--title); letter-spacing: 1px; color: #fff; text-shadow: 0 3px 0 #1b1f27; padding: 2px 14px; border-radius: 10px; background: var(--panel); font-variant-numeric: tabular-nums; }
+#round-timer.low { color: #ff5a5f; }
+#round-timer.bomb { color: #ff5a5f; animation: bombPulse 1s ease-in-out infinite; }
+@keyframes bombPulse { 50% { opacity: .55; } }
+#bomb-tag { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 3px 10px; border-radius: 8px; background: rgba(224,70,74,.85); font: 800 13px var(--body); letter-spacing: 1.5px; }
+#bomb-tag svg { width: 18px; height: 18px; fill: #fff; }
+#bomb-tag.hidden { display: none; }
+#task-bar { position: absolute; left: 50%; top: 66%; transform: translateX(-50%); width: 340px; text-align: center; font: 800 14px var(--body); letter-spacing: 1px; text-shadow: 0 1px 2px #000; }
+#task-bar div { margin-top: 6px; height: 10px; border-radius: 5px; background: rgba(0,0,0,.5); overflow: hidden; border: 1px solid rgba(255,255,255,.25); }
+#task-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+#center-msg .round-win { display: block; font: 400 56px/1.05 var(--title); letter-spacing: 1px; text-shadow: 0 5px 0 #1b1f27; }
+#center-msg .round-win.team-red { color: #ff5a5f; }
+#center-msg .round-win.team-blue { color: #4f95ff; }
+#center-msg .alert { display: block; font: 400 40px/1.1 var(--title); color: #ff5a5f; text-shadow: 0 4px 0 #1b1f27; }
+#center-msg .alert.good { color: #6fe08a; }
+.kf-ic.bomb { fill: #ff7a5a; }

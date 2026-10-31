@@ -5,6 +5,7 @@ import { WEAPONS, weaponValue } from './weapons.js';
 import { STAND_EYE, DUCK_EYE } from './constants.js';
 import { forwardVec, rightVec } from './movement.js';
 import { isEnemy } from './combat.js';
+import { siteAt, canPlant, canDefuse, hostageInReach } from './objective.js';
 
 const DEG = Math.PI / 180;
 
@@ -28,13 +29,15 @@ function wrapAngle(a) {
 }
 
 export class BotBrain {
-  constructor(game, player, nav, difficulty = 'normal') {
+  // nav is optional: bots use the game's (it changes with the map).
+  constructor(game, player, nav = null, difficulty = 'normal') {
     this.game = game;
     this.p = player;
-    this.nav = nav;
     this.skill = DIFFICULTY[difficulty] ?? DIFFICULTY.normal;
     this.reset();
   }
+
+  get nav() { return this.game.nav; }
 
   setDifficulty(d) { this.skill = DIFFICULTY[d] ?? DIFFICULTY.normal; }
 
@@ -66,6 +69,10 @@ export class BotBrain {
     this.wobblePhase = [Math.random() * 10, Math.random() * 10];
     this.lastHurtSeen = this.p.lastHurtTime;
     this.dropGoal = null; // id of a gun on the ground worth more than ours
+    this.objSpot = null; // where the objective wants us: [x, z]
+    this.objSpotKey = '';
+    this.objSpotUntil = 0;
+    this.useToggle = false;
   }
 
   think(dt) {
@@ -184,9 +191,12 @@ export class BotBrain {
         }
       }
     } else {
-      // --- Roam / hunt ---
+      // --- Roam / hunt / play the objective ---
       let goal = null;
-      if (this.lastSeenPos && t - this.lastSeenTime < 6) goal = this.lastSeenPos;
+      const obj = g.objective ? this.objective(cmd) : null;
+      if (this.lastSeenPos && t - this.lastSeenTime < (obj?.urgent ? 1.5 : 6)) goal = this.lastSeenPos;
+      else if (obj?.hold) { goal = null; moveDir = null; this.path = []; }
+      else if (obj?.goal) goal = obj.goal;
       // A better gun on the ground beats hunting.
       const drop = this.dropGoal ? g.drops.find((d) => d.id === this.dropGoal) : null;
       if (this.dropGoal && !drop) { this.dropGoal = null; this.path = null; }
@@ -196,19 +206,25 @@ export class BotBrain {
         if (g.canPickup(p, drop)) cmd.actions = [{ type: 'pickup', id: drop.id }];
         else if (dd < 3) { moveDir = [(drop.pos[0] - p.pos[0]) / dd, (drop.pos[2] - p.pos[2]) / dd]; this.path = []; }
       }
-      if (!moveDir && (!this.path || this.pathIdx >= this.path.length || t >= this.repathAt)) {
+      if (obj?.hold) {
+        // Planting or defusing: stand still with the key held.
+      } else if (!moveDir && (!this.path || this.pathIdx >= this.path.length || t >= this.repathAt)) {
         const dest = goal ?? this.nav.randomOpenPoint(Math.random);
         this.path = this.nav.findPath(p.pos[0], p.pos[2], dest[0], dest[2] ?? dest[1]);
         this.pathIdx = 0;
         this.repathAt = t + (drop ? 1 : goal ? 1.5 : 8);
         if (!this.path && goal) this.lastSeenPos = null;
       }
-      if (!moveDir && this.path && this.pathIdx < this.path.length) {
+      if (!moveDir && !obj?.hold && this.path && this.pathIdx < this.path.length) {
         const wp = this.path[this.pathIdx];
         const dx = wp[0] - p.pos[0], dz = wp[1] - p.pos[2];
         const d = Math.hypot(dx, dz);
-        if (d < 0.6) this.pathIdx++;
-        else moveDir = [dx / d, dz / d];
+        // Move on to the next waypoint once close, but only if the way there
+        // is clear from where we actually stand; otherwise we'd cut the
+        // corner into whatever the path was steering around.
+        const next = this.path[this.pathIdx + 1];
+        if (d < 0.6 && (!next || d < 0.15 || this.nav.walkable(p.pos[0], p.pos[2], next[0], next[1]))) this.pathIdx++;
+        else if (d > 0.01) moveDir = [dx / d, dz / d];
       }
       // Look where we walk, or towards the last thing we saw.
       let lookYaw = this.yaw;
@@ -258,6 +274,103 @@ export class BotBrain {
     cmd.yaw = this.yaw;
     cmd.pitch = this.pitch;
     return cmd;
+  }
+
+  // What the objective wants from us right now. Returns { goal: [x, y, z] }
+  // to walk somewhere, { hold: true } to stand and hold the use key, or null.
+  // Sets cmd.use as needed. urgent: drop the hunt sooner to get back to it.
+  objective(cmd) {
+    const g = this.game, p = this.p, t = g.time;
+    if (g.round.state !== 'live' && g.round.state !== 'freeze') return null;
+    const b = g.bomb;
+    if (g.objective === 'bomb') {
+      if (p.team === 'red') {
+        if (b.state === 'carried' && b.carrier === p.id) {
+          if (canPlant(g, p) || p.task?.kind === 'plant') {
+            // Inside the site: walk a bit further in, then plant.
+            if (p.task || this.objSpotKey === 'plant-here') { cmd.use = true; return { hold: true }; }
+            if (this.objSpotKey !== 'plant') this.pickSpot('plant', g.map.sites[g.plan], 0.25);
+            if (Math.hypot(this.objSpot[0] - p.pos[0], this.objSpot[1] - p.pos[2]) < 1.2 && siteAt(g.map, p.pos)) {
+              this.objSpotKey = 'plant-here';
+              cmd.use = true;
+              return { hold: true };
+            }
+            return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
+          }
+          this.pickSpot('plant', g.map.sites[g.plan], 0.25);
+          return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
+        }
+        if (b.state === 'dropped') return { goal: b.pos, urgent: true };
+        if (b.state === 'planted') {
+          this.pickSpot('guard' + b.site, { min: [b.pos[0] - 7, b.pos[2] - 7], max: [b.pos[0] + 7, b.pos[2] + 7] }, 0, 8);
+          return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
+        }
+        // Escort: head for the planned site with the carrier.
+        this.pickSpot('escort' + g.plan, g.map.sites[g.plan], 0.15, 10);
+        return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
+      }
+      // Blue.
+      if (b.state === 'planted') {
+        if (p.task?.kind === 'defuse' || canDefuse(g, p)) { cmd.use = true; return { hold: true, urgent: true }; }
+        return { goal: b.pos, urgent: true };
+      }
+      // Hold a site until the bomb shows up, half the team on each.
+      const site = p.id % 2 ? 'A' : 'B';
+      this.pickSpot('hold' + site, g.map.sites[site], 0.2, 12);
+      return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
+    }
+    // Hostage rescue.
+    const hs = g.hostages.filter((h) => h.state !== 'rescued');
+    if (p.team === 'blue') {
+      const mine = hs.filter((h) => h.state === 'follow' && h.leader === p.id);
+      const free = hs.filter((h) => h.state === 'idle');
+      // Pick up any free hostage within reach on the way.
+      const near = hostageInReach(g, p);
+      if (near && near.state === 'idle') {
+        this.useToggle = !this.useToggle;
+        cmd.use = this.useToggle;
+      }
+      if (free.length && (mine.length < 2 || mine.length + free.length <= 2)) {
+        free.sort((a, b2) => Math.hypot(a.pos[0] - p.pos[0], a.pos[2] - p.pos[2]) - Math.hypot(b2.pos[0] - p.pos[0], b2.pos[2] - p.pos[2]));
+        return { goal: free[0].pos, urgent: true };
+      }
+      if (mine.length) {
+        // Lead them home, waiting for anyone falling behind.
+        const lag = mine.some((h) => Math.hypot(h.pos[0] - p.pos[0], h.pos[2] - p.pos[2]) > 7);
+        if (lag) return { hold: true };
+        this.pickSpot('rescue', g.map.rescue[0], 0.3, 30);
+        return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
+      }
+      // Nothing to do for the hostages: push toward them anyway.
+      const h = hs[p.id % Math.max(1, hs.length)];
+      return h ? { goal: h.pos } : null;
+    }
+    // Red: guard the hostages, moving around them now and then.
+    const h = hs.find((x) => x.state === 'follow') ?? hs[p.id % Math.max(1, hs.length)];
+    if (!h) return null;
+    if (h.state === 'follow') return { goal: h.pos, urgent: true };
+    this.pickSpot('guard' + h.id, { min: [h.pos[0] - 8, h.pos[2] - 8], max: [h.pos[0] + 8, h.pos[2] + 8] }, 0, 7);
+    return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
+  }
+
+  // A random reachable spot in a rect (shrunk by `inset` of its size), kept
+  // until `key` changes or `keep` seconds pass.
+  pickSpot(key, rect, inset = 0, keep = Infinity) {
+    const t = this.game.time;
+    if (this.objSpotKey === key && this.objSpot && t < this.objSpotUntil) return;
+    const nav = this.nav;
+    const w = rect.max[0] - rect.min[0], h = rect.max[1] - rect.min[1];
+    let spot = null;
+    for (let i = 0; i < 20 && !spot; i++) {
+      const x = rect.min[0] + w * (inset + Math.random() * (1 - 2 * inset));
+      const z = rect.min[1] + h * (inset + Math.random() * (1 - 2 * inset));
+      const [ci, cj] = nav.cellOf(x, z);
+      if (nav.isMain(ci, cj)) spot = [x, z];
+    }
+    this.objSpot = spot ?? [(rect.min[0] + rect.max[0]) / 2, (rect.min[1] + rect.max[1]) / 2];
+    this.objSpotKey = key;
+    this.objSpotUntil = t + keep;
+    this.path = null;
   }
 
   // Alt is edge-triggered, so alternate pressed/released ticks.
@@ -346,5 +459,6 @@ export class BotBrain {
     g.buy(p, 'kevlarHelmet', true);
     g.buy(p, pick, true);
     if (Math.random() < 0.3) { g.buy(p, 'deagle', true); g.switchTo(p, 'primary', true); }
+    if (g.objective === 'bomb' && p.team === 'blue') g.buy(p, 'defuser', true);
   }
 }

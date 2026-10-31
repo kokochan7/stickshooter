@@ -219,6 +219,7 @@ export const SHOP_ORDER = [
 export const GEAR = {
   kevlar: { name: 'Kevlar Vest', price: 650 },
   kevlarHelmet: { name: 'Kevlar + Helmet', price: 1000 },
+  defuser: { name: 'Defuse Kit', price: 200 },
 };
 
 // Rough 0..1 ratings for the shop's stat bars.

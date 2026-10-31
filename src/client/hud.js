@@ -24,18 +24,12 @@ export const DEFAULT_SETTINGS = {
   showFps: true,
   bots: 0,
   difficulty: 'normal',
-  // How much recoil and getting shot move the camera, in percent. 100 is the
-  // CS feel (the whole view kicks); the recoil itself is already scaled down
-  // (RECOIL_SCALE) and the camera eases into each kick instead of snapping.
-  // Whatever the camera doesn't show, the crosshair shows instead, so you
-  // still see where the next bullet goes.
-  viewKick: 100,
   // Fullscreen during matches, which also lets the game take Ctrl+W, Ctrl+T
   // and the like away from the browser (Keyboard Lock, Chrome and Edge).
   fullscreen: true,
   touchSens: 1, // look speed for touch controls
-  hudScale: 1.3, // HUD size on top of fitting it to the screen
   mode: 'ffa', // 'ffa' or 'teams', for practice and online
+  map: 'yard', // see src/maps/index.js
   version: 5,
 };
 
@@ -54,19 +48,19 @@ export function loadSettings() {
     // v3 narrowed the sensitivity range and dropped render scale and invert mouse.
     // v4 made the default sensitivity higher (1.5 -> 3).
     if ((saved.version ?? 1) < 4) delete saved.sensitivity;
-    // v5 brought the full camera kick back (it had defaulted to 25%).
-    if ((saved.version ?? 1) < 5) delete saved.viewKick;
+    // Screen shake (always 100% now) and HUD size are no longer settings.
+    delete saved.viewKick;
+    delete saved.hudScale;
     delete saved.renderScale;
     delete saved.invertY;
     const s = { ...DEFAULT_SETTINGS, ...saved, version: DEFAULT_SETTINGS.version };
     s.sensitivity = clamp(+s.sensitivity || DEFAULT_SETTINGS.sensitivity, ...SENS_RANGE);
     s.fov = clamp(+s.fov || DEFAULT_SETTINGS.fov, ...FOV_RANGE);
-    s.viewKick = clamp(Number.isFinite(+s.viewKick) ? +s.viewKick : DEFAULT_SETTINGS.viewKick, 0, 100);
     s.touchSens = clamp(+s.touchSens || DEFAULT_SETTINGS.touchSens, 0.3, 3);
-    s.hudScale = clamp(+s.hudScale || DEFAULT_SETTINGS.hudScale, 0.8, 1.8);
     s.binds = { ...DEFAULT_BINDS, ...(saved.binds ?? {}) };
     delete s.binds.thirdPerson; // third person was removed
     if (s.mode !== 'teams') s.mode = 'ffa';
+    if (typeof s.map !== 'string') s.map = DEFAULT_SETTINGS.map; // unknown ids fall back in getMap
     return s;
   } catch {
     return { ...DEFAULT_SETTINGS, binds: { ...DEFAULT_BINDS } };
@@ -174,15 +168,13 @@ function silhouette(src, data, W, H) {
 // The HUD is laid out for a 1920x1080 screen. Scale it to the window, and on
 // screens wider than 16:9 keep it inside a centered 16:9 area so the corners
 // stay in view. The buy menu is scaled to fit the same way.
-let hudScale = DEFAULT_SETTINGS.hudScale;
-export function setHudScale(v) {
-  hudScale = v;
-  fitUi();
-}
+// The HUD is drawn a bit larger than a plain fit (this used to be the HUD size
+// setting's default).
+const HUD_SCALE = 1.3;
 function fitUi() {
   const w = innerWidth, h = innerHeight;
   const fw = Math.min(w, h * (16 / 9));
-  const scale = clamp(Math.min(fw / 1920, h / 1080), 0.5, 2) * hudScale;
+  const scale = clamp(Math.min(fw / 1920, h / 1080), 0.5, 2) * HUD_SCALE;
   const frame = $('hud-frame');
   frame.style.width = `${fw / scale}px`;
   frame.style.height = `${h / scale}px`;
@@ -314,12 +306,12 @@ export class Hud {
     setTimeout(() => d.remove(), 1100);
   }
 
-  kill({ attacker, victim, weapon, headshot, wallbang, mine }) {
+  kill({ attacker, victim, weapon, headshot, wallbang, mine, cause }) {
     const row = document.createElement('div');
     row.className = 'kf' + (mine ? ' me' : '');
     const a = attacker ? `<span class="team-${attacker.team}">${esc(attacker.name)}</span>` : '';
     const name = weapon ? WEAPONS[weapon].name : 'Fall';
-    const icon = weapon && this.glyphs[weapon]
+    const icon = cause === 'bomb' ? BOMB_ICON : weapon && this.glyphs[weapon]
       ? `<img class="w" src="${this.glyphs[weapon]}" alt="${esc(name)}" title="${esc(name)}">`
       : weapon ? `<span class="w-txt">${esc(name)}</span>` : FALL_ICON;
     row.innerHTML = `${a}${icon}${wallbang ? WALL_ICON : ''}${headshot ? HEAD_ICON : ''}<span class="team-${victim.team}">${esc(victim.name)}</span>`;
@@ -339,6 +331,33 @@ export class Hud {
     if (this.last.goal === text) return;
     this.last.goal = text;
     $('goal').textContent = text;
+  }
+
+  // Round clock under the team scores (objective rounds). cls: '', 'low' or 'bomb'.
+  roundTimer(text, cls = '') {
+    const key = text + '|' + cls;
+    if (this.last.timer === key) return;
+    this.last.timer = key;
+    const el = $('round-timer');
+    el.textContent = text;
+    el.className = text ? cls : 'hidden';
+  }
+
+  // Planting / defusing progress bar. frac null hides it.
+  task(frac, label = '') {
+    const el = $('task-bar');
+    const on = frac !== null;
+    if (this.last.task !== on) { this.last.task = on; el.classList.toggle('hidden', !on); }
+    if (!on) return;
+    if (this.last.taskLabel !== label) { this.last.taskLabel = label; $('task-label').textContent = label; }
+    el.querySelector('i').style.width = `${Math.round(Math.max(0, Math.min(1, frac)) * 100)}%`;
+  }
+
+  // "BOMB" badge above the money while you carry it.
+  bombTag(on) {
+    if (this.last.bombTag === on) return;
+    this.last.bombTag = on;
+    $('bomb-tag').classList.toggle('hidden', !on);
   }
 
   // "G  Pick up AK47" when a gun is in reach.
@@ -386,6 +405,7 @@ export class Hud {
 // Kill feed marks, drawn as tiny SVGs in the same flat white as the gun glyphs.
 const HEAD_ICON = '<svg class="kf-ic hs" viewBox="0 0 24 24" aria-label="Headshot"><circle cx="12" cy="10" r="7"/><path d="M8 17h8v4H8z"/><circle cx="9.3" cy="10" r="1.8" class="cut"/><circle cx="14.7" cy="10" r="1.8" class="cut"/></svg>';
 const WALL_ICON = '<svg class="kf-ic" viewBox="0 0 24 24" aria-label="Through a wall"><path d="M3 4h7v4H3zM12 4h9v4h-9zM3 10h4v4H3zM9 10h7v4H9zM18 10h3v4h-3zM3 16h7v4H3zM12 16h9v4h-9z"/><path d="M0 12h24" class="shot"/></svg>';
+const BOMB_ICON = '<svg class="kf-ic bomb" viewBox="0 0 24 24" aria-label="Bomb"><path d="M12 2l2.2 5.3L20 6l-3 5 5 2-5.5 2.2L18 21l-6-3.5L6 21l1.5-5.8L2 13l5-2-3-5 5.8 1.3z"/></svg>';
 const FALL_ICON = '<svg class="kf-ic" viewBox="0 0 24 24" aria-label="Fell"><path d="M12 3v13M6 11l6 6 6-6M4 21h16"/></svg>';
 
 // CS 1.6 style buy menu: number keys pick a category, then a weapon.
@@ -468,6 +488,10 @@ export class BuyMenu {
 
   itemState(id) {
     const p = this.p;
+    if (id === 'defuser') {
+      const owned = !!p.defuser;
+      return { owned, price: GEAR.defuser.price, cant: !owned && (!this.kitAllowed || p.money < GEAR.defuser.price) };
+    }
     if (GEAR[id]) {
       const owned = id === 'kevlar' ? p.armor >= 100 : p.armor >= 100 && p.helmet;
       const price = id === 'kevlarHelmet' && p.armor >= 100 && !p.helmet ? 350 : GEAR[id].price;
@@ -514,6 +538,14 @@ export class BuyMenu {
   }
 
   itemInfo(id) {
+    if (id === 'defuser') {
+      const kv = [
+        ['Price', `$${GEAR.defuser.price}`],
+        ['Defuse time', '5 seconds instead of 10'],
+        ['Who', 'Blue team, bomb defusal rounds'],
+      ];
+      return `<div class="buy-pic gear">${KIT_ART}</div>${statsHtml(kv)}`;
+    }
     if (GEAR[id]) {
       const st = this.itemState(id);
       const kv = [
@@ -549,6 +581,7 @@ export class BuyMenu {
   }
 }
 
+const KIT_ART = '<svg viewBox="0 0 64 64"><path d="M14 18h36v30H14z"/><path d="M22 10h20v8H22z" opacity=".7"/><path d="M24 26h16v4H24zM24 34h10v4H24z" fill="#1b1f27"/></svg>';
 const VEST_ART = '<svg viewBox="0 0 64 64"><path d="M20 8h8l4 6 4-6h8l8 10-6 6v32H18V24l-6-6z"/></svg>';
 const HELMET_ART = '<svg viewBox="0 0 64 64"><path d="M10 40c0-14 10-24 22-24s22 10 22 24v4H10z"/><path d="M6 44h52v6H6z"/></svg>';
 
@@ -570,8 +603,6 @@ export class SettingsPanel {
         ['fov', 'Field of view', 'range', ...FOV_RANGE, 1, FOV_SHOWN_OFFSET],
         ['volume', 'Volume', 'range', 0, 1, 0.05],
         ['music', 'Menu music', 'range', 0, 1, 0.05],
-        ['viewKick', 'Screen shake %', 'range', 0, 100, 5],
-        ['hudScale', 'HUD size', 'range', 0.8, 1.8, 0.05],
         ['touchSens', 'Touch look speed', 'range', 0.3, 3, 0.05],
         ['fullscreen', 'Fullscreen in matches (blocks Ctrl+W)', 'check'],
         ['showFps', 'Show FPS', 'check'],
