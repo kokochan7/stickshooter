@@ -177,6 +177,16 @@ export class Stickman {
 
   setVisible(v) { this.root.visible = v; }
 
+  // The bomb strapped to the carrier's back.
+  setBackpack(on) {
+    if (!!this.pack === on && (!on || this.pack.visible)) return;
+    if (on && !this.pack) {
+      this.pack = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.3, 0.12), toonMaterial(0x8a6d46));
+      this.body.add(this.pack);
+    }
+    if (this.pack) this.pack.visible = on;
+  }
+
   // Tint the body for the player's team (white in FFA).
   setTeam(team) {
     if (this.team === team) return;
@@ -219,6 +229,10 @@ export class Stickman {
     this.hip.set(hip);
     this.chest.set(chest);
     this.torso.set(hip, chest);
+    if (this.pack?.visible) {
+      this.pack.position.set(0, (hip.y + chest.y) / 2 + 0.06, (hip.z + chest.z) / 2 + 0.13);
+      this.pack.rotation.x = -lean;
+    }
 
     // Head follows pitch a bit.
     const head = this.tmp.head.set(0, chest.y + 0.19, chest.z - 0.03 - duck * 0.0);

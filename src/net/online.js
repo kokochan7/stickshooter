@@ -8,14 +8,18 @@
 // - shots, hits and kills come from server events, so the server decides
 //   every hit (with lag compensation, see worker/room.js).
 import { SEND_EVERY, INTERP_DELAY, DEFAULT_ROOM, PROTOCOL_VERSION } from './protocol.js';
+import { applyObjectiveInfo } from '../sim/objective.js';
 
 const PING_EVERY = 2000;
 
-// { [room]: humans } for the quick play rooms, or null if the server can't say.
+// { rooms: { [room]: humans }, maps: { [room]: map id } } for the quick play
+// rooms, or null if the server can't say.
 export async function fetchRoomCounts() {
   try {
     const res = await fetch('/api/rooms', { cache: 'no-store' });
-    return res.ok ? (await res.json()).rooms : null;
+    if (!res.ok) return null;
+    const j = await res.json();
+    return { rooms: j.rooms ?? {}, maps: j.maps ?? {} };
   } catch {
     return null;
   }
@@ -35,8 +39,10 @@ function lerpAngle(a, b, t) {
 }
 
 export class OnlineSession {
-  constructor(game, { url, name, onWelcome, onClose, onRemove }) {
+  // onMap(mapId) runs before onWelcome when the room plays another map.
+  constructor(game, { url, name, map, onWelcome, onClose, onRemove, onMap }) {
     this.game = game;
+    this.onMap = onMap;
     this.onWelcome = onWelcome;
     this.onClose = onClose;
     this.onRemove = onRemove; // (playerId) => void, to drop its view
@@ -52,7 +58,7 @@ export class OnlineSession {
     this.closed = false;
 
     this.ws = new WebSocket(url);
-    this.ws.onopen = () => this.send({ t: 'hello', v: PROTOCOL_VERSION, name });
+    this.ws.onopen = () => this.send({ t: 'hello', v: PROTOCOL_VERSION, name, map });
     this.ws.onmessage = (e) => this.receive(JSON.parse(e.data));
     this.ws.onclose = (e) => this.finish(e.reason || (this.myId ? 'Disconnected' : 'Could not reach the server'));
     this.pinger = setInterval(() => this.send({ t: 'ping', c: performance.now() }), PING_EVERY);
@@ -90,7 +96,8 @@ export class OnlineSession {
     switch (msg.t) {
       case 'welcome':
         this.myId = msg.id;
-        this.game.mode = msg.mode ?? 'ffa';
+        this.onMap?.(msg.map);
+        this.game.setMode(msg.mode ?? 'ffa');
         this.syncClock(msg.time);
         break;
       case 'snap':
@@ -152,6 +159,7 @@ export class OnlineSession {
       g.match = match;
       g.teamKills = teamKills;
     }
+    if ('obj' in msg) applyObjectiveInfo(g, msg.obj);
     if (msg.drops) {
       g.drops = msg.drops.map((d) => ({
         id: d.id, weapon: { id: d.w, clip: 0, reserve: 0 }, pos: d.pos, yaw: d.yaw, expiresAt: d.exp,

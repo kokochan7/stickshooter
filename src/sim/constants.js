@@ -90,3 +90,34 @@ export const DROP_LIFETIME = 10;
 export const PICKUP_RANGE = 1.6;
 // Walking over a gun picks it up when that slot is empty, like CS.
 export const TOUCH_RANGE = 0.8;
+
+// Objective rounds (Teams on a bomb or hostage map), CS 1.6 style: one life
+// per round, a short freeze to buy at the start, first team to
+// ROUND_WIN_LIMIT rounds wins the match. Red attacks (plants the bomb, guards
+// the hostages), Blue defends (defuses, rescues).
+export const ROUND_WIN_LIMIT = 8;
+export const ROUND_FREEZE = 4;
+export const ROUND_END_TIME = 5;
+export const ROUND_TIME = { bomb: 115, hostage: 150 };
+// Joining this long into a live round still spawns you; later you wait.
+export const LATE_JOIN = 20;
+// Respawn time used for "not until the next round" (JSON can't carry Infinity).
+export const NEVER = 1e9;
+// The bomb (CS 1.6: mp_c4timer 35, 3 s to plant, 10 s to defuse, 5 with a kit).
+export const BOMB_TIMER = 35;
+export const PLANT_TIME = 3;
+export const DEFUSE_TIME = 10;
+export const DEFUSE_KIT_TIME = 5;
+export const DEFUSE_RANGE = 1.5; // meters from the bomb
+export const BOMB_RADIUS = 20; // meters; damage falls off to 0 here
+export const BOMB_DAMAGE = 500;
+export const BOMB_PLANT_REWARD = 800;
+// Hostages.
+export const HOSTAGE_USE_RANGE = 1.9;
+export const HOSTAGE_FOLLOW_DIST = 1.7;
+export const HOSTAGE_SPEED = 230; // CS units/s
+export const HOSTAGE_RESCUE_REWARD = 1000;
+// Wading through water slows you down.
+export const WATER_SPEED_MUL = 0.78;
+// Other players' footsteps fade out completely at this distance (meters).
+export const FOOTSTEP_RANGE = 32;

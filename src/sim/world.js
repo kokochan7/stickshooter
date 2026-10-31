@@ -10,6 +10,7 @@ export const MATERIALS = {
   metal: { powerMul: 0.15, damageMul: 0.2 },
   grate: { powerMul: 0.5, damageMul: 0.4 },
   tile: { powerMul: 0.65, damageMul: 0.2 },
+  foliage: { powerMul: 4, damageMul: 0.9 }, // pine and palm leaves
 };
 
 const EPS = 1e-4;

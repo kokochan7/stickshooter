@@ -9,17 +9,20 @@
 // frame for the lowest possible input latency.
 import * as THREE from 'three';
 import { Game, emptyCmd } from './sim/game.js';
-import { NavGrid } from './sim/nav.js';
 import { BotBrain } from './sim/bot.js';
 import { WEAPONS } from './sim/weapons.js';
-import { TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT } from './sim/constants.js';
-import { YARD } from './maps/yard.js';
+import {
+  TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT,
+  FOOTSTEP_RANGE, ROUND_WIN_LIMIT,
+} from './sim/constants.js';
+import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
+import { MAP_LIST, MAP_TYPE_LABEL, getMap } from './maps/index.js';
 import { GameView } from './client/scene.js';
 import { Audio } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
 import { TouchControls, isTouchDevice } from './client/touch.js';
-import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons, setHudScale } from './client/hud.js';
+import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons } from './client/hud.js';
 import { OnlineSession, roomUrl, fetchRoomCounts } from './net/online.js';
 import { PUBLIC_ROOMS, pickRoom, roomMode } from './net/protocol.js';
 
@@ -29,9 +32,8 @@ const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphit
 
 const settings = loadSettings();
 const canvas = $('game');
-const game = new Game(YARD, { mode: settings.mode });
-const nav = new NavGrid(game.world, YARD.bounds);
-const view = new GameView(canvas, YARD, game.world, settings);
+const game = new Game(getMap(settings.map), { mode: settings.mode });
+const view = new GameView(canvas, game.map, game.world, settings);
 const audio = new Audio();
 audio.setVolume(settings.volume);
 audio.setSfx(false); // main menu: music only, no background gunfire
@@ -44,16 +46,6 @@ const { icons, glyphs } = renderGunIcons(view.renderer);
 hud.glyphs = glyphs;
 const buyMenu = new BuyMenu(icons, (item) => pendingActions.push({ type: 'buy', item }));
 const settingsPanel = new SettingsPanel(settings, onSettingChange);
-setHudScale(settings.hudScale);
-applyViewKick();
-
-// Screen shake setting: the camera shows this share of the view punch and
-// the crosshair shows the rest. The gun's own kick and bob scale down with
-// it, but never all the way, so shooting still feels like something.
-function applyViewKick() {
-  view.viewModel.motion = 0.35 + 0.65 * (settings.viewKick / 100);
-}
-
 // The camera eases toward the view punch over SHAKE_EASE seconds instead of
 // snapping to it, so each shot rolls the view rather than jolting it.
 const SHAKE_EASE = 0.035;
@@ -92,6 +84,9 @@ let menuAngle = 0;
 let lastCount = null; // countdown number last shown, for its beep
 let goUntil = 0; // "GO!" stays up briefly after the countdown
 let scoresForced = null; // scoreboard title while it's held open to show the winner
+let alertMsg = null; // { html, until }: "BOMB PLANTED" and the like
+let nextBeep = 0; // when the planted bomb beeps next (game time)
+let spectating = null; // id of the teammate we watch while dead in a round
 const timers = [];
 const stepState = new Map();
 
@@ -113,8 +108,10 @@ function setupBots() {
   for (let i = 0; i < settings.bots; i++) {
     const team = game.mode === 'teams' ? (i % 2 ? 'red' : 'blue') : 'ffa';
     const p = game.addPlayer({ name: names[i % names.length], team, isBot: true });
-    brains.set(p.id, new BotBrain(game, p, nav, settings.difficulty));
+    brains.set(p.id, new BotBrain(game, p, null, settings.difficulty));
   }
+  // Start them playing behind the menu (objective rounds need a round going).
+  game.restartMatch();
 }
 setupBots();
 
@@ -123,14 +120,57 @@ function onSettingChange(k) {
   if (k === 'music') music.set({ level: settings.music });
   if (k === 'binds') renderControls();
   if (k === 'name' && me) me.name = settings.name;
-  if (k === 'hudScale') setHudScale(settings.hudScale);
-  if (k === 'viewKick') applyViewKick();
   if (k === 'bots' && !net) setupBots();
   if (k === 'mode' && !net) setupBots();
   if (k === 'difficulty' && !net) for (const b of brains.values()) b.setDifficulty(settings.difficulty);
 }
 
+// Switch the level (practice map pick, or joining an online room that plays
+// another map).
+function loadMap(id) {
+  if (game.map.id === id) return;
+  game.setMap(getMap(id));
+  view.setMap(game.map, game.world);
+  for (const p of game.players) view.removeView(p.id);
+  stepState.clear();
+}
+
 // ---------- Screens ----------
+
+// Map cards on the menu. Each shows a little two-tone swatch of the map.
+const MAP_SWATCH = { yard: ['#d9d1c1', '#8d9aa8'], canal: ['#3f93c4', '#dcb88f'], dunes: ['#e2cc9a', '#c99d62'], harbor: ['#9aa4ad', '#3f93c4'], frost: ['#eef2f6', '#2f6b4a'] };
+const mapPick = document.querySelector('.map-pick');
+mapPick.innerHTML = MAP_LIST.map((m) => {
+  const [a, b] = MAP_SWATCH[m.id] ?? ['#888', '#555'];
+  const kind = m.type === 'bomb' ? 'BOMB' : m.type === 'hostage' ? 'HOSTAGE' : 'DM';
+  return `<button class="map-btn" data-map="${m.id}" role="radio" style="--sw:${a};--sw2:${b}"><i></i>${m.name.toUpperCase()}<small>${kind}</small></button>`;
+}).join('');
+function renderMapPick() {
+  for (const b of mapPick.querySelectorAll('.map-btn')) {
+    const on = b.dataset.map === settings.map;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+  const m = getMap(settings.map);
+  let note;
+  if (m.type === 'dm') note = settings.mode === 'teams' ? `<b>${m.name}</b> · Teams: first team to ${TEAM_KILL_LIMIT} kills` : `<b>${m.name}</b> · Free for all: first to ${FFA_KILL_LIMIT} kills`;
+  else if (settings.mode !== 'teams') note = `<b>${m.name}</b> · Free for all deathmatch. Pick Teams for ${MAP_TYPE_LABEL[m.type].toLowerCase()}.`;
+  else if (m.type === 'bomb') note = `<b>${m.name}</b> · Rounds: Red plants the bomb at A or B, Blue defends`;
+  else note = `<b>${m.name}</b> · Rounds: Blue rescues the hostages, Red guards them`;
+  $('map-note').innerHTML = note;
+}
+renderMapPick();
+mapPick.addEventListener('click', (e) => {
+  const b = e.target.closest('.map-btn');
+  if (!b || b.dataset.map === settings.map) return;
+  settings.map = b.dataset.map;
+  saveSettings(settings);
+  renderMapPick();
+  if (!net) {
+    loadMap(settings.map);
+    setupBots();
+  }
+});
 
 // Free for all / Teams, for both practice and online.
 function renderModePick() {
@@ -147,6 +187,7 @@ for (const b of document.querySelectorAll('.mode-btn')) {
     settings.mode = b.dataset.mode;
     saveSettings(settings);
     renderModePick();
+    renderMapPick();
     renderControls();
     onSettingChange('mode');
   });
@@ -154,18 +195,24 @@ for (const b of document.querySelectorAll('.mode-btn')) {
 
 // Live player counts on the mode buttons, so it's obvious where people are.
 let roomCounts = null;
+let roomMaps = {};
 function renderRoomCounts() {
   for (const b of document.querySelectorAll('.mode-btn')) {
-    const n = roomCounts?.[PUBLIC_ROOMS[b.dataset.mode]];
+    const room = PUBLIC_ROOMS[b.dataset.mode];
+    const n = roomCounts?.[room];
     let el = b.querySelector('.online-count');
     if (!el) b.append((el = Object.assign(document.createElement('span'), { className: 'online-count' })));
-    el.textContent = n == null ? '' : `${n} online`;
+    // Busy rooms say which map they're on (you'll join that map).
+    const map = n > 0 && roomMaps[room] ? ` · ${getMap(roomMaps[room]).name}` : '';
+    el.textContent = n == null ? '' : `${n} online${map}`;
     el.classList.toggle('live', n > 0);
   }
 }
 async function refreshRoomCounts() {
   if (net || $('menu').classList.contains('hidden') || document.hidden) return;
-  roomCounts = await fetchRoomCounts();
+  const info = await fetchRoomCounts();
+  roomCounts = info?.rooms ?? null;
+  roomMaps = info?.maps ?? {};
   renderRoomCounts();
 }
 refreshRoomCounts();
@@ -269,13 +316,15 @@ async function goOnline() {
   $('play-online').disabled = true;
   $('net-status').textContent = 'Connecting…';
   $('net-status').classList.remove('hidden');
-  roomCounts = (await fetchRoomCounts()) ?? roomCounts;
+  const info = await fetchRoomCounts();
+  if (info) { roomCounts = info.rooms; roomMaps = info.maps; }
   renderRoomCounts();
   const room = pickRoom(settings.mode, roomCounts ?? {});
   if (roomMode(room) !== settings.mode) {
     settings.mode = roomMode(room);
     saveSettings(settings);
     renderModePick();
+    renderMapPick();
     renderControls();
   }
   clearPlayers();
@@ -283,6 +332,8 @@ async function goOnline() {
   net = new OnlineSession(game, {
     url: roomUrl(room),
     name: settings.name,
+    map: settings.map,
+    onMap: (id) => loadMap(getMap(id).id),
     onWelcome: (p) => {
       me = p;
       input.setAngles(me.yaw, 0);
@@ -301,6 +352,7 @@ function leaveOnline(status = '') {
   timers.length = 0;
   hud.ping(null);
   hud.room(null);
+  loadMap(settings.map);
   setupBots();
   showMenu(status);
 }
@@ -414,6 +466,7 @@ input.on('cursorClick', (c) => {
 
 function setBuyMenu(open) {
   if (!me || !me.alive) open = false;
+  buyMenu.kitAllowed = game.objective === 'bomb' && me?.team === 'blue';
   buyMenu.show(open, me);
   input.menuKeys = open;
   // Without pointer lock the real mouse cursor already works on the menu.
@@ -440,7 +493,7 @@ input.on('keyup', (code) => {
 });
 
 function showScoreboard(show, title = '') {
-  hud.showScores(show, game.players, me?.id, game.mode, game.teamKills, title);
+  hud.showScores(show, game.players, me?.id, game.mode, game.objective ? game.rounds : game.teamKills, title);
 }
 
 // G: pick up the gun in reach (swapping with yours), or drop the one in hand.
@@ -502,7 +555,7 @@ function handleEvent(e) {
         if (Math.random() < tracerChance) view.effects.tracer(muzzle, _v3.set(end[0], end[1], end[2]));
       }
       for (const im of e.impacts) view.effects.impact(im.pos, im.normal, im.material);
-      bulletSounds(e, isFirstPerson(p) && !def.pellets);
+      bulletSounds(e);
       break;
     }
     case 'hit': {
@@ -530,12 +583,12 @@ function handleEvent(e) {
       const attacker = e.attacker ? game.getPlayer(e.attacker) : null;
       const victim = game.getPlayer(e.victim);
       if (!victim) break;
-      hud.kill({ attacker, victim, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, mine: me && (e.attacker === me.id || e.victim === me.id) });
+      hud.kill({ attacker, victim, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, cause: e.cause, mine: me && (e.attacker === me.id || e.victim === me.id) });
       // The stickman vanishes in a puff; its gun is left on the ground.
       if (victim !== me && victim.pos[1] > -10) view.effects.poof([victim.pos[0], victim.pos[1] + 1.0, victim.pos[2]]);
       if (me && e.attacker === me.id && e.victim !== me.id) audio.play('killConfirm', { volume: 0.5 });
       if (me && e.victim === me.id) {
-        killInfo = { attacker: e.attacker, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, pos: [...me.pos] };
+        killInfo = { attacker: e.attacker, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, pos: [...me.pos], time: game.time };
         if (buyMenu.open) setBuyMenu(false);
       }
       break;
@@ -614,15 +667,66 @@ function handleEvent(e) {
       if (p === me) { input.setAngles(me.yaw, 0); killInfo = null; }
       break;
     }
+    // ----- Objective rounds -----
+    case 'roundStart':
+      alertMsg = null;
+      if (buyMenu.open) buyMenu.render(me);
+      break;
+    case 'roundLive':
+      audio.play('go', { volume: 0.45 });
+      break;
+    case 'roundEnd':
+      audio.play(me && e.winner === me.team ? 'win' : 'alert', { volume: 0.6 });
+      break;
+    case 'plantStart':
+    case 'defuseStart': {
+      // Keypad presses while arming; a pliers click to start defusing.
+      if (!p) break;
+      const pos = p === me ? null : p.pos;
+      if (e.type === 'plantStart') {
+        for (let i = 0; i < 5; i++) timers.push({ t: game.time + 0.15 + i * 0.5, fn: () => { if (p.task?.kind === 'plant' || p === me && me.task) audio.play('keypad' + (i % 3), { pos, volume: 0.5 }); } });
+      } else {
+        audio.play('magOut', { pos, volume: 0.5 });
+      }
+      break;
+    }
+    case 'planted':
+      alertMsg = { html: `<span class="alert">BOMB PLANTED${e.site ? ` AT ${e.site}` : ''}</span>`, until: performance.now() + 2500 };
+      audio.play('alert', { volume: 0.6 });
+      nextBeep = 0;
+      break;
+    case 'defused':
+      alertMsg = { html: '<span class="alert good">BOMB DEFUSED</span>', until: performance.now() + 2500 };
+      audio.play('defused', { pos: e.pos, volume: 0.9 });
+      break;
+    case 'explode':
+      audio.play('explode', { volume: 1, jitter: 0 });
+      view.effects.poof([e.pos[0], e.pos[1] + 1, e.pos[2]]);
+      for (let i = 0; i < 8; i++) view.effects.poof([e.pos[0] + (Math.random() - 0.5) * 6, e.pos[1] + 0.5 + Math.random() * 3, e.pos[2] + (Math.random() - 0.5) * 6]);
+      if (me?.alive) { const d = Math.hypot(me.pos[0] - e.pos[0], me.pos[2] - e.pos[2]); shakeP += Math.max(0, 0.12 - d * 0.003); }
+      break;
+    case 'bombDrop':
+      if (me?.team === 'red') alertMsg = { html: '<span class="alert">THE BOMB WAS DROPPED</span>', until: performance.now() + 2000 };
+      break;
+    case 'bombPickup':
+      if (p === me) { audio.play('magIn', { volume: 0.6 }); alertMsg = { html: '<span class="alert good">YOU PICKED UP THE BOMB</span>', until: performance.now() + 1800 }; }
+      break;
+    case 'hostageFollow':
+    case 'hostageStop':
+      if (p === me) audio.play(e.type === 'hostageFollow' ? 'buy' : 'dry', { volume: 0.5 });
+      break;
+    case 'rescued':
+      audio.play('rescue', { volume: 0.6 });
+      alertMsg = { html: '<span class="alert good">HOSTAGE RESCUED</span>', until: performance.now() + 1500 };
+      break;
   }
 }
 
 
-// Where bullets land: a debris crack, sometimes a ricochet whine, and the
-// brass from our own gun tinkling on the floor a moment later. Throttled so
-// a spray doesn't turn into noise.
-let lastRic = 0, lastBrass = 0;
-function bulletSounds(e, ownBrass) {
+// Where bullets land: a debris crack and sometimes a ricochet whine.
+// Throttled so a spray doesn't turn into noise.
+let lastRic = 0;
+function bulletSounds(e) {
   const now = performance.now();
   const im = e.impacts[e.impacts.length - 1];
   if (im) {
@@ -631,10 +735,6 @@ function bulletSounds(e, ownBrass) {
       lastRic = now;
       audio.play('ric' + Math.floor(Math.random() * 3), { pos: im.pos, volume: 0.4, jitter: 0.08 });
     }
-  }
-  if (ownBrass && now - lastBrass > 160) {
-    lastBrass = now;
-    timers.push({ t: game.time + 0.35 + Math.random() * 0.2, fn: () => audio.play('brass', { volume: 0.22, jitter: 0.1 }) });
   }
 }
 
@@ -662,9 +762,11 @@ function footsteps(p, dt, x, z) {
       s.timer += FOOTSTEP_TIME;
       if (s.timer < 0) s.timer = FOOTSTEP_TIME;
       s.foot ^= 1;
-      const name = 'step' + (s.foot * 2 + (Math.random() < 0.5 ? 0 : 1));
-      if (p === me) audio.play(name, { volume: 0.32, jitter: 0.05 });
-      else audio.play(name, { pos: p.pos, volume: 0.6, jitter: 0.05 });
+      const name = (game.inWater(p) ? 'splash' : 'step') + (s.foot * 2 + (Math.random() < 0.5 ? 0 : 1));
+      // Your own steps are soft. Other players' steps are loud up close and
+      // fade out completely by FOOTSTEP_RANGE, so you can tell how near they are.
+      if (p === me) audio.play(name, { volume: 0.16, jitter: 0.05 });
+      else audio.play(name, { pos: p.pos, volume: 0.5, jitter: 0.05, range: FOOTSTEP_RANGE });
     }
   } else {
     s.timer = Math.min(s.timer, 0.05);
@@ -704,13 +806,13 @@ function updateView(dt, alpha) {
     v.shadow.position.set(x, view.groundBelow(x, y, z) + 0.01, z);
   }
   view.syncDrops(game.drops, game.time);
+  view.syncObjective(game, alpha, dt, me?.alive ? me.id : null);
+  bombBeeps();
 
   // Camera.
   const cam = view.camera;
   let fov = settings.fov;
   let showVm = false;
-  // Share of the view punch the camera shows (settings.viewKick, eased).
-  const kick = settings.viewKick / 100;
   let punchP = 0, punchY = 0;
   if (!(me && me.alive)) { shakeP = 0; shakeY = 0; }
   if (me && me.alive && mode !== 'menu') {
@@ -722,8 +824,8 @@ function updateView(dt, alpha) {
     punchP = lerp(me.prevPunch[0], me.punch[0], alpha) * DEG;
     punchY = lerp(me.prevPunch[1], me.punch[1], alpha) * DEG;
     const ease = 1 - Math.exp(-dt / SHAKE_EASE);
-    shakeP += (punchP * kick - shakeP) * ease;
-    shakeY += (punchY * kick - shakeY) * ease;
+    shakeP += (punchP - shakeP) * ease;
+    shakeY += (punchY - shakeY) * ease;
     cam.rotation.set(input.pitch + shakeP, input.yaw + shakeY, 0);
     cam.position.set(px, py, pz);
     const def = game.activeDef(me);
@@ -734,6 +836,19 @@ function updateView(dt, alpha) {
     }
     showVm = me.zoom === 0;
     audio.setListener(px, py, pz, input.yaw);
+  } else if (me && !me.alive && mode !== 'menu' && spectateTarget()) {
+    // Objective rounds: watch a teammate over the shoulder until next round.
+    const t = spectateTarget();
+    const tx = lerp(t.prevPos[0], t.pos[0], alpha), ty = lerp(t.prevPos[1], t.pos[1], alpha) + 1.55, tz = lerp(t.prevPos[2], t.pos[2], alpha);
+    const f = [-Math.sin(t.yaw), -Math.cos(t.yaw)];
+    // Pull back 2.6 m, less if a wall is in the way.
+    const bx = -f[0], bz = -f[1], by = 0.35;
+    const len = Math.hypot(bx, by, bz);
+    const hit = game.world.raycast(tx, ty, tz, bx / len, by / len, bz / len, 2.6);
+    const back = hit ? Math.max(0.3, hit.t - 0.25) : 2.6;
+    cam.position.set(tx + (bx / len) * back, ty + (by / len) * back, tz + (bz / len) * back);
+    cam.rotation.set(t.pitch * 0.6 - 0.12, t.yaw, 0);
+    audio.setListener(tx, ty, tz, t.yaw);
   } else if (me && !me.alive && mode !== 'menu') {
     // Death cam: rise above the body and look at the killer.
     const k = killInfo;
@@ -784,17 +899,93 @@ function updateView(dt, alpha) {
     const f = (innerHeight / 2) / Math.tan((fov * DEG) / 2);
     const chOffset = me.alive ? [-Math.tan(punchY - shakeY) * f, -Math.tan(punchP - shakeP) * f] : null;
     hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0, chOffset });
-    hud.teamScores(game.teamKills, game.mode === 'teams' ? me.team : null);
+    hud.teamScores(game.objective ? game.rounds : game.teamKills, game.mode === 'teams' ? me.team : null);
     hud.goal(goalText());
     hud.message(centerMessage());
-    hud.prompt(pickupPrompt());
+    hud.prompt(pickupPrompt() || objectivePrompt());
+    roundHud();
   } else {
     hud.update(dt, { p: null, showFps: settings.showFps });
+    hud.roundTimer('');
+    hud.task(null);
+    hud.bombTag(false);
   }
+}
+
+// ---------- Objective rounds: HUD, spectating, bomb beeps ----------
+
+function clock(sec) {
+  sec = Math.max(0, Math.ceil(sec));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+function roundHud() {
+  if (!game.objective) { hud.roundTimer(''); hud.task(null); hud.bombTag(false); return; }
+  const r = game.round, b = game.bomb, t = game.time;
+  if (b.state === 'planted') hud.roundTimer('BOMB', 'bomb');
+  else if (r.state === 'freeze') hud.roundTimer(clock(r.endsAt - r.freezeEnd));
+  else if (r.state === 'live') hud.roundTimer(clock(r.endsAt - t), r.endsAt - t < 15 ? 'low' : '');
+  else hud.roundTimer(clock(0));
+  hud.bombTag(me.alive && b.state === 'carried' && b.carrier === me.id);
+  const task = me.alive ? me.task : null;
+  if (task) hud.task((t - task.start) / (task.end - task.start), task.kind === 'plant' ? 'PLANTING THE BOMB' : me.defuser ? 'DEFUSING (KIT)' : 'DEFUSING');
+  else hud.task(null);
+}
+
+// While dead in a round: the teammate to watch (or anyone, once the team
+// is wiped out). Starts two seconds after you die.
+function spectateTarget() {
+  if (!game.objective || !me || me.alive) { spectating = null; return null; }
+  if (killInfo && game.time - (killInfo.time ?? 0) < 2) return null;
+  let t = spectating ? game.getPlayer(spectating) : null;
+  if (!t || !t.alive) {
+    t = game.players.find((p) => p.alive && p.team === me.team && p !== me) ?? game.players.find((p) => p.alive && p !== me) ?? null;
+    spectating = t?.id ?? null;
+  }
+  return t;
+}
+
+// The planted bomb beeps faster and faster, like the real thing.
+function bombBeeps() {
+  const b = game.bomb;
+  if (mode === 'menu' || game.objective !== 'bomb' || b.state !== 'planted') return;
+  if (game.time < nextBeep) return;
+  const left = Math.max(0, b.explodeAt - game.time);
+  nextBeep = game.time + 0.1 + 0.9 * Math.min(1, left / 35);
+  audio.play('bombBeep', { pos: b.pos, volume: 0.55, jitter: 0 });
+}
+
+// "Hold E to plant" and friends.
+function objectivePrompt() {
+  if (!game.objective || !me.alive || buyMenu.open) return '';
+  const k = `<kbd>${keyName(settings.binds.use)}</kbd>`;
+  const b = game.bomb;
+  if (game.objective === 'bomb') {
+    if (me.task) return '';
+    if (canPlant(game, me)) return `Hold ${k} to plant the bomb`;
+    if (b.state === 'carried' && b.carrier === me.id) return siteAt(game.map, me.pos) ? '' : `<small style="opacity:.75">You have the bomb: plant it at site A or B</small>`;
+    if (canDefuse(game, me)) return `Hold ${k} to defuse${me.defuser ? ' (kit)' : ''}`;
+    return '';
+  }
+  const h = hostageInReach(game, me);
+  if (!h) return '';
+  if (h.state === 'follow' && h.leader === me.id) return `${k} Tell the hostage to wait`;
+  if (me.team === 'blue' && h.state !== 'rescued') return `${k} Lead the hostage`;
+  return '';
 }
 
 // What wins the match, under the top bar.
 function goalText() {
+  if (game.objective) {
+    const n = `ROUND ${game.round.n} · FIRST TO ${ROUND_WIN_LIMIT} ROUNDS`;
+    if (game.objective === 'bomb') {
+      const b = game.bomb;
+      if (b.state === 'planted') return me.team === 'blue' ? `${n} · DEFUSE THE BOMB AT ${b.site}` : `${n} · GUARD THE BOMB AT ${b.site}`;
+      return me.team === 'red' ? `${n} · PLANT THE BOMB AT A OR B` : `${n} · DEFEND SITES A AND B`;
+    }
+    const left = game.hostages.filter((h) => h.state !== 'rescued').length;
+    return me.team === 'blue' ? `${n} · RESCUE THE HOSTAGES (${left} LEFT)` : `${n} · GUARD THE HOSTAGES (${left} LEFT)`;
+  }
   if (game.mode === 'teams') return `FIRST TEAM TO ${TEAM_KILL_LIMIT} KILLS`;
   let lead = null;
   for (const p of game.players) if (!lead || p.kills > lead.kills) lead = p;
@@ -817,10 +1008,21 @@ function centerMessage() {
     return '';
   }
   if (scoresForced !== null) { scoresForced = null; showScoreboard(false); }
+  const r = game.round;
+  if (game.objective && r.state === 'end') {
+    const reasons = {
+      bomb: 'The bomb exploded', defused: 'The bomb was defused', eliminated: 'Enemy team eliminated',
+      time: game.objective === 'bomb' ? 'The bomb was never planted' : 'The hostages were not rescued', rescued: 'All hostages rescued',
+    };
+    const w = r.winner === 'red' ? 'RED' : 'BLUE';
+    return `<span class="round-win team-${r.winner}">${w} WINS THE ROUND</span><small>${reasons[r.reason] ?? ''} · ${game.rounds.red} - ${game.rounds.blue}</small>`;
+  }
+  if (alertMsg && performance.now() < alertMsg.until) return alertMsg.html;
   if (me.alive && game.frozen(me)) {
     const n = Math.max(1, Math.ceil(me.frozenUntil - t));
     if (n !== lastCount) { lastCount = n; audio.play('beep', { volume: 0.5 }); }
-    return `<span class="count">${n}</span><small>Get ready</small>`;
+    const what = game.objective ? `Round ${r.n} · ${me.team === 'red' ? 'Red' : 'Blue'} team · buy now (${keyName(settings.binds.buy)})` : 'Get ready';
+    return `<span class="count">${n}</span><small>${what}</small>`;
   }
   if (lastCount !== null) {
     lastCount = null;
@@ -829,6 +1031,14 @@ function centerMessage() {
   if (performance.now() < goUntil) return '<span class="count go">GO!</span>';
   if (performance.now() < teamMsgUntil) {
     return `<span class="team-${me.team}">You joined ${me.team === 'red' ? 'Red' : 'Blue'} team</span>`;
+  }
+  if (!me.alive && game.objective) {
+    const t2 = spectateTarget();
+    const watch = t2 ? ` · watching ${escapeHtml(t2.name)}` : '';
+    const k = killInfo;
+    const killer = k?.attacker ? game.getPlayer(k.attacker) : null;
+    if (killer && game.time - (k.time ?? 0) < 2) return `Killed by ${escapeHtml(killer.name)}<small>You're out until the next round</small>`;
+    return `<small>You're out until the next round${watch}</small>`;
   }
   if (!me.alive) {
     const k = killInfo;

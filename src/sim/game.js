@@ -6,17 +6,20 @@ import {
   U, TICK_DT, MAX_HEALTH, RESPAWN_TIME, START_MONEY, MAX_MONEY, KILL_REWARD,
   TAG_SPEED_MUL, TAG_RECOVER_TIME, STAND_EYE, DUCK_EYE, GRAVITY,
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
-  DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE,
+  DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE, NEVER, WATER_SPEED_MUL,
 } from './constants.js';
 import { WEAPONS, GEAR } from './weapons.js';
 import { World } from './world.js';
 import { movePlayer, aimDir, forwardVec, rightVec } from './movement.js';
 import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
+import { NavGrid } from './nav.js';
+import * as Obj from './objective.js';
 
 const DEG = Math.PI / 180;
 
 // Game modes. In 'ffa' everyone is on team 'ffa' and fights everyone; in
 // 'teams' players are 'red' or 'blue' and spawn on their own side of the map.
+// Teams on a bomb or hostage map plays objective rounds (objective.js).
 export const MODES = ['ffa', 'teams'];
 export const TEAMS = ['red', 'blue'];
 
@@ -24,7 +27,7 @@ export function emptyCmd() {
   return {
     fwd: 0, side: 0, jump: false, duck: false, walk: false,
     fire: false, alt: false, reload: false, slot: null, lastWeapon: false,
-    yaw: 0, pitch: 0, actions: null,
+    yaw: 0, pitch: 0, actions: null, use: false,
   };
 }
 
@@ -48,9 +51,8 @@ function mulberry32(seed) {
 
 export class Game {
   constructor(map, { seed = Date.now(), mode = 'ffa' } = {}) {
-    this.map = map;
     this.mode = MODES.includes(mode) ? mode : 'ffa';
-    this.world = new World(map.boxes);
+    this.setMap(map);
     this.players = [];
     this.time = 0;
     this.tickCount = 0;
@@ -67,6 +69,38 @@ export class Game {
     // 'live' while playing, 'over' while the winner is shown.
     this.match = { state: 'live', endsAt: 0, winner: null, winnerTeam: null, winnerName: '' };
     this.teamKills = { red: 0, blue: 0 };
+    // Objective rounds (see objective.js).
+    this.round = Obj.emptyRound();
+    this.rounds = { red: 0, blue: 0 };
+    this.bomb = Obj.emptyBomb();
+    this.hostages = [];
+    this.plan = 'A';
+  }
+
+  // Load a map. Call restartMatch() afterwards to put everyone in it.
+  setMap(map) {
+    this.map = map;
+    this.world = new World(map.boxes);
+    this._nav = null;
+    this.drops = [];
+    this.objective = Obj.objectiveFor(this.mode, map);
+    if (this.round) { this.round = Obj.emptyRound(); this.bomb = Obj.emptyBomb(); this.hostages = []; }
+  }
+
+  // Bots and hostages find their way with this; built on first use.
+  get nav() {
+    if (!this._nav) this._nav = new NavGrid(this.world, this.map.bounds);
+    return this._nav;
+  }
+
+  // Standing in water (wading is slower and footsteps splash)?
+  inWater(p) {
+    const water = this.map.water;
+    if (!water?.length || p.pos[1] > -0.05) return false;
+    for (const w of water) {
+      if (p.pos[0] > w.min[0] && p.pos[0] < w.max[0] && p.pos[2] > w.min[1] && p.pos[2] < w.max[1] && p.pos[1] < w.y) return true;
+    }
+    return false;
   }
 
   killLimit() {
@@ -95,12 +129,15 @@ export class Game {
       spin: 0, fireHeld: false, altHeld: false, reloadHeld: false,
       tagMul: 1, lastHitDir: null, lastAttacker: null, lastHurtTime: -10,
       nextStab: 0, lastMelee: -10, frozenUntil: 0, life: 0,
+      task: null, useHeld: false, defuser: false,
     };
     this.players.push(p);
     return p;
   }
 
   removePlayer(id) {
+    const p = this.getPlayer(id);
+    if (p && this.objective) { Obj.dropBomb(this, p); Obj.releaseHostages(this, p); }
     this.players = this.players.filter((p) => p.id !== id);
   }
 
@@ -116,6 +153,7 @@ export class Game {
   // after humans so the humans stay balanced too.
   setMode(mode) {
     this.mode = MODES.includes(mode) ? mode : 'ffa';
+    this.objective = Obj.objectiveFor(this.mode, this.map);
     const order = [...this.players.filter((p) => !p.isBot), ...this.players.filter((p) => p.isBot)];
     for (const p of order) p.team = null;
     for (const p of order) p.team = this.defaultTeam();
@@ -127,21 +165,34 @@ export class Game {
   resetScores() {
     this.match = { state: 'live', endsAt: 0, winner: null, winnerTeam: null, winnerName: '' };
     this.teamKills = { red: 0, blue: 0 };
+    this.rounds = { red: 0, blue: 0 };
+    this.round = Obj.emptyRound();
+    this.bomb = Obj.emptyBomb();
+    this.hostages = [];
     this.drops = [];
     for (const p of this.players) { p.kills = 0; p.deaths = 0; p.headshots = 0; p.money = START_MONEY; }
   }
 
-  // A fresh match: scores reset and everyone respawns, frozen for START_DELAY.
+  // A fresh match: scores reset and everyone respawns, frozen for START_DELAY
+  // (or the first round's buy time, in objective rounds).
   restartMatch() {
     this.resetScores();
+    this.emit({ type: 'matchStart' });
+    if (this.objective) return Obj.startRound(this);
     for (const p of this.players) this.spawn(p);
     for (const p of this.players) p.frozenUntil = this.time + START_DELAY;
-    this.emit({ type: 'matchStart' });
   }
 
   // Someone joining a match in progress spawns right away, frozen for
-  // START_DELAY so they get a moment to look around and buy.
+  // START_DELAY so they get a moment to look around and buy. In objective
+  // rounds you wait for the next round unless this one has only just begun.
   join(p) {
+    if (this.objective && this.round.state !== 'none') {
+      if (!Obj.canSpawnNow(this)) { p.alive = false; p.respawnAt = NEVER; return; }
+      this.spawn(p);
+      p.frozenUntil = Math.max(this.round.freezeEnd, this.time + (this.round.state === 'freeze' ? 0 : 1));
+      return;
+    }
     this.spawn(p);
     p.frozenUntil = this.time + START_DELAY;
   }
@@ -161,10 +212,15 @@ export class Game {
     return { ...this.match, teamKills: this.teamKills };
   }
 
+  objectiveInfo() {
+    return Obj.objectiveInfo(this);
+  }
+
   // Change sides in teams mode (the Switch team key). A living player is
   // taken out without it counting as a death and respawns with the new team.
   setTeam(p, team) {
     if (this.mode !== 'teams' || !TEAMS.includes(team) || p.team === team) return false;
+    if (this.objective) { Obj.dropBomb(this, p); Obj.releaseHostages(this, p); p.task = null; }
     p.team = team;
     if (p.alive) {
       p.alive = false;
@@ -172,6 +228,9 @@ export class Game {
       p.zoom = 0;
       p.respawnAt = this.time + 1;
     }
+    // Objective rounds: you come back on the new side next round (or right
+    // away during the buy time).
+    if (this.objective) p.respawnAt = this.round.state === 'freeze' ? this.time : NEVER;
     this.emit({ type: 'team', pid: p.id, team });
     return true;
   }
@@ -224,6 +283,7 @@ export class Game {
     p.punch = [0, 0]; p.prevPunch = [0, 0];
     p.zoom = 0; p.spin = 0; p.reloading = false; p.shotsFired = 0;
     p.tagMul = 1;
+    p.task = null; p.defuser = false;
     p.deployEnd = this.time + 0.3; p.nextAttack = this.time + 0.3; p.nextStab = this.time + 0.3;
     if (this.match.state === 'over') p.frozenUntil = this.match.endsAt + 1;
 
@@ -232,11 +292,21 @@ export class Game {
     if (lo.secondary && lo.secondary !== 'usp') this.buy(p, lo.secondary, true);
     if (lo.armor) this.buy(p, lo.armor, true);
     if (lo.primary) this.buy(p, lo.primary, true);
+    if (lo.defuser) this.buy(p, 'defuser', true);
     this.emit({ type: 'spawn', pid: p.id });
   }
 
   buy(p, item, silent = false) {
     if (!p.alive) return false;
+    if (item === 'defuser') {
+      // Defuse kit: Blue only, in bomb rounds.
+      if (p.defuser || p.team !== 'blue' || this.objective !== 'bomb' || p.money < GEAR.defuser.price) return false;
+      p.money -= GEAR.defuser.price;
+      p.defuser = true;
+      p.loadout.defuser = true;
+      if (!silent) this.emit({ type: 'buy', pid: p.id, item });
+      return true;
+    }
     if (GEAR[item]) {
       const g = GEAR[item];
       if (item === 'kevlar' && p.armor >= 100) return false;
@@ -276,6 +346,7 @@ export class Game {
     this.tickCount++;
     const dt = TICK_DT;
     if (this.match.state === 'over' && this.time >= this.match.endsAt) this.restartMatch();
+    if (this.objective) Obj.preTick(this);
 
     for (const p of this.players) {
       p.prevPos[0] = p.pos[0]; p.prevPos[1] = p.pos[1]; p.prevPos[2] = p.pos[2];
@@ -286,26 +357,33 @@ export class Game {
       if (!p.alive) {
         // Dead players can still change team, but not buy.
         if (cmd.actions) for (const a of cmd.actions) if (a.type === 'team') this.handleAction(p, a);
-        if (this.time >= p.respawnAt) this.spawn(p);
+        if (this.time >= p.respawnAt && (!this.objective || Obj.canSpawnNow(this))) {
+          this.spawn(p);
+          if (this.objective) p.frozenUntil = this.round.freezeEnd;
+        }
         continue;
       }
       if (cmd.actions) for (const a of cmd.actions) this.handleAction(p, a);
+      if (this.objective) Obj.playerUse(this, p, this.frozen(p) ? { ...cmd, use: false } : cmd);
 
       this.moveStep(p, cmd, dt);
       // Frozen (match start / match over): look, switch and buy, but no shooting.
       this.updateWeapon(p, this.frozen(p) ? { ...cmd, fire: false, alt: false } : cmd, dt);
       this.touchDrops(p);
+      if (this.objective === 'bomb') Obj.touchBomb(this, p);
 
       // Fell out of the world.
       if (p.pos[1] < -20) this.kill(p, null, null, false, false);
     }
     this.updateDrops(dt);
+    if (this.objective) Obj.update(this, dt);
   }
 
   // Look + movement for one tick. Also used by online clients to predict
   // their own player between server snapshots.
   moveStep(p, cmd, dt = TICK_DT) {
-    if (this.frozen(p)) cmd = { ...cmd, fwd: 0, side: 0, jump: false };
+    // Frozen, or busy planting/defusing: you can look around but not move.
+    if (this.frozen(p) || p.task) cmd = { ...cmd, fwd: 0, side: 0, jump: false };
     p.yaw = cmd.yaw;
     p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, cmd.pitch));
 
@@ -316,6 +394,7 @@ export class Game {
     let speed = def ? def.speed : 250;
     if (def && def.scopedSpeed && p.zoom > 0) speed = def.scopedSpeed;
     if (def && def.spinUp && p.spin > 0) speed *= 0.85;
+    if (this.inWater(p)) speed *= WATER_SPEED_MUL;
     movePlayer(this.world, p, cmd, dt, speed * U);
     // Smooth stair steps for the camera.
     p.stepOffset *= Math.max(0, 1 - dt * 14);
@@ -801,12 +880,20 @@ export class Game {
     }
   }
 
-  kill(victim, attacker, def, headshot, wallbang) {
+  // cause: 'bomb' for the bomb going off.
+  kill(victim, attacker, def, headshot, wallbang, cause = null) {
     victim.alive = false;
     victim.deaths++;
-    victim.respawnAt = this.time + RESPAWN_TIME;
+    // Objective rounds: one life per round.
+    victim.respawnAt = this.objective ? NEVER : this.time + RESPAWN_TIME;
     victim.reloading = false;
     victim.zoom = 0;
+    if (this.objective) {
+      if (victim.task?.kind === 'defuse') this.bomb.defuser = null;
+      victim.task = null;
+      Obj.dropBomb(this, victim);
+      Obj.releaseHostages(this, victim);
+    }
     if (attacker && attacker !== victim) {
       attacker.kills++;
       if (headshot) attacker.headshots++;
@@ -815,14 +902,14 @@ export class Game {
     }
     this.emit({
       type: 'kill', attacker: attacker?.id ?? null, victim: victim.id, weapon: def?.id ?? null,
-      headshot, wallbang, dir: victim.lastHitDir,
+      headshot, wallbang, dir: victim.lastHitDir, cause,
     });
     // The body vanishes and its best gun stays on the ground (CS drops the
     // primary, or the pistol if there's no primary).
     const slot = victim.weapons.primary ? 'primary' : victim.weapons.secondary ? 'secondary' : null;
     if (slot) this.dropWeapon(victim, slot, false);
 
-    if (attacker && attacker !== victim && this.match.state === 'live') {
+    if (attacker && attacker !== victim && this.match.state === 'live' && !this.objective) {
       if (this.mode === 'teams') {
         if (this.teamKills[attacker.team] >= TEAM_KILL_LIMIT) this.endMatch(null, attacker.team);
       } else if (attacker.kills >= FFA_KILL_LIMIT) {

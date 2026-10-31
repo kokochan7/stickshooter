@@ -21,12 +21,14 @@ export default {
 
     // How many people are in each quick play room, for the menu.
     if (path === '/api/rooms' && request.method === 'GET') {
-      const counts = {};
+      const counts = {}, maps = {};
       await Promise.all(Object.values(PUBLIC_ROOMS).map(async (room) => {
         const stub = env.ROOMS.get(env.ROOMS.idFromName(room));
-        counts[room] = await stub.humanCount().catch(() => 0);
+        const info = await stub.roomInfo().catch(() => null);
+        counts[room] = info?.humans ?? 0;
+        if (info?.map) maps[room] = info.map;
       }));
-      return json({ rooms: counts });
+      return json({ rooms: counts, maps });
     }
 
     if (path === '/api/rooms' && request.method === 'POST') {

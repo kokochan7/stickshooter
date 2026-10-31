@@ -1,7 +1,16 @@
-// Ground-level navigation grid + A* for bots.
+// Navigation grid + A* for bots (and hostages).
+//
+// Each cell gets a floor height: the lowest surface under it with standing
+// room above (so the ground under a high bridge, the inside of a building
+// rather than its roof, the top of a platform or a stair). A cell is blocked
+// if something sits between knee and head height above its floor, and you
+// can only move to a neighbor whose floor is at most a stair step higher
+// (dropping down is fine).
 
 const CELL = 0.5;
 const CLEARANCE = 0.45;
+const HEADROOM = 1.75;
+const MAX_STEP = 0.46; // a little over STEP_HEIGHT, so 0.45 m ledges count
 
 export class NavGrid {
   constructor(world, bounds) {
@@ -9,16 +18,75 @@ export class NavGrid {
     this.w = Math.ceil((bounds.max[0] - bounds.min[0]) / CELL);
     this.h = Math.ceil((bounds.max[1] - bounds.min[1]) / CELL);
     this.blocked = new Uint8Array(this.w * this.h);
+    this.floor = new Float32Array(this.w * this.h);
+    const column = [];
     for (let j = 0; j < this.h; j++) {
       for (let i = 0; i < this.w; i++) {
         const [x, z] = this.cellCenter(i, j);
+        const k = j * this.w + i;
+        // Boxes in this cell's column, lowest top first.
+        column.length = 0;
+        for (const b of world.boxes) {
+          if (x > b.min[0] && x < b.max[0] && z > b.min[2] && z < b.max[2]) column.push(b);
+        }
+        column.sort((a, b) => a.max[1] - b.max[1]);
+        let floor = null;
+        for (const c of column) {
+          const top = c.max[1];
+          if (!column.some((o) => o.max[1] > top + 1e-3 && o.min[1] < top + HEADROOM)) { floor = top; break; }
+        }
+        if (floor === null) { this.blocked[k] = 1; this.floor[k] = -100; continue; }
+        this.floor[k] = floor;
         const r = CLEARANCE;
-        // Anything between knee and head height blocks walking.
-        if (world.overlaps(x - r, 0.35, z - r, x + r, 1.7, z + r)) this.blocked[j * this.w + i] = 1;
+        // Anything between knee and head height above the floor blocks walking.
+        if (world.overlaps(x - r, floor + 0.47, z - r, x + r, floor + 1.7, z + r)) this.blocked[k] = 1;
       }
     }
+    // Connected areas (moving both ways). Crate tops, the fountain rim and
+    // the like are little islands you can stand on but not walk to; bots
+    // should only ever be sent to the main area.
+    this.region = new Int32Array(this.w * this.h).fill(-1);
+    const sizes = [];
+    const stack = [];
+    for (let k0 = 0; k0 < this.region.length; k0++) {
+      if (this.blocked[k0] || this.region[k0] >= 0) continue;
+      const id = sizes.length;
+      let size = 0;
+      this.region[k0] = id;
+      stack.push(k0);
+      while (stack.length) {
+        const c = stack.pop();
+        size++;
+        const ci = c % this.w, cj = (c / this.w) | 0;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const ni = ci + di, nj = cj + dj;
+          if (this.isBlocked(ni, nj)) continue;
+          const n = nj * this.w + ni;
+          if (this.region[n] >= 0 || Math.abs(this.floor[n] - this.floor[c]) > MAX_STEP) continue;
+          this.region[n] = id;
+          stack.push(n);
+        }
+      }
+      sizes.push(size);
+    }
+    this.main = sizes.indexOf(Math.max(...sizes));
     this.open = [];
-    for (let k = 0; k < this.blocked.length; k++) if (!this.blocked[k]) this.open.push(k);
+    for (let k = 0; k < this.blocked.length; k++) if (this.region[k] === this.main) this.open.push(k);
+  }
+
+  // A cell in the main walkable area (not a crate top or a sealed room)?
+  isMain(i, j) {
+    return !this.isBlocked(i, j) && this.region[j * this.w + i] === this.main;
+  }
+
+  // Can you walk from cell a to its neighbor b (by index)?
+  canStep(a, b) {
+    return this.floor[b] - this.floor[a] <= MAX_STEP;
+  }
+
+  floorAt(x, z) {
+    const [i, j] = this.cellOf(x, z);
+    return this.floor[j * this.w + i];
   }
 
   cellCenter(i, j) {
@@ -41,12 +109,15 @@ export class NavGrid {
     return this.cellCenter(k % this.w, Math.floor(k / this.w));
   }
 
-  nearestOpen(i, j) {
-    if (!this.isBlocked(i, j)) return [i, j];
-    for (let r = 1; r < 8; r++) {
+  // Nearest open cell; mainOnly: nearest cell of the main area (for goals,
+  // so a target on top of a crate becomes the floor next to it).
+  nearestOpen(i, j, mainOnly = false) {
+    const ok = (a, b) => (mainOnly ? this.isMain(a, b) : !this.isBlocked(a, b));
+    if (ok(i, j)) return [i, j];
+    for (let r = 1; r < 12; r++) {
       for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
         if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
-        if (!this.isBlocked(i + di, j + dj)) return [i + di, j + dj];
+        if (ok(i + di, j + dj)) return [i + di, j + dj];
       }
     }
     return null;
@@ -56,18 +127,25 @@ export class NavGrid {
   walkable(ax, az, bx, bz) {
     const d = Math.hypot(bx - ax, bz - az);
     const steps = Math.ceil(d / (CELL * 0.5));
+    let prev = -1;
     for (let s = 0; s <= steps; s++) {
       const t = steps === 0 ? 0 : s / steps;
       const [i, j] = this.cellOf(ax + (bx - ax) * t, az + (bz - az) * t);
       if (this.isBlocked(i, j)) return false;
+      const k = j * this.w + i;
+      if (prev >= 0 && k !== prev && !this.canStep(prev, k)) return false;
+      prev = k;
     }
     return true;
   }
 
   // A* from world point a to b. Returns a list of [x, z] waypoints or null.
   findPath(ax, az, bx, bz) {
-    const s0 = this.nearestOpen(...this.cellOf(ax, az));
-    const g0 = this.nearestOpen(...this.cellOf(bx, bz));
+    // Standing in a blocked cell (hugging a wall): step out into the main
+    // area, not onto whatever roof or ledge happens to be nearest.
+    const c0 = this.cellOf(ax, az);
+    const s0 = this.isBlocked(...c0) ? this.nearestOpen(...c0, true) ?? this.nearestOpen(...c0) : c0;
+    const g0 = this.nearestOpen(...this.cellOf(bx, bz), true);
     if (!s0 || !g0) return null;
     const W = this.w;
     const start = s0[1] * W + s0[0], goal = g0[1] * W + g0[0];
@@ -91,6 +169,8 @@ export class NavGrid {
         if (this.isBlocked(ni, nj)) continue;
         if (di && dj && (this.isBlocked(ci + di, cj) || this.isBlocked(ci, cj + dj))) continue;
         const n = nj * W + ni;
+        if (!this.canStep(cur, n)) continue;
+        if (di && dj && (!this.canStep(cur, cj * W + ci + di) || !this.canStep(cur, (cj + dj) * W + ci))) continue;
         if (closed[n]) continue;
         const g = gScore[cur] + (di && dj ? 1.4142 : 1);
         if (g < gScore[n]) {
