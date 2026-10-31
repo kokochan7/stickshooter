@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game, emptyCmd } from '../src/sim/game.js';
 import { isEnemy } from '../src/sim/combat.js';
-import { sanitizeCmd, cleanName, packOwn, packOther } from '../src/net/protocol.js';
+import { sanitizeCmd, cleanName, packOwn, packOther, roomMode } from '../src/net/protocol.js';
 import { YARD } from '../src/maps/yard.js';
 
 test('free-for-all players are enemies, teammates are not', () => {
@@ -62,4 +62,14 @@ test('lag compensation hook wraps each shot and is undone', () => {
   assert.equal(calls, 1);
   assert.deepEqual(b.pos, [40, 0, 40], 'B is put back after the trace');
   assert.ok(b.health < 100 || !b.alive, 'the rewound B was hit');
+});
+
+test('room names pick the mode, and team switches survive sanitizeCmd', () => {
+  assert.equal(roomMode('public'), 'ffa');
+  assert.equal(roomMode('public-teams'), 'teams');
+  assert.equal(roomMode('teamsters'), 'ffa');
+  const c = sanitizeCmd({ actions: [{ type: 'team', team: 'blue' }, { type: 'team', team: 'green' }] });
+  assert.deepEqual(c.actions, [{ type: 'team', team: 'blue' }]);
+  const p = new Game(YARD, { mode: 'teams' }).addPlayer({ name: 'a' });
+  assert.equal(packOwn(p).team, 'red');
 });

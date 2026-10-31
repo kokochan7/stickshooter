@@ -13,7 +13,7 @@ import { TICK_DT, TICK_RATE } from '../src/sim/constants.js';
 import { YARD } from '../src/maps/yard.js';
 import {
   PROTOCOL_VERSION, SNAP_EVERY, MAX_LAG_COMP, MAX_HUMANS, BOT_FILL,
-  packOwn, packOther, sanitizeCmd, cleanName,
+  packOwn, packOther, sanitizeCmd, cleanName, roomMode,
 } from '../src/net/protocol.js';
 
 const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil'];
@@ -41,8 +41,14 @@ export class GameRoom extends DurableObject {
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected a WebSocket', { status: 426 });
     }
+    // The room's name decides its mode (public = FFA, public-teams = Teams).
+    // The socket remembers it in case the object hibernates before hello.
+    const room = decodeURIComponent(new URL(request.url).pathname.split('/').pop() ?? '').toLowerCase();
+    const mode = roomMode(room);
+    if (!this.humans() && this.game.mode !== mode) this.game.setMode(mode);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ mode });
     if (this.humans() >= MAX_HUMANS) {
       server.send(JSON.stringify({ t: 'full' }));
       server.close(4001, 'Room is full');
@@ -72,12 +78,14 @@ export class GameRoom extends DurableObject {
     try { msg = JSON.parse(data); } catch { return; }
 
     if (msg.t === 'hello' && !c.player) {
-      const p = this.game.addPlayer({ name: cleanName(msg.name), team: 'ffa' });
+      const mode = ws.deserializeAttachment()?.mode;
+      if (mode && !this.humans() && this.game.mode !== mode) this.game.setMode(mode);
+      const p = this.game.addPlayer({ name: cleanName(msg.name) });
       p.respawnAt = this.game.time;
       c.player = p;
       this.fillBots();
       ws.send(JSON.stringify({
-        t: 'welcome', v: PROTOCOL_VERSION, id: p.id, time: this.game.time,
+        t: 'welcome', v: PROTOCOL_VERSION, id: p.id, mode: this.game.mode, time: this.game.time,
         tickRate: TICK_RATE, snapEvery: SNAP_EVERY,
       }));
       this.start();
@@ -119,7 +127,7 @@ export class GameRoom extends DurableObject {
     while (this.brains.size < want) {
       const used = new Set(this.game.players.map((p) => p.name));
       const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Bot ${this.brains.size + 1}`;
-      const p = this.game.addPlayer({ name, team: 'ffa', isBot: true });
+      const p = this.game.addPlayer({ name, isBot: true });
       this.brains.set(p.id, new BotBrain(this.game, p, this.nav, 'normal'));
     }
   }

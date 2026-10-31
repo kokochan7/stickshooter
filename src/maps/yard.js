@@ -107,12 +107,27 @@ const spawnSpots = [
   [29, 0, 8], [24, 0, 29], [14, 0, 26], [-2, PH, 28], [-28, 0, 28],
   [-29, 0, 9], [-29, 0, -14], [8, 0, -26], [14, 0, 10], [-15, 0, 18],
 ];
-const spawns = spawnSpots.map(([x, y, z]) => ({ pos: [x, y, z], yaw: Math.atan2(x, z) }));
+const toSpawn = ([x, y, z]) => ({ pos: [x, y, z], yaw: Math.atan2(x, z) });
+const spawns = spawnSpots.map(toSpawn);
+
+// Teams mode: Red starts around the north warehouse, Blue on and around the
+// south platform, so the two sides meet in the middle.
+const teamSpawns = {
+  red: [
+    [-18, 0, -21], [-7, 0, -25], [-12, 0, -30], [-20, 0, -30],
+    [8, 0, -26], [14, 0, -29], [20, 0, -25], [28, 0, -28],
+  ].map(toSpawn),
+  blue: [
+    [-2, PH, 28], [-6, PH, 30.5], [2, PH, 26], [-9, PH, 26],
+    [14, 0, 26], [18, 0, 30], [24, 0, 29], [-24, 0, 29],
+  ].map(toSpawn),
+};
 
 export const YARD = {
   name: 'Yard',
   boxes,
   spawns,
+  teamSpawns,
   bounds: { min: [-32, -32], max: [32, 32] },
   sky: { top: 0x5fa8e8, bottom: 0xcfe6f5 },
   groundColor: COLORS.concrete,

@@ -20,6 +20,7 @@ import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
 import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons } from './client/hud.js';
 import { OnlineSession, roomUrl } from './net/online.js';
+import { DEFAULT_ROOM, TEAMS_ROOM } from './net/protocol.js';
 
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -27,7 +28,7 @@ const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphit
 
 const settings = loadSettings();
 const canvas = $('game');
-const game = new Game(YARD);
+const game = new Game(YARD, { mode: settings.mode });
 const nav = new NavGrid(game.world, YARD.bounds);
 const view = new GameView(canvas, YARD, game.world, settings);
 const audio = new Audio();
@@ -47,7 +48,7 @@ let me = null;
 let net = null; // OnlineSession while playing online
 const brains = new Map();
 let mode = 'menu'; // menu | playing | paused
-let thirdPerson = false;
+let teamMsgUntil = 0; // "You joined ..." banner after switching team
 let pendingActions = [];
 let acc = 0;
 let last = performance.now();
@@ -64,12 +65,16 @@ $('m-diff').value = settings.difficulty;
 $('m-bots').addEventListener('change', () => { settings.bots = +$('m-bots').value; onSettingChange('bots'); });
 $('m-diff').addEventListener('change', () => { settings.difficulty = $('m-diff').value; onSettingChange('difficulty'); });
 
+// Practice bots. In FFA everyone (bots included) fights everyone. In Teams the
+// bots are dealt Blue first so the player, who joins Red, evens the sides.
 function setupBots() {
   for (const id of brains.keys()) { game.removePlayer(id); view.removeView(id); }
   brains.clear();
+  game.setMode(settings.mode);
   const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
   for (let i = 0; i < settings.bots; i++) {
-    const p = game.addPlayer({ name: names[i % names.length], team: 'shadow', isBot: true });
+    const team = game.mode === 'teams' ? (i % 2 ? 'red' : 'blue') : 'ffa';
+    const p = game.addPlayer({ name: names[i % names.length], team, isBot: true });
     brains.set(p.id, new BotBrain(game, p, nav, settings.difficulty));
   }
 }
@@ -81,10 +86,31 @@ function onSettingChange(k) {
   if (k === 'binds') renderControls();
   if (k === 'name' && me) me.name = settings.name;
   if (k === 'bots' && !net) setupBots();
+  if (k === 'mode' && !net) setupBots();
   if (k === 'difficulty' && !net) for (const b of brains.values()) b.setDifficulty(settings.difficulty);
 }
 
 // ---------- Screens ----------
+
+// Free for all / Teams, for both practice and online.
+function renderModePick() {
+  for (const b of document.querySelectorAll('.mode-btn')) {
+    const on = b.dataset.mode === settings.mode;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+}
+renderModePick();
+for (const b of document.querySelectorAll('.mode-btn')) {
+  b.addEventListener('click', () => {
+    if (settings.mode === b.dataset.mode) return;
+    settings.mode = b.dataset.mode;
+    saveSettings(settings);
+    renderModePick();
+    renderControls();
+    onSettingChange('mode');
+  });
+}
 
 // Control list on the menu and the in-game hint follow the key binds.
 function renderControls() {
@@ -94,9 +120,10 @@ function renderControls() {
     `${k('duck')} crouch`, `${k('walk')} walk`,
     '<kbd>Mouse 1</kbd> fire', '<kbd>Mouse 2</kbd> scope',
     `${k('reload')} reload`, `${k('buy')} buy`,
-    `${k('scores')} scores`, '<kbd>Esc</kbd> pause',
+    `${k('scores')} scores`, `${k('switchTeam')} switch team`, '<kbd>Esc</kbd> pause',
   ].map((t) => `<div>${t}</div>`).join('');
-  $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.lastWeapon)} — weapons &nbsp;·&nbsp; ${keyName(b.thirdPerson)} — third person`;
+  const teamHint = settings.mode === 'teams' ? ` &nbsp;·&nbsp; ${keyName(b.switchTeam)} — switch team` : '';
+  $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.lastWeapon)} — weapons${teamHint}`;
 }
 renderControls();
 
@@ -134,7 +161,7 @@ function startPlaying() {
   startAudio();
   if (net) return showPlaying();
   if (!me) {
-    me = game.addPlayer({ name: settings.name, team: 'white' });
+    me = game.addPlayer({ name: settings.name });
     me.respawnAt = game.time;
   }
   showPlaying();
@@ -171,7 +198,7 @@ function goOnline() {
   $('net-status').textContent = 'Connecting…';
   $('net-status').classList.remove('hidden');
   net = new OnlineSession(game, {
-    url: roomUrl(),
+    url: roomUrl(settings.mode === 'teams' ? TEAMS_ROOM : DEFAULT_ROOM),
     name: settings.name,
     onWelcome: (p) => {
       me = p;
@@ -231,8 +258,8 @@ input.on('key', (code) => {
   else if (code === 'Escape' && buyMenu.open) setBuyMenu(false);
   else if (buyMenu.open && /^(Digit|Numpad)\d$/.test(code)) buyMenu.key(+code.slice(-1));
   else if (buyMenu.open && code === 'Backspace') buyMenu.key('back');
-  else if (code === b.thirdPerson) thirdPerson = !thirdPerson;
-  else if (code === b.scores) hud.showScores(true, game.players, me?.id);
+  else if (code === b.switchTeam) switchTeam();
+  else if (code === b.scores) hud.showScores(true, game.players, me?.id, game.mode);
 });
 input.on('keyup', (code) => {
   if (code === settings.binds.scores) hud.showScores(false);
@@ -248,7 +275,14 @@ function viewToWorld(out) {
 }
 
 function isFirstPerson(p) {
-  return p === me && !thirdPerson;
+  return p === me;
+}
+
+// Red <-> Blue. The sim takes us out and respawns us on the other side.
+function switchTeam() {
+  if (!me || game.mode !== 'teams') return;
+  if (buyMenu.open) setBuyMenu(false);
+  pendingActions.push({ type: 'team', team: me.team === 'red' ? 'blue' : 'red' });
 }
 
 function handleEvent(e) {
@@ -359,6 +393,9 @@ function handleEvent(e) {
     case 'buy':
       if (p === me) { audio.play('buy', { volume: 0.4 }); if (buyMenu.open) buyMenu.render(me); }
       break;
+    case 'team':
+      if (p === me) { killInfo = null; teamMsgUntil = performance.now() + 2500; }
+      break;
     case 'spawn': {
       const v = view.views.get(p.id);
       if (v) v.man.revive();
@@ -419,7 +456,8 @@ function updateView(dt, alpha) {
     const y = lerp(p.prevPos[1], p.pos[1], alpha);
     const z = lerp(p.prevPos[2], p.pos[2], alpha);
     footsteps(p, dt, x, z);
-    const visible = (p.alive || v.man.deathT >= 0) && !(p === me && !thirdPerson);
+    v.man.setTeam(p.team);
+    const visible = (p.alive || v.man.deathT >= 0) && p !== me;
     v.man.setVisible(visible);
     v.shadow.visible = visible && p.alive;
     if (!visible) continue;
@@ -452,22 +490,13 @@ function updateView(dt, alpha) {
     const punchY = lerp(me.prevPunch[1], me.punch[1], alpha) * DEG;
     cam.rotation.set(input.pitch + punchP, input.yaw + punchY, 0);
     cam.position.set(px, py, pz);
-    if (thirdPerson) {
-      // Over-the-shoulder camera, pulled in if a wall is behind.
-      const back = _v.set(0.45, 0.25, 2.6).applyEuler(cam.rotation);
-      const len = back.length();
-      back.divideScalar(len);
-      const hit = game.world.raycast(px, py, pz, back.x, back.y, back.z, len);
-      const d = hit ? Math.max(0.3, hit.t - 0.2) : len;
-      cam.position.set(px + back.x * d, py + back.y * d, pz + back.z * d);
-    }
     const def = game.activeDef(me);
     if (def?.zoomLevels && me.zoom > 0) {
       // CS zoom FOVs are horizontal at 4:3; convert to vertical.
       const h = def.zoomLevels[me.zoom - 1] * DEG;
       fov = (2 * Math.atan(Math.tan(h / 2) * 0.75)) / DEG;
     }
-    showVm = !thirdPerson && me.zoom === 0;
+    showVm = me.zoom === 0;
     audio.setListener(px, py, pz, input.yaw);
   } else if (me && !me.alive && mode !== 'menu') {
     // Death cam: rise above the body and look at the killer.
@@ -494,6 +523,7 @@ function updateView(dt, alpha) {
   if (me && me.alive) {
     const w = me.weapons[me.active];
     view.viewModel.setWeapon(w ? w.id : null);
+    view.viewModel.setTeam(me.team);
   }
   view.viewModel.update(dt, {
     mouseDX: mdx, mouseDY: mdy, speed: me ? Math.hypot(me.vel[0], me.vel[2]) : 0, onGround: me?.onGround ?? true,
@@ -514,7 +544,11 @@ function updateView(dt, alpha) {
     let reloadFrac = null;
     if (me.reloading && def && !def.shellReload) reloadFrac = 1 - (me.reloadEnd - game.time) / def.reload;
     hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 });
-    if (!me.alive) {
+    hud.teamScores(game.players, game.mode === 'teams' ? me.team : null);
+    const teamName = me.team === 'red' ? 'Red' : 'Blue';
+    if (performance.now() < teamMsgUntil) {
+      hud.message(`<span class="team-${me.team}">You joined ${teamName} team</span>`);
+    } else if (!me.alive) {
       const k = killInfo;
       const killer = k?.attacker ? game.getPlayer(k.attacker) : null;
       const secs = Math.max(0, Math.ceil(me.respawnAt - game.time));

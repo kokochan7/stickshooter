@@ -162,8 +162,9 @@ export class GameView {
   viewFor(p) {
     let v = this.views.get(p.id);
     if (!v) {
-      // Everyone is the white stickman until skins arrive.
+      // White stickman until skins arrive; Teams mode tints it (setTeam).
       const man = new Stickman({ body: 0xffffff, eyes: 0x15171a, outline: 0x22252b });
+      man.setTeam(p.team);
       this.scene.add(man.root);
       const shadow = new THREE.Mesh(this.shadowGeo, this.shadowMat);
       this.scene.add(shadow);

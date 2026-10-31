@@ -13,6 +13,11 @@ import { traceBullet, computeDamage, isEnemy } from './combat.js';
 
 const DEG = Math.PI / 180;
 
+// Game modes. In 'ffa' everyone is on team 'ffa' and fights everyone; in
+// 'teams' players are 'red' or 'blue' and spawn on their own side of the map.
+export const MODES = ['ffa', 'teams'];
+export const TEAMS = ['red', 'blue'];
+
 export function emptyCmd() {
   return {
     fwd: 0, side: 0, jump: false, duck: false, walk: false,
@@ -37,8 +42,9 @@ function mulberry32(seed) {
 }
 
 export class Game {
-  constructor(map, { seed = Date.now() } = {}) {
+  constructor(map, { seed = Date.now(), mode = 'ffa' } = {}) {
     this.map = map;
+    this.mode = MODES.includes(mode) ? mode : 'ffa';
     this.world = new World(map.boxes);
     this.players = [];
     this.time = 0;
@@ -51,7 +57,7 @@ export class Game {
     this.lagComp = null;
   }
 
-  addPlayer({ name, team, isBot = false }) {
+  addPlayer({ name, team = this.defaultTeam(), isBot = false }) {
     const p = {
       id: this.nextId++, name, team, isBot,
       alive: false, respawnAt: this.time + (isBot ? 0.5 + this.rand() * 1.5 : 0),
@@ -77,6 +83,38 @@ export class Game {
     this.players = this.players.filter((p) => p.id !== id);
   }
 
+  // The team a new player joins: the smaller one in teams, 'ffa' otherwise.
+  defaultTeam() {
+    if (this.mode !== 'teams') return 'ffa';
+    const n = { red: 0, blue: 0 };
+    for (const p of this.players) if (p.team in n) n[p.team]++;
+    return n.red <= n.blue ? 'red' : 'blue';
+  }
+
+  // Switch mode and put everyone on a team that fits it. Bots are dealt out
+  // after humans so the humans stay balanced too.
+  setMode(mode) {
+    this.mode = MODES.includes(mode) ? mode : 'ffa';
+    const order = [...this.players.filter((p) => !p.isBot), ...this.players.filter((p) => p.isBot)];
+    for (const p of order) p.team = null;
+    for (const p of order) p.team = this.defaultTeam();
+  }
+
+  // Change sides in teams mode (the Switch team key). A living player is
+  // taken out without it counting as a death and respawns with the new team.
+  setTeam(p, team) {
+    if (this.mode !== 'teams' || !TEAMS.includes(team) || p.team === team) return false;
+    p.team = team;
+    if (p.alive) {
+      p.alive = false;
+      p.reloading = false;
+      p.zoom = 0;
+      p.respawnAt = this.time + 1;
+    }
+    this.emit({ type: 'team', pid: p.id, team });
+    return true;
+  }
+
   getPlayer(id) {
     return this.players.find((p) => p.id === id);
   }
@@ -97,7 +135,8 @@ export class Game {
   spawn(p) {
     const enemies = this.players.filter((o) => o.alive && isEnemy(p, o));
     let best = null, bestScore = -Infinity;
-    for (const s of this.map.spawns) {
+    const pool = (this.mode === 'teams' && this.map.teamSpawns?.[p.team]) || this.map.spawns;
+    for (const s of pool) {
       let minD = 60, seen = 0;
       for (const e of enemies) {
         minD = Math.min(minD, Math.hypot(e.pos[0] - s.pos[0], e.pos[2] - s.pos[2]));
@@ -179,11 +218,13 @@ export class Game {
       p.prevPunch[0] = p.punch[0]; p.prevPunch[1] = p.punch[1];
       p.prevDuck = p.duckAmount;
 
+      const cmd = cmds.get(p.id) ?? emptyCmd();
       if (!p.alive) {
+        // Dead players can still change team, but not buy.
+        if (cmd.actions) for (const a of cmd.actions) if (a.type === 'team') this.handleAction(p, a);
         if (this.time >= p.respawnAt) this.spawn(p);
         continue;
       }
-      const cmd = cmds.get(p.id) ?? emptyCmd();
       if (cmd.actions) for (const a of cmd.actions) this.handleAction(p, a);
 
       this.moveStep(p, cmd, dt);
@@ -214,6 +255,7 @@ export class Game {
 
   handleAction(p, a) {
     if (a.type === 'buy') this.buy(p, a.item);
+    else if (a.type === 'team') this.setTeam(p, a.team);
   }
 
   activeWeapon(p) {

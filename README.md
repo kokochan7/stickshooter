@@ -5,10 +5,13 @@ gunplay (damage, armor, hitboxes, range falloff, wall penetration, spray
 patterns) with an original look: a white stickman, low-poly guns and a
 bright toy-like arena.
 
-Two modes on one test map, "Yard": **practice** (runs entirely in the
-browser, with 0 to 10 bots; 0 by default) and **online free-for-all** (an
-early test: one public room; `BOT_FILL` in `src/net/protocol.js` can fill it
-with server bots, and is 0 for now).
+Two ways to play on one test map, "Yard": **practice** (runs entirely in the
+browser, with 0 to 10 bots; 0 by default) and **online** (an early test:
+`BOT_FILL` in `src/net/protocol.js` can fill rooms with server bots, and is 0
+for now). Both play either **Free for all** (everyone, bots included, fights
+everyone; white stickmen) or **Teams** (Red vs Blue, tinted stickmen, each team
+spawns on its own side; `M` switches team). Online, FFA is the `public` room and
+Teams is `public-teams`.
 
 ## Play locally
 
@@ -54,7 +57,7 @@ everything else is the static game.
   server rewinds other players to what the shooter saw (up to 200 ms) when
   tracing bullets. Messages are JSON for now.
 - **Not yet:** local prediction of your own shots (muzzle flash/recoil wait for
-  the server), room browser, teams/rounds, binary snapshots.
+  the server), room browser, rounds, binary snapshots.
 
 ## Controls
 
@@ -70,7 +73,7 @@ everything else is the static game.
 | 1 / 2 / Q / wheel | Primary / pistol / last weapon |
 | B | Buy menu (number keys pick a category, then a gun: B 4 3 = M4A1) |
 | Tab | Scoreboard |
-| V | Third-person view |
+| M | Switch team (Teams mode) |
 | Esc | Pause |
 
 Every key above except Esc can be rebound in Settings → Controls. Settings
