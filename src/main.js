@@ -1,0 +1,448 @@
+// Entry point: wires the sim (src/sim) to rendering, audio, input and UI.
+//
+// Loop: the sim ticks at a fixed 128 Hz; rendering runs at the display rate
+// (uncapped requestAnimationFrame, so 120/144 Hz screens get 120/144 FPS) and
+// interpolates player positions between ticks. Mouse look is applied every
+// frame for the lowest possible input latency.
+import * as THREE from 'three';
+import { Game, emptyCmd } from './sim/game.js';
+import { NavGrid } from './sim/nav.js';
+import { BotBrain } from './sim/bot.js';
+import { WEAPONS } from './sim/weapons.js';
+import { TICK_DT, STAND_EYE, DUCK_EYE, U } from './sim/constants.js';
+import { YARD } from './maps/yard.js';
+import { GameView } from './client/scene.js';
+import { Audio } from './client/audio.js';
+import { Input, DEFAULT_BINDS } from './client/input.js';
+import { Hud, BuyMenu, SettingsPanel, loadSettings, renderGunIcons } from './client/hud.js';
+
+const $ = (id) => document.getElementById(id);
+const DEG = Math.PI / 180;
+const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil', 'Eraser', 'Crayon', 'Marker', 'Quill'];
+
+const settings = loadSettings();
+const canvas = $('game');
+const game = new Game(YARD);
+const nav = new NavGrid(game.world, YARD.bounds);
+const view = new GameView(canvas, YARD, game.world, settings);
+const audio = new Audio();
+audio.setVolume(settings.volume);
+const input = new Input(canvas, settings);
+const hud = new Hud();
+const icons = renderGunIcons(view.renderer);
+const buyMenu = new BuyMenu(icons, (item) => pendingActions.push({ type: 'buy', item }));
+new SettingsPanel(settings, onSettingChange);
+
+let me = null;
+const brains = new Map();
+let mode = 'menu'; // menu | playing | paused
+let thirdPerson = false;
+let pendingActions = [];
+let acc = 0;
+let last = performance.now();
+let killInfo = null;
+let menuAngle = 0;
+const timers = [];
+const stepState = new Map();
+
+// ---------- Setup ----------
+
+for (let i = 1; i <= 10; i++) $('m-bots').insertAdjacentHTML('beforeend', `<option value="${i}">${i}</option>`);
+$('m-bots').value = String(settings.bots);
+$('m-diff').value = settings.difficulty;
+$('m-bots').addEventListener('change', () => { settings.bots = +$('m-bots').value; onSettingChange('bots'); });
+$('m-diff').addEventListener('change', () => { settings.difficulty = $('m-diff').value; onSettingChange('difficulty'); });
+
+function setupBots() {
+  for (const id of brains.keys()) { game.removePlayer(id); view.removeView(id); }
+  brains.clear();
+  const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < settings.bots; i++) {
+    const p = game.addPlayer({ name: names[i % names.length], team: 'shadow', isBot: true });
+    brains.set(p.id, new BotBrain(game, p, nav, settings.difficulty));
+  }
+}
+setupBots();
+
+function onSettingChange(k) {
+  if (k === 'renderScale') view.resize();
+  if (k === 'volume') audio.setVolume(settings.volume);
+  if (k === 'name' && me) me.name = settings.name;
+  if (k === 'bots') setupBots();
+  if (k === 'difficulty') for (const b of brains.values()) b.setDifficulty(settings.difficulty);
+}
+
+// ---------- Screens ----------
+
+function startPlaying() {
+  audio.unlock();
+  if (!me) {
+    me = game.addPlayer({ name: settings.name, team: 'white' });
+    me.respawnAt = game.time;
+  }
+  $('menu').classList.add('hidden');
+  $('pause').classList.add('hidden');
+  hud.show(true);
+  input.lock();
+  mode = 'playing';
+}
+
+$('play').addEventListener('click', startPlaying);
+$('resume').addEventListener('click', startPlaying);
+$('quit').addEventListener('click', () => {
+  if (me) { game.removePlayer(me.id); view.removeView(me.id); me = null; }
+  mode = 'menu';
+  $('pause').classList.add('hidden');
+  $('menu').classList.remove('hidden');
+  hud.show(false);
+});
+const openSettings = () => $('settings').classList.remove('hidden');
+$('open-settings').addEventListener('click', openSettings);
+$('pause-settings').addEventListener('click', openSettings);
+$('close-settings').addEventListener('click', () => $('settings').classList.add('hidden'));
+canvas.addEventListener('click', () => { if (mode === 'playing' && !input.locked && !buyMenu.open) input.lock(); });
+
+input.on('lock', (locked) => {
+  if (!locked && mode === 'playing' && !buyMenu.open) {
+    mode = 'paused';
+    $('pause').classList.remove('hidden');
+  }
+});
+
+function setBuyMenu(open) {
+  if (!me || !me.alive) open = false;
+  buyMenu.show(open, me);
+  if (open) input.unlock();
+  else if (mode === 'playing') input.lock();
+}
+buyMenu.onClose = () => setBuyMenu(false);
+
+input.on('key', (code) => {
+  if (mode !== 'playing') return;
+  if (code === DEFAULT_BINDS.buy) setBuyMenu(!buyMenu.open);
+  else if (code === 'Escape' && buyMenu.open) setBuyMenu(false);
+  else if (code === DEFAULT_BINDS.thirdPerson) thirdPerson = !thirdPerson;
+  else if (code === DEFAULT_BINDS.scores) hud.showScores(true, game.players, me?.id);
+});
+input.on('keyup', (code) => {
+  if (code === DEFAULT_BINDS.scores) hud.showScores(false);
+});
+
+// ---------- Events from the sim ----------
+
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
+
+function viewToWorld(out) {
+  // Viewmodel space is camera space.
+  return out.applyMatrix4(view.camera.matrixWorld);
+}
+
+function isFirstPerson(p) {
+  return p === me && !thirdPerson;
+}
+
+function handleEvent(e) {
+  const p = e.pid ? game.getPlayer(e.pid) : null;
+  switch (e.type) {
+    case 'shot': {
+      const def = WEAPONS[e.weapon];
+      const vol = def.id === 'awp' ? 1 : 0.8;
+      let muzzle;
+      if (isFirstPerson(p)) {
+        view.viewModel.fire(def.pellets ? 1.6 : def.id === 'awp' || def.id === 'deagle' ? 1.4 : 1);
+        audio.play('shot_' + def.id, { volume: vol });
+        view.camera.updateMatrixWorld();
+        muzzle = viewToWorld(view.viewModel.muzzleView(_v));
+        const ej = viewToWorld(view.viewModel.ejectView(_v2));
+        if (!def.pellets || def.id === 'autoshotgun') {
+          const q = view.camera.quaternion;
+          const vel = _v3.set(1.6 + Math.random(), 1.4 + Math.random(), 0.4).applyQuaternion(q);
+          vel.x += me.vel[0]; vel.z += me.vel[2];
+          view.effects.shell(ej, vel);
+        }
+      } else {
+        const v = view.views.get(p.id);
+        if (!v) break;
+        v.man.kick = 1;
+        muzzle = v.man.muzzleWorld(_v);
+        view.effects.muzzleFlash(muzzle, _v2.set(e.dir[0], e.dir[1], e.dir[2]));
+        audio.play('shot_' + def.id, { pos: e.origin, volume: vol });
+      }
+      const tracerChance = def.pellets ? 0.35 : isFirstPerson(p) ? 0.5 : 0.8;
+      for (const end of e.ends) {
+        if (Math.random() < tracerChance) view.effects.tracer(muzzle, _v3.set(end[0], end[1], end[2]));
+      }
+      for (const im of e.impacts) view.effects.impact(im.pos, im.normal, im.material);
+      break;
+    }
+    case 'hit': {
+      const victim = game.getPlayer(e.victim);
+      const dir = e.from ? norm([e.pos[0] - e.from[0], e.pos[1] - e.from[1] - 1.5, e.pos[2] - e.from[2]]) : [0, 0, 0];
+      view.effects.blood(e.pos, dir, e.group === 'head');
+      if (me && e.attacker === me.id && e.victim !== me.id) {
+        const killed = victim && victim.health <= 0;
+        hud.hit(killed, e.group === 'head');
+        if (e.group === 'head') audio.play(e.armorHit ? 'hitHelmet' : 'hitHead', { volume: 0.7 });
+        else audio.play('hitBody', { volume: 0.6 });
+      }
+      if (me && e.victim === me.id) {
+        audio.play('hurt', { volume: 0.8 });
+        if (e.from) {
+          const ang = Math.atan2(-(e.from[0] - me.pos[0]), -(e.from[2] - me.pos[2])) - input.yaw;
+          hud.hurt(-ang, e.damage);
+        }
+      } else if (victim) {
+        audio.play(e.group === 'head' ? (e.armorHit ? 'hitHelmet' : 'hitHead') : 'hitBody', { pos: e.pos, volume: 0.5 });
+      }
+      break;
+    }
+    case 'kill': {
+      const attacker = e.attacker ? game.getPlayer(e.attacker) : null;
+      const victim = game.getPlayer(e.victim);
+      if (!victim) break;
+      hud.kill({ attacker, victim, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, mine: me && (e.attacker === me.id || e.victim === me.id) });
+      const v = view.views.get(victim.id);
+      if (v) {
+        const side = e.dir ? Math.sign(e.dir[0] * Math.cos(victim.yaw) - e.dir[2] * Math.sin(victim.yaw)) || 1 : 1;
+        v.man.die(side);
+      }
+      if (me && e.attacker === me.id && e.victim !== me.id) audio.play('killConfirm', { volume: 0.5 });
+      if (me && e.victim === me.id) {
+        killInfo = { attacker: e.attacker, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, pos: [...me.pos] };
+        if (buyMenu.open) setBuyMenu(false);
+      }
+      break;
+    }
+    case 'reload': {
+      if (isFirstPerson(p)) {
+        view.viewModel.reload(e.duration);
+        audio.play('magOut', { volume: 0.6 });
+        const def = WEAPONS[e.weapon];
+        if (!def.shellReload) timers.push({ t: game.time + e.duration * 0.6, fn: () => audio.play('magIn', { volume: 0.6 }) });
+      } else if (p) {
+        audio.play('magOut', { pos: p.pos, volume: 0.4 });
+      }
+      break;
+    }
+    case 'reloaded':
+      if (isFirstPerson(p)) audio.play('bolt', { volume: 0.5 });
+      break;
+    case 'shell':
+      if (p === me) audio.play('shell', { volume: 0.5 });
+      break;
+    case 'deploy':
+      if (p === me) { view.viewModel.deploy(); audio.play('deploy', { volume: 0.4 }); }
+      break;
+    case 'dry':
+      if (p === me) audio.play('dry', { volume: 0.7 });
+      break;
+    case 'zoom':
+      if (p === me) audio.play('zoom', { volume: 0.6 });
+      break;
+    case 'buy':
+      if (p === me) { audio.play('buy', { volume: 0.4 }); if (buyMenu.open) buyMenu.render(me); }
+      break;
+    case 'spawn': {
+      const v = view.views.get(p.id);
+      if (v) v.man.revive();
+      if (p === me) { input.setAngles(me.yaw, 0); killInfo = null; }
+      break;
+    }
+  }
+}
+
+view.effects.onShellBounce = (pos) => {
+  if (me && Math.hypot(pos.x - me.pos[0], pos.z - me.pos[2]) < 6) audio.play('brass', { pos: [pos.x, pos.y, pos.z], volume: 0.25, jitter: 0.2 });
+};
+
+function norm(v) {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
+}
+
+// ---------- Per-frame view update ----------
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function footsteps(p, dt, x, z) {
+  let s = stepState.get(p.id);
+  if (!s) { s = { dist: 0, x, z, air: false }; stepState.set(p.id, s); }
+  const moved = Math.hypot(x - s.x, z - s.z);
+  s.x = x; s.z = z;
+  if (!p.alive) { s.air = false; return; }
+  const speed = Math.hypot(p.vel[0], p.vel[2]);
+  // Like CS: walking (shift) and crouching are silent.
+  if (p.onGround && speed > 150 * U && moved < 1) {
+    s.dist += moved;
+    if (s.dist > 1.9) {
+      s.dist = 0;
+      if (p === me) audio.play('step', { volume: 0.18, jitter: 0.15 });
+      else audio.play('step', { pos: p.pos, volume: 0.45, jitter: 0.15 });
+    }
+  }
+  if (!p.onGround) s.air = true;
+  else if (s.air) {
+    s.air = false;
+    const ls = p.landSpeed ?? 0;
+    if (ls > 3) {
+      if (p === me) { audio.play('land', { volume: 0.4 }); view.viewModel.land(ls); }
+      else audio.play('land', { pos: p.pos, volume: 0.4 });
+    }
+  }
+}
+
+function updateView(dt, alpha) {
+  // Characters.
+  for (const p of game.players) {
+    const v = view.viewFor(p);
+    const x = lerp(p.prevPos[0], p.pos[0], alpha);
+    const y = lerp(p.prevPos[1], p.pos[1], alpha);
+    const z = lerp(p.prevPos[2], p.pos[2], alpha);
+    footsteps(p, dt, x, z);
+    const visible = (p.alive || v.man.deathT >= 0) && !(p === me && !thirdPerson);
+    v.man.setVisible(visible);
+    v.shadow.visible = visible && p.alive;
+    if (!visible) continue;
+    const w = p.weapons[p.active];
+    v.man.setWeapon(w ? w.id : null);
+    const yaw = p === me ? input.yaw : p.yaw;
+    const pitch = p === me ? input.pitch : p.pitch;
+    if (p.alive) {
+      v.man.update({
+        x, y, z, yaw, pitch, vx: p.vel[0], vz: p.vel[2],
+        duck: lerp(p.prevDuck, p.duckAmount, alpha), onGround: p.onGround, reloading: p.reloading, spin: p.spin,
+      }, dt);
+      v.shadow.position.set(x, view.groundBelow(x, y, z) + 0.01, z);
+    } else {
+      v.man.update({ x: p.pos[0], y: p.pos[1], z: p.pos[2], yaw: p.yaw, pitch: 0, vx: 0, vz: 0, duck: 0, onGround: true, reloading: false, spin: 0 }, dt);
+    }
+  }
+
+  // Camera.
+  const cam = view.camera;
+  let fov = settings.fov;
+  let showVm = false;
+  if (me && me.alive && mode !== 'menu') {
+    const duck = lerp(me.prevDuck, me.duckAmount, alpha);
+    const eye = STAND_EYE + (DUCK_EYE - STAND_EYE) * duck;
+    const px = lerp(me.prevPos[0], me.pos[0], alpha);
+    const py = lerp(me.prevPos[1], me.pos[1], alpha) - me.stepOffset + eye;
+    const pz = lerp(me.prevPos[2], me.pos[2], alpha);
+    const punchP = lerp(me.prevPunch[0], me.punch[0], alpha) * DEG;
+    const punchY = lerp(me.prevPunch[1], me.punch[1], alpha) * DEG;
+    cam.rotation.set(input.pitch + punchP, input.yaw + punchY, 0);
+    cam.position.set(px, py, pz);
+    if (thirdPerson) {
+      // Over-the-shoulder camera, pulled in if a wall is behind.
+      const back = _v.set(0.45, 0.25, 2.6).applyEuler(cam.rotation);
+      const len = back.length();
+      back.divideScalar(len);
+      const hit = game.world.raycast(px, py, pz, back.x, back.y, back.z, len);
+      const d = hit ? Math.max(0.3, hit.t - 0.2) : len;
+      cam.position.set(px + back.x * d, py + back.y * d, pz + back.z * d);
+    }
+    const def = game.activeDef(me);
+    if (def?.zoomLevels && me.zoom > 0) {
+      // CS zoom FOVs are horizontal at 4:3; convert to vertical.
+      const h = def.zoomLevels[me.zoom - 1] * DEG;
+      fov = (2 * Math.atan(Math.tan(h / 2) * 0.75)) / DEG;
+    }
+    showVm = !thirdPerson && me.zoom === 0;
+    audio.setListener(px, py, pz, input.yaw);
+  } else if (me && !me.alive && mode !== 'menu') {
+    // Death cam: rise above the body and look at the killer.
+    const k = killInfo;
+    const base = k?.pos ?? me.pos;
+    const killer = k?.attacker ? game.getPlayer(k.attacker) : null;
+    cam.position.set(base[0], base[1] + 3.2, base[2]);
+    const target = killer && killer.alive ? _v.set(killer.pos[0], killer.pos[1] + 1.2, killer.pos[2]) : _v.set(base[0], base[1], base[2] - 0.01);
+    const dx = target.x - cam.position.x, dy = target.y - cam.position.y, dz = target.z - cam.position.z;
+    cam.rotation.set(Math.atan2(dy, Math.hypot(dx, dz)), Math.atan2(-dx, -dz), 0);
+    audio.setListener(base[0], base[1] + 1.6, base[2], cam.rotation.y);
+  } else {
+    // Menu: slow orbit over the map.
+    menuAngle += dt * 0.06;
+    cam.position.set(Math.sin(menuAngle) * 34, 16, Math.cos(menuAngle) * 34);
+    cam.rotation.set(-0.42, menuAngle, 0);
+    audio.setListener(cam.position.x, cam.position.y, cam.position.z, menuAngle);
+  }
+  view.setFov(fov);
+  input.sensScale = fov / settings.fov;
+
+  // Viewmodel.
+  const [mdx, mdy] = input.takeFrameDelta();
+  if (me && me.alive) {
+    const w = me.weapons[me.active];
+    view.viewModel.setWeapon(w ? w.id : null);
+  }
+  view.viewModel.update(dt, {
+    mouseDX: mdx, mouseDY: mdy, speed: me ? Math.hypot(me.vel[0], me.vel[2]) : 0, onGround: me?.onGround ?? true,
+    reloading: me?.reloading ?? false, spin: me?.spin ?? 0, visible: showVm,
+  });
+  view.effects.update(dt);
+
+  // HUD.
+  if (me && mode !== 'menu') {
+    const def = game.activeDef(me);
+    const w = game.activeWeapon(me);
+    let spreadPx = 0;
+    if (def) {
+      const s = game.currentSpread(me, def);
+      const h = innerHeight;
+      spreadPx = Math.min(80, (s * 0.5 * (h / 2)) / Math.tan((fov * DEG) / 2)) + Math.hypot(me.punch[0], me.punch[1]) * 1.5;
+    }
+    let reloadFrac = null;
+    if (me.reloading && def && !def.shellReload) reloadFrac = 1 - (me.reloadEnd - game.time) / def.reload;
+    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 });
+    if (!me.alive) {
+      const k = killInfo;
+      const killer = k?.attacker ? game.getPlayer(k.attacker) : null;
+      const secs = Math.max(0, Math.ceil(me.respawnAt - game.time));
+      const how = k?.weapon ? `${WEAPONS[k.weapon].name}${k.headshot ? ' · headshot' : ''}${k.wallbang ? ' · through the wall' : ''}` : '';
+      hud.message(killer ? `Killed by ${escapeHtml(killer.name)}<small>${how} · respawning in ${secs}</small>` : `<small>Respawning in ${secs}</small>`);
+    } else {
+      hud.message('');
+    }
+  } else {
+    hud.update(dt, { p: null, showFps: settings.showFps });
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+// ---------- Main loop ----------
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+
+  if (mode !== 'paused') {
+    acc += dt;
+    let steps = 0;
+    while (acc >= TICK_DT) {
+      const cmds = new Map();
+      if (me) {
+        const cmd = mode === 'playing' ? input.buildCmd() : { ...emptyCmd(), yaw: input.yaw, pitch: input.pitch };
+        if (pendingActions.length) { cmd.actions = pendingActions; pendingActions = []; }
+        cmds.set(me.id, cmd);
+      }
+      for (const [id, b] of brains) cmds.set(id, b.think(TICK_DT));
+      game.tick(cmds);
+      for (const e of game.drainEvents()) handleEvent(e);
+      for (let i = timers.length - 1; i >= 0; i--) if (game.time >= timers[i].t) { timers[i].fn(); timers.splice(i, 1); }
+      acc -= TICK_DT;
+      if (++steps >= 24) { acc = 0; break; } // tab was in background
+    }
+  }
+  updateView(dt, Math.min(1, acc / TICK_DT));
+  view.render();
+  requestAnimationFrame(frame);
+}
+
+$('loading').classList.add('hidden');
+requestAnimationFrame(frame);
+
+// Handy for debugging in the console.
+window.stickshooter = { game, view, settings, input, get me() { return me; } };

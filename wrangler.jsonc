@@ -1,0 +1,17 @@
+{
+  // Deploys the built game (dist/) as static assets on the "stickshooter" Worker,
+  // served at stickshooter.kennk.workers.dev.
+  // Multiplayer later: add a "main" script + a Durable Object for game rooms here.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stickshooter",
+  "compatibility_date": "2025-10-01",
+  // Build the game before every deploy/upload, so Workers Builds works even
+  // when its build command is left empty.
+  "build": {
+    "command": "npm run build"
+  },
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

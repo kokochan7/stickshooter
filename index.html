@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#14171d" />
+  <title>Stick Shooter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Inter:wght@500;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="crosshair">
+      <i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i>
+    </div>
+    <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+    <div id="scope" class="hidden"><div class="scope-ring"></div><div class="scope-h"></div><div class="scope-v"></div></div>
+    <div id="vignette"></div>
+    <div id="dmg-indicators"></div>
+    <div id="killfeed"></div>
+    <div id="topbar"><span id="score-me">0</span><span class="sep">KILLS</span><span id="score-deaths">0</span><span class="sep">DEATHS</span></div>
+    <div id="fps"></div>
+    <div class="hud-bl">
+      <div class="money"><span>$</span><b id="money">0</b></div>
+      <div class="vitals">
+        <div class="vital"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><b id="health">100</b></div>
+        <div class="vital armor"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z"/></svg><b id="armor">0</b><i id="helmet" title="Helmet">H</i></div>
+      </div>
+    </div>
+    <div class="hud-br">
+      <div id="weapon-name">USP</div>
+      <div class="ammo"><b id="clip">12</b><span>/</span><span id="reserve">100</span></div>
+      <div id="reload-bar"><i></i></div>
+    </div>
+    <div id="center-msg"></div>
+    <div id="hint">B — buy menu &nbsp;·&nbsp; 1/2/Q — weapons &nbsp;·&nbsp; V — third person</div>
+    <div id="scoreboard" class="hidden panel"></div>
+  </div>
+
+  <div id="menu" class="screen">
+    <div class="menu-card">
+      <h1 class="logo">STICK<span>SHOOTER</span></h1>
+      <p class="tag">Practice vs bots · early build</p>
+      <button id="play" class="btn primary">PLAY</button>
+      <div class="row">
+        <label>Bots <select id="m-bots"></select></label>
+        <label>Difficulty <select id="m-diff"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
+      </div>
+      <button id="open-settings" class="btn">SETTINGS</button>
+      <div class="controls">
+        <div><kbd>WASD</kbd> move</div><div><kbd>Space</kbd> jump</div>
+        <div><kbd>Ctrl</kbd>/<kbd>C</kbd> crouch</div><div><kbd>Shift</kbd> walk</div>
+        <div><kbd>Mouse 1</kbd> fire</div><div><kbd>Mouse 2</kbd> scope</div>
+        <div><kbd>R</kbd> reload</div><div><kbd>B</kbd> buy</div>
+        <div><kbd>Tab</kbd> scores</div><div><kbd>Esc</kbd> pause</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pause" class="screen hidden">
+    <div class="menu-card small">
+      <h2>PAUSED</h2>
+      <button id="resume" class="btn primary">RESUME</button>
+      <button id="pause-settings" class="btn">SETTINGS</button>
+      <button id="quit" class="btn">MAIN MENU</button>
+    </div>
+  </div>
+
+  <div id="settings" class="screen hidden">
+    <div class="menu-card settings-card">
+      <h2>SETTINGS</h2>
+      <div id="settings-form"></div>
+      <button id="close-settings" class="btn primary">DONE</button>
+    </div>
+  </div>
+
+  <div id="buymenu" class="screen hidden">
+    <div class="buy-card panel">
+      <div class="buy-head"><h2>SHOP</h2><div class="buy-money">$<b id="buy-money">0</b></div><button id="buy-close" class="x" aria-label="Close">✕</button></div>
+      <div id="buy-grid"></div>
+    </div>
+  </div>
+
+  <div id="loading" class="screen"><div class="spinner"></div></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
