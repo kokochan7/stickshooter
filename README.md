@@ -11,7 +11,8 @@ browser, with 0 to 10 bots; 0 by default) and **online** (an early test:
 for now). Both play either **Free for all** (everyone, bots included, fights
 everyone; white stickmen) or **Teams** (Red vs Blue, tinted stickmen, each team
 spawns on its own side; `M` switches team). Online, FFA is the `public` room and
-Teams is `public-teams`.
+Teams is `public-teams`; the menu shows how many people are in each, and
+PLAY ONLINE joins the other mode's room if yours is empty and it isn't.
 
 ## Play locally
 
@@ -49,7 +50,8 @@ everything else is the static game.
   server decides every hit with the CS 1.6 rules. Bots (the same `BotBrain`)
   keep a room at 6 players until humans fill it; max 10 humans.
 - **Routes:** `GET /ws/:room` (WebSocket; the menu's PLAY ONLINE uses `public`),
-  `POST /api/rooms` (new random room id), `GET /api/health`.
+  `GET /api/rooms` (players in each quick play room), `POST /api/rooms` (new
+  random room id), `GET /api/health`.
 - **Netcode** (`src/net/`): clients send their inputs every 2 ticks with a
   sequence number; the room sends 32 Hz snapshots + events with the last input
   it used. The client predicts its own movement and replays unacknowledged

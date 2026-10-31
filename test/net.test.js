@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game, emptyCmd } from '../src/sim/game.js';
 import { isEnemy } from '../src/sim/combat.js';
-import { sanitizeCmd, cleanName, packOwn, packOther, roomMode } from '../src/net/protocol.js';
+import { sanitizeCmd, cleanName, packOwn, packOther, roomMode, pickRoom } from '../src/net/protocol.js';
 import { YARD } from '../src/maps/yard.js';
 
 test('free-for-all players are enemies, teammates are not', () => {
@@ -72,4 +72,12 @@ test('room names pick the mode, and team switches survive sanitizeCmd', () => {
   assert.deepEqual(c.actions, [{ type: 'team', team: 'blue' }]);
   const p = new Game(YARD, { mode: 'teams' }).addPlayer({ name: 'a' });
   assert.equal(packOwn(p).team, 'red');
+});
+
+test('pickRoom keeps your mode unless only the other mode has people', () => {
+  assert.equal(pickRoom('ffa', {}), 'public');
+  assert.equal(pickRoom('teams', {}), 'public-teams');
+  assert.equal(pickRoom('ffa', { public: 0, 'public-teams': 2 }), 'public-teams');
+  assert.equal(pickRoom('teams', { public: 1, 'public-teams': 0 }), 'public');
+  assert.equal(pickRoom('ffa', { public: 1, 'public-teams': 5 }), 'public');
 });

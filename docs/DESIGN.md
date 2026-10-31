@@ -407,6 +407,7 @@ instant on the shooter's screen (see 6.3).
 Browser ──HTTPS──▶ Worker "stickshooter"   static assets (the game)
    │                    │                   Worker code runs first only for /api/* and /ws/*
    │                    ├─ GET  /api/health
+   │                    ├─ GET  /api/rooms        humans in each quick play room
    │                    ├─ POST /api/rooms        returns a new random room id
    └──WebSocket──▶      └─ GET  /ws/:roomId  ──▶  Durable Object GameRoom (one per room)
                                                     runs Game.tick() + server bots
@@ -418,8 +419,14 @@ Browser ──HTTPS──▶ Worker "stickshooter"   static assets (the game)
   SQLite-backed (works on the Workers free plan). A room is addressed by
   `idFromName(roomId)`, so everyone who joins the same room id lands on the
   same object. Cloudflare places the object near the first player to join.
-- **Quick play** joins the room `public`. A private room is a
-  `POST /api/rooms` id shared as a link.
+- **Quick play** joins `public` (FFA) or `public-teams` (Teams), following the
+  menu's mode switch. The menu shows each room's live head count
+  (`GET /api/rooms`, which asks each room's DO over RPC), and if your mode's
+  room is empty while the other has people, PLAY ONLINE joins them instead
+  (`pickRoom`), so two people clicking PLAY ONLINE always meet. A private room
+  is a `POST /api/rooms` id shared as a link.
+- **Versioning:** `hello` carries `PROTOCOL_VERSION`; a tab running an older
+  build is closed with code 4002 and told to refresh.
 - WebSockets use the Hibernation API (`ctx.acceptWebSocket`). The tick loop
   keeps the object awake while anyone is connected and stops when the room
   empties, so empty rooms cost nothing.

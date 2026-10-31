@@ -19,8 +19,8 @@ import { Audio } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
 import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons } from './client/hud.js';
-import { OnlineSession, roomUrl } from './net/online.js';
-import { DEFAULT_ROOM, TEAMS_ROOM } from './net/protocol.js';
+import { OnlineSession, roomUrl, fetchRoomCounts } from './net/online.js';
+import { PUBLIC_ROOMS, pickRoom, roomMode } from './net/protocol.js';
 
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -112,6 +112,25 @@ for (const b of document.querySelectorAll('.mode-btn')) {
   });
 }
 
+// Live player counts on the mode buttons, so it's obvious where people are.
+let roomCounts = null;
+function renderRoomCounts() {
+  for (const b of document.querySelectorAll('.mode-btn')) {
+    const n = roomCounts?.[PUBLIC_ROOMS[b.dataset.mode]];
+    let el = b.querySelector('.online-count');
+    if (!el) b.append((el = Object.assign(document.createElement('span'), { className: 'online-count' })));
+    el.textContent = n == null ? '' : `${n} online`;
+    el.classList.toggle('live', n > 0);
+  }
+}
+async function refreshRoomCounts() {
+  if (net || $('menu').classList.contains('hidden') || document.hidden) return;
+  roomCounts = await fetchRoomCounts();
+  renderRoomCounts();
+}
+refreshRoomCounts();
+setInterval(refreshRoomCounts, 5000);
+
 // Control list on the menu and the in-game hint follow the key binds.
 function renderControls() {
   const b = settings.binds, k = (a) => `<kbd>${keyName(b[a])}</kbd>`;
@@ -187,18 +206,30 @@ function showMenu(status = '') {
   $('play-online').disabled = false;
   $('net-status').textContent = status;
   $('net-status').classList.toggle('hidden', !status);
+  refreshRoomCounts();
 }
 
 // Online: drop the local bots and mirror a server room instead.
-function goOnline() {
+// PLAY ONLINE joins your mode's room, unless it's empty and the other mode
+// has people, in which case it joins them so nobody ends up alone.
+async function goOnline() {
   startAudio();
-  clearPlayers();
-  acc = 0;
   $('play-online').disabled = true;
   $('net-status').textContent = 'Connecting…';
   $('net-status').classList.remove('hidden');
+  roomCounts = (await fetchRoomCounts()) ?? roomCounts;
+  renderRoomCounts();
+  const room = pickRoom(settings.mode, roomCounts ?? {});
+  if (roomMode(room) !== settings.mode) {
+    settings.mode = roomMode(room);
+    saveSettings(settings);
+    renderModePick();
+    renderControls();
+  }
+  clearPlayers();
+  acc = 0;
   net = new OnlineSession(game, {
-    url: roomUrl(settings.mode === 'teams' ? TEAMS_ROOM : DEFAULT_ROOM),
+    url: roomUrl(room),
     name: settings.name,
     onWelcome: (p) => {
       me = p;
@@ -217,6 +248,7 @@ function leaveOnline(status = '') {
   killInfo = null;
   timers.length = 0;
   hud.ping(null);
+  hud.room(null);
   setupBots();
   showMenu(status);
 }
@@ -587,7 +619,10 @@ function netFrame(dt) {
   game.time = net.serverTime();
   for (const e of net.drainEvents()) handleEvent(e);
   for (let i = timers.length - 1; i >= 0; i--) if (game.time >= timers[i].t) { timers[i].fn(); timers.splice(i, 1); }
-  if (net?.ready) hud.ping(net.rtt);
+  if (net?.ready) {
+    hud.ping(net.rtt);
+    hud.room(game.mode, game.players.filter((p) => !p.isBot).length);
+  }
 }
 
 function frame(now) {

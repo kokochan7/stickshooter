@@ -3,7 +3,7 @@
 // later without touching either side's game logic.
 //
 // client -> server
-//   { t: 'hello', name }                       the room's mode comes from its name (see roomMode)
+//   { t: 'hello', v, name }                    v = PROTOCOL_VERSION; the room's mode comes from its name (see roomMode)
 //   { t: 'cmds', seq, vt, cmds: [cmd, ...] }   seq = seq of the LAST cmd in the batch,
 //                                               vt = server time the client is viewing others at
 //   { t: 'ping', c }
@@ -12,8 +12,9 @@
 //   { t: 'snap', time, ack, me, players: [...], events: [...] }
 //   { t: 'pong', c, time }
 //   { t: 'full' }  room is full
+//   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -26,6 +27,20 @@ export const TEAMS_ROOM = 'public-teams';
 // A room plays Teams when its name ends in "teams"; every other room is FFA.
 export function roomMode(room) {
   return /(^|-)teams$/.test(room) ? 'teams' : 'ffa';
+}
+
+// The quick play rooms PLAY ONLINE picks from, by mode.
+export const PUBLIC_ROOMS = { ffa: DEFAULT_ROOM, teams: TEAMS_ROOM };
+
+// PLAY ONLINE should put everyone together, so when the room for your mode is
+// empty but the other mode has people, join them instead of sitting alone.
+// counts = { [room]: humans }, as GET /api/rooms returns it.
+export function pickRoom(mode, counts = {}) {
+  const mine = PUBLIC_ROOMS[mode] ?? DEFAULT_ROOM;
+  if (counts[mine] > 0) return mine;
+  let best = mine;
+  for (const room of Object.values(PUBLIC_ROOMS)) if ((counts[room] ?? 0) > (counts[best] ?? 0)) best = room;
+  return best;
 }
 
 // Everything the owning client needs to predict and draw itself.

@@ -7,9 +7,19 @@
 //   the two snapshots around that time;
 // - shots, hits and kills come from server events, so the server decides
 //   every hit (with lag compensation, see worker/room.js).
-import { SEND_EVERY, INTERP_DELAY, DEFAULT_ROOM } from './protocol.js';
+import { SEND_EVERY, INTERP_DELAY, DEFAULT_ROOM, PROTOCOL_VERSION } from './protocol.js';
 
 const PING_EVERY = 2000;
+
+// { [room]: humans } for the quick play rooms, or null if the server can't say.
+export async function fetchRoomCounts() {
+  try {
+    const res = await fetch('/api/rooms', { cache: 'no-store' });
+    return res.ok ? (await res.json()).rooms : null;
+  } catch {
+    return null;
+  }
+}
 
 export function roomUrl(room = DEFAULT_ROOM) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -42,7 +52,7 @@ export class OnlineSession {
     this.closed = false;
 
     this.ws = new WebSocket(url);
-    this.ws.onopen = () => this.send({ t: 'hello', name });
+    this.ws.onopen = () => this.send({ t: 'hello', v: PROTOCOL_VERSION, name });
     this.ws.onmessage = (e) => this.receive(JSON.parse(e.data));
     this.ws.onclose = (e) => this.finish(e.reason || (this.myId ? 'Disconnected' : 'Could not reach the server'));
     this.pinger = setInterval(() => this.send({ t: 'ping', c: performance.now() }), PING_EVERY);
