@@ -1,6 +1,7 @@
 // Procedural sound: every gunshot, reload, knife, footstep and UI sound is
 // synthesized into a buffer at startup, so there are no audio files to
-// download. (The menu song is the one exception, see music.js.)
+// download. (The exceptions: the menu song, see music.js, and the announcer
+// voice lines in public/audio/announcer/, loaded by loadClips.)
 //
 // The sounds aim for the character of Counter-Strike 1.6 without using any of
 // its audio: short, punchy, mid-heavy shots with a gritty saturated edge and a
@@ -463,6 +464,11 @@ export function buildAll() {
   return b;
 }
 
+// Announcer voice lines for multi-kills (original recordings, see README).
+const CLIPS = Object.fromEntries(
+  ['double', 'triple', 'multi', 'ultra', 'monster'].map((k) => [`announce_${k}`, `/audio/announcer/${k}.mp3`]),
+);
+
 export class Audio {
   constructor() {
     this.ctx = null;
@@ -510,6 +516,19 @@ export class Audio {
 
   build() {
     for (const [name, d] of Object.entries(buildAll())) this.buffers[name] = toBuffer(this.ctx, d);
+    this.loadClips(CLIPS);
+  }
+
+  // Small recorded sounds: { name: url }. Each plays by name once loaded.
+  loadClips(clips) {
+    for (const [name, url] of Object.entries(clips)) {
+      fetch(url)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(url))))
+        // Safari's old decodeAudioData only takes callbacks.
+        .then((data) => new Promise((ok, bad) => this.ctx.decodeAudioData(data, ok, bad)))
+        .then((buf) => { this.buffers[name] = buf; })
+        .catch(() => { /* no announcer, no harm */ });
+    }
   }
 
   setListener(x, y, z, yaw) {
@@ -518,7 +537,7 @@ export class Audio {
 
   // pos: world position or null for 2D (local player) sounds.
   play(name, { pos = null, volume = 1, rate = 1, jitter = 0.04, range = 0 } = {}) {
-    if (!this.ctx || !this.sfxOn || !this.buffers[name]) return;
+    if (!this.ctx || !this.sfxOn || !this.buffers[name]) return null;
     const c = this.ctx;
     const src = c.createBufferSource();
     src.buffer = this.buffers[name];
@@ -534,7 +553,7 @@ export class Audio {
       // instead of the usual long tail.
       if (range > 0) gain *= Math.max(0, 1 - dist / range) ** 2;
       else gain *= 1 / (1 + dist * 0.07);
-      if (gain < 0.003) return;
+      if (gain < 0.003) return null;
       if (c.createStereoPanner) {
         // Right vector of the listener.
         const rx = Math.cos(L.yaw), rz = -Math.sin(L.yaw);
@@ -553,5 +572,6 @@ export class Audio {
     g.gain.value = gain;
     node.connect(this.sfx);
     src.start();
+    return src;
   }
 }

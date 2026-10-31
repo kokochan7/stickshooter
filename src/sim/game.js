@@ -3,7 +3,8 @@
 // Online, the same Game runs inside a Cloudflare Durable Object (worker/room.js)
 // and clients mirror it from snapshots (src/net/online.js).
 import {
-  U, TICK_DT, MAX_HEALTH, RESPAWN_TIME, START_MONEY, MAX_MONEY, KILL_REWARD,
+  U, TICK_DT, MAX_HEALTH, RESPAWN_TIME, START_MONEY, MAX_MONEY, KILL_REWARD, KILL_STREAK_STEP, KILL_REWARD_MAX,
+  FFA_KILL_REWARD, MULTI_KILL_WINDOW,
   TAG_SPEED_MUL, TAG_RECOVER_TIME, STAND_EYE, DUCK_EYE, GRAVITY,
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
   DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE, NEVER, WATER_SPEED_MUL,
@@ -130,6 +131,7 @@ export class Game {
       tagMul: 1, lastHitDir: null, lastAttacker: null, lastHurtTime: -10,
       nextStab: 0, lastMelee: -10, frozenUntil: 0, life: 0,
       task: null, useHeld: false, defuser: false,
+      roundKills: 0, multi: 0, lastKillAt: -10, god: false,
     };
     this.players.push(p);
     return p;
@@ -275,6 +277,10 @@ export class Game {
     p.pitch = 0;
     p.alive = true;
     p.health = MAX_HEALTH;
+    // A new life (and in objective rounds, a new round) restarts the kill
+    // money streak and the multi-kill chain.
+    p.roundKills = 0;
+    p.multi = 0;
     p.armor = 0; p.helmet = false;
     p.ducked = false; p.duckAmount = 0; p.onGround = true;
     p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife') };
@@ -860,8 +866,9 @@ export class Game {
   }
 
   damage(victim, attacker, raw, group, point, def, wallbang, dir) {
-    // Nobody can be hurt while frozen at the start or end of a match.
-    if (this.frozen(victim)) return;
+    // Nobody can be hurt while frozen at the start or end of a match, or in
+    // admin god mode.
+    if (this.frozen(victim) || victim.god) return;
     const { damage, armorHit } = computeDamage(victim, raw, group, def);
     victim.health -= damage;
     victim.tagMul = TAG_SPEED_MUL;
@@ -894,15 +901,20 @@ export class Game {
       Obj.dropBomb(this, victim);
       Obj.releaseHostages(this, victim);
     }
+    let reward = 0, multi = 0;
     if (attacker && attacker !== victim) {
       attacker.kills++;
       if (headshot) attacker.headshots++;
-      attacker.money = Math.min(MAX_MONEY, attacker.money + KILL_REWARD);
+      reward = this.killReward(attacker);
+      attacker.roundKills++;
+      attacker.money = Math.min(MAX_MONEY, attacker.money + reward);
       if (attacker.team in this.teamKills && this.match.state === 'live') this.teamKills[attacker.team]++;
+      multi = attacker.multi = this.time - attacker.lastKillAt <= MULTI_KILL_WINDOW ? attacker.multi + 1 : 1;
+      attacker.lastKillAt = this.time;
     }
     this.emit({
       type: 'kill', attacker: attacker?.id ?? null, victim: victim.id, weapon: def?.id ?? null,
-      headshot, wallbang, dir: victim.lastHitDir, cause,
+      headshot, wallbang, dir: victim.lastHitDir, cause, reward, multi,
     });
     // The body vanishes and its best gun stays on the ground (CS drops the
     // primary, or the pistol if there's no primary).
@@ -916,6 +928,13 @@ export class Game {
         this.endMatch(attacker, null);
       }
     }
+  }
+
+  // Money for p's next kill: flat in free for all; in teams it grows with each
+  // kill p has made this round (this life, in team deathmatch).
+  killReward(p) {
+    if (this.mode !== 'teams') return FFA_KILL_REWARD;
+    return Math.min(KILL_REWARD_MAX, KILL_REWARD + KILL_STREAK_STEP * p.roundKills);
   }
 
   // Helpers used by bots and the client.

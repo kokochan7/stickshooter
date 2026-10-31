@@ -11,12 +11,13 @@ import * as THREE from 'three';
 import { Game, emptyCmd } from './sim/game.js';
 import { BotBrain } from './sim/bot.js';
 import { WEAPONS } from './sim/weapons.js';
+import { runAdmin, MAX_BOTS } from './sim/admin.js';
 import {
   TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT,
   FOOTSTEP_RANGE, ROUND_WIN_LIMIT,
 } from './sim/constants.js';
 import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
-import { MAP_LIST, MAP_TYPE_LABEL, getMap } from './maps/index.js';
+import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
 import { GameView } from './client/scene.js';
 import { Audio } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
@@ -92,10 +93,20 @@ const stepState = new Map();
 
 // ---------- Setup ----------
 
-for (let i = 0; i <= 10; i++) $('m-bots').insertAdjacentHTML('beforeend', `<option value="${i}">${i}</option>`);
-$('m-bots').value = String(settings.bots);
+// Bot count: a number box, 0 to MAX_BOTS. Out of range or junk snaps back.
+const botsBox = $('m-bots');
+botsBox.max = String(MAX_BOTS);
+botsBox.value = String(settings.bots);
 $('m-diff').value = settings.difficulty;
-$('m-bots').addEventListener('change', () => { settings.bots = +$('m-bots').value; onSettingChange('bots'); });
+botsBox.addEventListener('change', () => {
+  const n = Math.max(0, Math.min(MAX_BOTS, Math.round(+botsBox.value) || 0));
+  botsBox.value = String(n);
+  if (n === settings.bots) return;
+  settings.bots = n;
+  saveSettings(settings);
+  onSettingChange('bots');
+});
+botsBox.addEventListener('keydown', (e) => { if (e.key === 'Enter') botsBox.blur(); });
 $('m-diff').addEventListener('change', () => { settings.difficulty = $('m-diff').value; onSettingChange('difficulty'); });
 
 // Practice bots. In FFA everyone (bots included) fights everyone. In Teams the
@@ -104,14 +115,29 @@ function setupBots() {
   for (const id of brains.keys()) { game.removePlayer(id); view.removeView(id); }
   brains.clear();
   game.setMode(settings.mode);
-  const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
-  for (let i = 0; i < settings.bots; i++) {
-    const team = game.mode === 'teams' ? (i % 2 ? 'red' : 'blue') : 'ffa';
-    const p = game.addPlayer({ name: names[i % names.length], team, isBot: true });
-    brains.set(p.id, new BotBrain(game, p, null, settings.difficulty));
-  }
+  for (let i = 0; i < settings.bots; i++) addBot(game.mode === 'teams' ? (i % 2 ? 'red' : 'blue') : 'ffa');
   // Start them playing behind the menu (objective rounds need a round going).
   game.restartMatch();
+}
+
+// A bot with a name nobody has yet ("Inkblot", then "Inkblot 2" past 12).
+function addBot(team = game.defaultTeam()) {
+  const used = new Set(game.players.map((p) => p.name));
+  const pool = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+  let name = pool.find((n) => !used.has(n));
+  for (let i = 2; !name; i++) name = pool.map((n) => `${n} ${i}`).find((n) => !used.has(n));
+  const p = game.addPlayer({ name, team, isBot: true });
+  brains.set(p.id, new BotBrain(game, p, null, settings.difficulty));
+  return p;
+}
+
+function removeBot() {
+  const id = [...brains.keys()].pop();
+  if (id == null) return;
+  brains.delete(id);
+  game.removePlayer(id);
+  view.removeView(id);
+  stepState.delete(id);
 }
 setupBots();
 
@@ -152,12 +178,18 @@ function renderMapPick() {
     b.setAttribute('aria-checked', String(on));
   }
   const m = getMap(settings.map);
+  // The MAP button under PRACTICE shows the current pick.
+  const [a, b] = MAP_SWATCH[m.id] ?? ['#888', '#555'];
+  $('map-swatch').style.cssText = `--sw:${a};--sw2:${b}`;
+  $('map-name').textContent = m.name.toUpperCase();
+  $('map-kind').textContent = m.type === 'bomb' ? 'BOMB' : m.type === 'hostage' ? 'HOSTAGE' : 'DM';
   let note;
   if (m.type === 'dm') note = settings.mode === 'teams' ? `<b>${m.name}</b> · Teams: first team to ${TEAM_KILL_LIMIT} kills` : `<b>${m.name}</b> · Free for all: first to ${FFA_KILL_LIMIT} kills`;
   else if (settings.mode !== 'teams') note = `<b>${m.name}</b> · Free for all deathmatch. Pick Teams for ${MAP_TYPE_LABEL[m.type].toLowerCase()}.`;
   else if (m.type === 'bomb') note = `<b>${m.name}</b> · Rounds: Red plants the bomb at A or B, Blue defends`;
   else note = `<b>${m.name}</b> · Rounds: Blue rescues the hostages, Red guards them`;
   $('map-note').innerHTML = note;
+  $('maps-note').innerHTML = note;
 }
 renderMapPick();
 mapPick.addEventListener('click', (e) => {
@@ -218,17 +250,9 @@ async function refreshRoomCounts() {
 refreshRoomCounts();
 setInterval(refreshRoomCounts, 5000);
 
-// Control list on the menu and the in-game hint follow the key binds.
+// The in-game hint follows the key binds. (The full list is in Settings > Controls.)
 function renderControls() {
-  const b = settings.binds, k = (a) => `<kbd>${keyName(b[a])}</kbd>`;
-  $('controls').innerHTML = [
-    `${k('forward')}${k('left')}${k('back')}${k('right')} move`, `${k('jump')} jump`,
-    `${k('duck')} crouch`, `${k('walk')} walk`,
-    '<kbd>Mouse 1</kbd> fire', '<kbd>Mouse 2</kbd> scope / stab',
-    `${k('reload')} reload`, `${k('buy')} buy`,
-    `${k('melee')} knife`, `${k('drop')} drop / pick up`,
-    `${k('scores')} scores`, `${k('switchTeam')} switch team`, '<kbd>Esc</kbd> pause',
-  ].map((t) => `<div>${t}</div>`).join('');
+  const b = settings.binds;
   const teamHint = settings.mode === 'teams' ? ` &nbsp;·&nbsp; ${keyName(b.switchTeam)} — switch team` : '';
   $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.melee)}/${keyName(b.lastWeapon)} — weapons &nbsp;·&nbsp; ${keyName(b.drop)} — drop / pick up${teamHint}`;
 }
@@ -291,6 +315,7 @@ function clearPlayers() {
 
 function showMenu(status = '') {
   mode = 'menu';
+  setConsole(false);
   input.inMatch = false;
   touch?.show(false);
   leaveMatchScreen();
@@ -341,6 +366,7 @@ async function goOnline() {
     },
     onClose: (reason) => leaveOnline(reason),
     onRemove: (id) => { view.removeView(id); stepState.delete(id); },
+    onAdmin: (msg) => onAdminReply(msg),
   });
 }
 
@@ -365,6 +391,8 @@ $('quit').addEventListener('click', () => {
   if (me) { game.removePlayer(me.id); view.removeView(me.id); me = null; }
   showMenu();
 });
+$('open-maps').addEventListener('click', () => $('maps').classList.remove('hidden'));
+$('close-maps').addEventListener('click', () => $('maps').classList.add('hidden'));
 const openSettings = () => $('settings').classList.remove('hidden');
 $('open-settings').addEventListener('click', openSettings);
 $('pause-settings').addEventListener('click', openSettings);
@@ -382,6 +410,7 @@ function pauseGame() {
   resumeOnLock = false;
   audio.setSfx(false); // paused means quiet, even online where the match goes on
   if (buyMenu.open) setBuyMenu(false);
+  setConsole(false);
   touch?.reset();
   // We release the mouse ourselves, which also lets us take it back on the
   // next Esc without a click (browsers allow that after exitPointerLock).
@@ -478,6 +507,8 @@ buyMenu.onClose = () => setBuyMenu(false);
 input.on('key', (code) => {
   if (code === 'Escape' && mode === 'paused') return resumeByKey();
   if (mode !== 'playing') return;
+  if (code === 'Backquote') return setConsole(!consoleOpen);
+  if (consoleOpen) { if (code === 'Escape') setConsole(false); return; }
   const b = settings.binds;
   if (code === b.buy) setBuyMenu(!buyMenu.open);
   else if (code === 'Escape' && buyMenu.open) setBuyMenu(false);
@@ -502,6 +533,148 @@ function dropOrPickup() {
   const d = game.pickupTarget(me, input.yaw);
   pendingActions.push(d ? { type: 'pickup', id: d.id } : { type: 'drop' });
 }
+
+// ---------- Multi-kill announcer ----------
+
+const MULTI_KILLS = [null, null, ['DOUBLE KILL', 'double'], ['TRIPLE KILL', 'triple'], ['MULTI KILL', 'multi'], ['ULTRA KILL', 'ultra'], ['MONSTER KILL', 'monster']];
+let announcer = null;
+function announceMultiKill(n) {
+  const [text, clip] = MULTI_KILLS[Math.min(n, MULTI_KILLS.length - 1)];
+  hud.multiKill(text, n);
+  // A newer call cuts off the last one (a shotgun double then triple).
+  try { announcer?.stop(); } catch { /* already ended */ }
+  announcer = audio.play('announce_' + clip, { volume: 1, jitter: 0 });
+}
+
+// ---------- Admin console (~) ----------
+// Practice: commands run on the local game. Online: they go to the room,
+// which runs them only with the right admin password (the ADMIN_KEY secret on
+// the Worker). The password is remembered in this browser after a login.
+
+const ADMIN_KEY_STORE = 'stickshooter.adminKey';
+const consoleEl = $('console'), consoleLog = $('console-log'), consoleInput = $('console-input');
+let consoleOpen = false;
+let consoleHello = false;
+let pendingAdminKey = null;
+const consoleHistory = [];
+let historyAt = 0;
+
+function storedAdminKey() {
+  try { return localStorage.getItem(ADMIN_KEY_STORE); } catch { return null; }
+}
+function storeAdminKey(k) {
+  try { if (k) localStorage.setItem(ADMIN_KEY_STORE, k); else localStorage.removeItem(ADMIN_KEY_STORE); } catch { /* private mode */ }
+}
+
+function consolePrint(lines, cls = '') {
+  for (const line of [].concat(lines)) {
+    const d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = line;
+    consoleLog.append(d);
+  }
+  while (consoleLog.childElementCount > 200) consoleLog.firstChild.remove();
+  consoleLog.scrollTop = consoleLog.scrollHeight;
+}
+
+function setConsole(open) {
+  if (open && (mode !== 'playing' || TOUCH)) return;
+  if (consoleOpen === open) return;
+  consoleOpen = open;
+  consoleEl.classList.toggle('hidden', !open);
+  input.typing = open;
+  input.keys.clear();
+  input.mouse.left = input.mouse.right = false;
+  if (open) {
+    if (buyMenu.open) setBuyMenu(false);
+    // Keep pointer lock (like the buy menu) so closing doesn't need a click.
+    input.setCursor(input.locked);
+    consoleInput.value = '';
+    consoleInput.focus();
+    if (!consoleHello) {
+      consoleHello = true;
+      consolePrint('Admin console. Type help for commands, ~ or Esc to close.', 'ok');
+    }
+    if (net && !storedAdminKey()) consolePrint('Online, admin commands need the password: login <password>');
+  } else {
+    consoleInput.blur();
+    input.setCursor(false);
+  }
+}
+
+// Practice: what the commands can do outside the Game itself.
+const practiceHost = {
+  maps: MAPS,
+  botCount: () => brains.size,
+  setBots(n) {
+    n = Math.max(0, Math.min(MAX_BOTS, n));
+    while (brains.size < n) addBot();
+    while (brains.size > n) removeBot();
+    settings.bots = n;
+    botsBox.value = String(n);
+    saveSettings(settings);
+    return brains.size;
+  },
+  setDifficulty(d) {
+    settings.difficulty = d;
+    $('m-diff').value = d;
+    saveSettings(settings);
+    for (const b of brains.values()) b.setDifficulty(d);
+  },
+  changeMap(id) {
+    settings.map = id;
+    saveSettings(settings);
+    loadMap(id);
+    setupBots(); // restarts the match on the new map, with us in it
+    renderMapPick();
+  },
+};
+
+function runConsole(line) {
+  line = line.trim();
+  if (!line) return;
+  consolePrint('> ' + line, 'in');
+  consoleHistory.push(line);
+  historyAt = consoleHistory.length;
+  const [word, ...rest] = line.split(/\s+/);
+  const cmd = word.toLowerCase();
+  if (cmd === 'clear') { consoleLog.textContent = ''; return; }
+  if (!net) {
+    const res = runAdmin(game, practiceHost, me, line);
+    if (res.lines.length) consolePrint(res.lines, res.ok ? '' : 'err');
+    return;
+  }
+  if (cmd === 'login') {
+    pendingAdminKey = rest.join(' ');
+    if (!pendingAdminKey) return consolePrint('Usage: login <password>', 'err');
+    net.send({ t: 'admin', key: pendingAdminKey, login: true });
+    return;
+  }
+  if (cmd === 'logout') { storeAdminKey(null); return consolePrint('Logged out.'); }
+  const key = storedAdminKey();
+  if (!key) return consolePrint('Admin only. Type: login <password>', 'err');
+  net.send({ t: 'admin', key, line });
+}
+
+function onAdminReply(msg) {
+  if (msg.auth === true && pendingAdminKey) storeAdminKey(pendingAdminKey);
+  if (msg.auth === false) storeAdminKey(null);
+  pendingAdminKey = null;
+  if (msg.lines?.length) consolePrint(msg.lines, msg.ok ? (msg.auth ? 'ok' : '') : 'err');
+}
+
+consoleInput.addEventListener('keydown', (e) => {
+  if (e.code === 'Backquote') { e.preventDefault(); return; } // closes the console instead of typing `
+  if (e.key === 'Enter') {
+    const line = consoleInput.value;
+    consoleInput.value = '';
+    runConsole(line);
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    historyAt = Math.max(0, Math.min(consoleHistory.length, historyAt + (e.key === 'ArrowUp' ? -1 : 1)));
+    consoleInput.value = consoleHistory[historyAt] ?? '';
+  }
+});
 
 // ---------- Events from the sim ----------
 
@@ -586,7 +759,11 @@ function handleEvent(e) {
       hud.kill({ attacker, victim, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, cause: e.cause, mine: me && (e.attacker === me.id || e.victim === me.id) });
       // The stickman vanishes in a puff; its gun is left on the ground.
       if (victim !== me && victim.pos[1] > -10) view.effects.poof([victim.pos[0], victim.pos[1] + 1.0, victim.pos[2]]);
-      if (me && e.attacker === me.id && e.victim !== me.id) audio.play('killConfirm', { volume: 0.5 });
+      if (me && e.attacker === me.id && e.victim !== me.id) {
+        audio.play('killConfirm', { volume: 0.5 });
+        if (e.reward) hud.moneyPop(e.reward);
+        if (e.multi >= 2) announceMultiKill(e.multi);
+      }
       if (me && e.victim === me.id) {
         killInfo = { attacker: e.attacker, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, pos: [...me.pos], time: game.time };
         if (buyMenu.open) setBuyMenu(false);

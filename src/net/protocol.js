@@ -8,6 +8,7 @@
 //   { t: 'cmds', seq, vt, cmds: [cmd, ...] }   seq = seq of the LAST cmd in the batch,
 //                                               vt = server time the client is viewing others at
 //   { t: 'ping', c }
+//   { t: 'admin', key, line, login }           admin console command; key = the ADMIN_KEY secret
 // server -> client
 //   { t: 'welcome', id, mode, map, time, tickRate, snapEvery }
 //   { t: 'snap', time, ack, me, players: [...], events: [...], match, drops: [...], obj }
@@ -16,9 +17,11 @@
 //     drops = guns on the ground: { id, w, pos, yaw, exp }
 //   { t: 'pong', c, time }
 //   { t: 'full' }  room is full
+//   { t: 'admin', ok, lines: [string], auth }  admin console reply
+//   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past

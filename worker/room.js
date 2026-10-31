@@ -8,6 +8,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Game, emptyCmd } from '../src/sim/game.js';
 import { BotBrain } from '../src/sim/bot.js';
+import { runAdmin, MAX_BOTS } from '../src/sim/admin.js';
 import { TICK_DT, TICK_RATE } from '../src/sim/constants.js';
 import { MAPS, getMap, DEFAULT_MAP } from '../src/maps/index.js';
 import {
@@ -15,7 +16,9 @@ import {
   packOwn, packOther, packDrops, sanitizeCmd, cleanName, cleanMap, roomMode,
 } from '../src/net/protocol.js';
 
-const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil'];
+const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil', 'Eraser', 'Crayon', 'Marker', 'Quill'];
+// Wrong admin passwords a connection may try before it's ignored.
+const MAX_ADMIN_FAILS = 5;
 const MAX_QUEUE = 16; // cmds accepted per client before old ones are dropped
 // Client and server clocks drift, so a queue can slowly fill up. Beyond this
 // many cmds (~30 ms) we fold the oldest into the next one instead of letting
@@ -32,6 +35,9 @@ export class GameRoom extends DurableObject {
     this.brains = new Map(); // bot id -> BotBrain
     this.history = []; // recent tick states for lag compensation
     this.loop = null;
+    // Bot count an admin asked for (null = the usual BOT_FILL), and their skill.
+    this.botTarget = null;
+    this.difficulty = 'normal';
     this.game.lagComp = (shooter) => this.rewind(shooter);
   }
 
@@ -57,7 +63,7 @@ export class GameRoom extends DurableObject {
   }
 
   newClient() {
-    return { player: null, queue: [], last: emptyCmd(), ack: 0, viewTime: 0 };
+    return { player: null, queue: [], last: emptyCmd(), ack: 0, viewTime: 0, adminFails: 0 };
   }
 
   // RPC for GET /api/rooms.
@@ -115,9 +121,52 @@ export class GameRoom extends DurableObject {
       // A client that falls far behind skips ahead instead of lagging forever.
       while (c.queue.length > MAX_QUEUE) c.ack = c.queue.shift().seq;
       if (Number.isFinite(msg.vt)) c.viewTime = msg.vt;
+    } else if (msg.t === 'admin' && c.player) {
+      this.admin(ws, c, msg);
     } else if (msg.t === 'ping') {
       ws.send(JSON.stringify({ t: 'pong', c: msg.c, time: this.game.time }));
     }
+  }
+
+  // Admin console. Only someone who knows the ADMIN_KEY secret (set on the
+  // Worker in Cloudflare) can run commands; everyone else gets a polite no.
+  async admin(ws, c, msg) {
+    const reply = (ok, lines, extra = {}) => ws.send(JSON.stringify({ t: 'admin', ok, lines, ...extra }));
+    const secret = this.env.ADMIN_KEY;
+    if (!secret) return reply(false, ['Admin is not set up on this server (no ADMIN_KEY secret).']);
+    if (c.adminFails >= MAX_ADMIN_FAILS) return reply(false, ['Too many wrong passwords. Reconnect to try again.']);
+    if (typeof msg.key !== 'string' || !(await sameSecret(msg.key, secret))) {
+      c.adminFails++;
+      return reply(false, ['Not authorized. Type: login <password>'], { auth: false });
+    }
+    if (msg.login) return reply(true, ['Logged in as admin. Type help for commands.'], { auth: true });
+    const res = runAdmin(this.game, this.adminHost(), c.player, String(msg.line ?? '').slice(0, 200));
+    reply(res.ok, res.lines, { auth: true });
+  }
+
+  adminHost() {
+    return {
+      maps: MAPS,
+      botCount: () => this.brains.size,
+      setBots: (n) => {
+        this.botTarget = Math.max(0, Math.min(MAX_BOTS, n));
+        this.fillBots();
+        return this.brains.size;
+      },
+      setDifficulty: (d) => {
+        this.difficulty = d;
+        for (const b of this.brains.values()) b.setDifficulty(d);
+      },
+      changeMap: (id) => {
+        const g = this.game;
+        g.setMap(MAPS[id]);
+        for (const [pid, b] of this.brains) this.brains.set(pid, new BotBrain(g, g.getPlayer(pid), null, this.difficulty));
+        this.history = [];
+        g.restartMatch();
+        const msg = JSON.stringify({ t: 'map', map: id });
+        for (const [ws, c] of this.clients) if (c.player) try { ws.send(msg); } catch { /* closed */ }
+      },
+    };
   }
 
   webSocketClose(ws) { this.drop(ws); }
@@ -131,10 +180,12 @@ export class GameRoom extends DurableObject {
     if (!this.humans()) this.stop();
   }
 
-  // Keep the room at BOT_FILL players; bots leave as humans join.
+  // Keep the room at BOT_FILL players (bots leave as humans join), or at the
+  // bot count an admin set. An empty room forgets the admin's count.
   fillBots() {
     const humans = this.humans();
-    const want = humans ? Math.max(0, BOT_FILL - humans) : 0;
+    if (!humans) this.botTarget = null;
+    const want = !humans ? 0 : this.botTarget ?? Math.max(0, BOT_FILL - humans);
     while (this.brains.size > want) {
       const id = [...this.brains.keys()].pop();
       this.brains.delete(id);
@@ -142,9 +193,10 @@ export class GameRoom extends DurableObject {
     }
     while (this.brains.size < want) {
       const used = new Set(this.game.players.map((p) => p.name));
-      const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Bot ${this.brains.size + 1}`;
+      let name = BOT_NAMES.find((n) => !used.has(n));
+      for (let i = 2; !name; i++) name = BOT_NAMES.map((n) => `${n} ${i}`).find((n) => !used.has(n));
       const p = this.game.addPlayer({ name, isBot: true });
-      this.brains.set(p.id, new BotBrain(this.game, p, null, 'normal'));
+      this.brains.set(p.id, new BotBrain(this.game, p, null, this.difficulty));
     }
   }
 
@@ -252,6 +304,18 @@ export class GameRoom extends DurableObject {
       }
     };
   }
+}
+
+// Compare a password with the secret without leaking how much of it matched.
+async function sameSecret(a, b) {
+  const enc = new TextEncoder();
+  const [x, y] = await Promise.all([a, b].map((s) => crypto.subtle.digest('SHA-256', enc.encode(s))));
+  return crypto.subtle.timingSafeEqual ? crypto.subtle.timingSafeEqual(x, y) : equalBytes(new Uint8Array(x), new Uint8Array(y));
+}
+function equalBytes(x, y) {
+  let d = x.length ^ y.length;
+  for (let i = 0; i < x.length; i++) d |= x[i] ^ y[i];
+  return d === 0;
 }
 
 // Keep one-shot presses from a cmd we're skipping so a click or key tap
