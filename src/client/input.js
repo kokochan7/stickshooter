@@ -11,6 +11,27 @@ export const DEFAULT_BINDS = {
   buy: 'KeyB', scores: 'Tab', thirdPerson: 'KeyV',
 };
 
+// Rebindable actions in the order the Controls tab lists them.
+export const BIND_LABELS = {
+  forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
+  jump: 'Jump', duck: 'Crouch', duckAlt: 'Crouch (alt)', walk: 'Walk',
+  reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', lastWeapon: 'Last weapon',
+  buy: 'Buy menu', scores: 'Scoreboard', thirdPerson: 'Third person',
+};
+
+// Short name for a KeyboardEvent.code, for the settings and HUD hints.
+export function keyName(code) {
+  if (!code) return '—';
+  const named = {
+    Space: 'Space', ControlLeft: 'Ctrl', ControlRight: 'R-Ctrl', ShiftLeft: 'Shift', ShiftRight: 'R-Shift',
+    AltLeft: 'Alt', AltRight: 'R-Alt', Tab: 'Tab', CapsLock: 'Caps', Backquote: '`', Minus: '-', Equal: '=',
+    BracketLeft: '[', BracketRight: ']', Backslash: '\\', Semicolon: ';', Quote: "'", Comma: ',', Period: '.',
+    Slash: '/', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: 'Enter',
+  };
+  if (named[code]) return named[code];
+  return code.replace(/^Key|^Digit/, '').replace(/^Numpad/, 'Num ');
+}
+
 export class Input {
   constructor(target, settings) {
     this.target = target;
@@ -26,12 +47,13 @@ export class Input {
     this.sensScale = 1;
     this.menuKeys = false; // number keys go to the buy menu instead of weapon slots
     this.listeners = {};
+    this.binds = settings.binds;
 
     addEventListener('keydown', (e) => {
-      if (e.code === 'Tab' || (e.code === 'Space' && this.locked) || (e.code === 'Backspace' && this.menuKeys)) e.preventDefault();
+      if (e.code === this.binds.scores || e.code === 'Tab' || (e.code === 'Space' && this.locked) || (e.code === 'Backspace' && this.menuKeys)) e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code);
-      const b = DEFAULT_BINDS;
+      const b = this.binds;
       if (!this.enabled || (this.menuKeys && /^(Digit|Numpad)\d$/.test(e.code))) { this.emit('key', e.code); return; }
       if (e.code === b.reload) this.pending.reload = true;
       if (e.code === b.primary) this.pending.slot = 'primary';
@@ -110,7 +132,7 @@ export class Input {
   has(code) { return this.keys.has(code); }
 
   buildCmd() {
-    const b = DEFAULT_BINDS;
+    const b = this.binds;
     const cmd = emptyCmd();
     if (this.enabled) {
       cmd.fwd = (this.has(b.forward) ? 1 : 0) - (this.has(b.back) ? 1 : 0);

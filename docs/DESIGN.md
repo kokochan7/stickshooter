@@ -113,6 +113,7 @@ Modelled on the GoldSrc/CS 1.6 player movement code (`movement.js`).
 | Crouch speed | ×0.333 | duck speed |
 | Walk (Shift) speed | ×0.52, silent footsteps | walk |
 | Landing slowdown | ×0.8, 0.5 s jump stamina | stops bunny hops outpacing running |
+| Footsteps | one every 0.38 s above 150 u/s, silent below | CS plays one every 0.3–0.4 s; walk cycle and gun bob share the cadence |
 | Tagging (being shot) | ×0.55, recovers over 0.6 s | flinch slowdown |
 
 Max run speed depends on the gun you hold (table in 5.1): 250 u/s with a
@@ -609,8 +610,8 @@ Screen" right away.
   round mode.
 - **Weapons:** knife (melee, fastest run speed), grenades (HE, flash,
   smoke), more pistols (Glock with burst, P228, Five-SeveN), Scout, M249.
-- **Settings:** key rebinding, crosshair editor, sensitivity, FOV, quality
-  presets, audio volume.
+- **Settings:** quality presets. (Key rebinding, crosshair editor,
+  sensitivity, FOV and volume shipped in PRs #5 and #6.)
 
 ## 8. Performance budget
 

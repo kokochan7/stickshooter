@@ -27,6 +27,14 @@ export const DUCK_TIME = 0.2;
 // After landing a jump CS slows you down for a moment, which stops bunny hopping
 // from being faster than running.
 export const LAND_SPEED_MUL = 0.8;
+// Footstep cadence at full running speed (seconds per step). CS 1.6 plays a
+// step every 300 ms when running and 400 ms when slower; we sit in between,
+// which reads closer to how CS sounds in game. The walk cycle and the gun bob
+// use the same cadence so legs, camera and sound stay in sync.
+export const FOOTSTEP_TIME = 0.38;
+// Below this speed (CS units/s) steps are silent, which is why shift-walking
+// (250 * 0.52 = 130) and crouching make no noise.
+export const FOOTSTEP_MIN_SPEED = 150;
 export const JUMP_STAMINA_TIME = 0.5;
 
 // Hull

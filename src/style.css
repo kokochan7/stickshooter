@@ -33,6 +33,14 @@ canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
   background: var(--panel); backdrop-filter: blur(10px); border: 1px solid var(--line);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); text-align: center;
 }
+.menu-card { position: relative; }
+.icon-btn { position: absolute; top: 14px; right: 14px; width: 40px; height: 40px; border-radius: 12px; border: 0; background: rgba(255,255,255,.08); cursor: pointer; display: grid; place-items: center; }
+.icon-btn:hover { background: rgba(255,255,255,.16); }
+.icon-btn svg { width: 22px; height: 22px; fill: none; stroke: var(--text); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.icon-btn .spk { fill: var(--text); }
+.icon-btn .cross { display: none; }
+.icon-btn.muted .wave { display: none; }
+.icon-btn.muted .cross { display: block; stroke: var(--red); }
 .menu-card.small { width: min(340px, 100%); }
 .logo {
   font-family: var(--title); font-weight: 400; font-size: clamp(44px, 10vw, 64px); line-height: 0.9; margin: 4px 0 6px;
@@ -66,20 +74,38 @@ select option { background: var(--panel-solid); }
 kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4px; border-radius: 6px; background: rgba(255,255,255,.1); color: var(--text); font: 700 11px var(--body); text-align: center; }
 
 /* Settings */
-.settings-card { width: min(480px, 100%); text-align: left; }
+.settings-card { width: min(560px, 100%); text-align: left; }
 .settings-card h2 { text-align: center; }
 .set-row { display: grid; grid-template-columns: 130px 1fr 54px; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 600; }
 .set-row input[type=range] { width: 100%; accent-color: var(--accent); }
 .set-row output { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .set-row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
 .set-row input[type=text] { grid-column: span 2; }
+#settings .menu-card { max-height: calc(100vh - 32px); overflow-y: auto; }
+.set-tabs { display: flex; gap: 6px; margin: 0 0 8px; padding: 4px; border-radius: 12px; background: rgba(0,0,0,.25); }
+.set-tabs button { flex: 1; padding: 9px 6px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: 800 12.5px var(--body); letter-spacing: 1.2px; cursor: pointer; }
+.set-tabs button:hover { color: var(--text); }
+.set-tabs button.on { background: rgba(255,255,255,.12); color: var(--text); }
+.ch-preview { position: relative; height: 120px; margin: 4px 0 6px; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(180deg, #8fb8d8 0 52%, #b9a27c 52% 100%); }
+.ch-preview::after { content: ''; position: absolute; left: 0; right: 0; top: 52%; height: 40%; background: repeating-linear-gradient(90deg, rgba(0,0,0,.06) 0 24px, transparent 24px 48px); }
+.ch-preview .ch-root { z-index: 1; }
+.binds { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.bind-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; font-weight: 600; }
+.bind { min-width: 78px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: var(--text); font: 800 12.5px var(--body); cursor: pointer; }
+.bind:hover { background: rgba(255,255,255,.16); }
+.bind.changed { color: var(--accent); }
+.bind.waiting { background: var(--accent); color: var(--accent-ink); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .65; } }
+.set-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+.btn.small { padding: 10px 14px; font-size: 13px; margin-top: 12px; }
+@media (max-width: 520px) { .binds { grid-template-columns: 1fr; } }
 
 /* ---------- HUD ---------- */
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; font-family: var(--body); }
-#crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
-#crosshair .ch { position: absolute; background: #6dff7a; box-shadow: 0 0 0 1px rgba(0,0,0,.55); }
-#crosshair .t, #crosshair .b { width: 2px; height: 8px; left: -1px; }
-#crosshair .l, #crosshair .r { height: 2px; width: 8px; top: -1px; }
+#crosshair, .ch-root { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.ch-root .ch, #crosshair .ch { position: absolute; background: #6dff7a; box-shadow: 0 0 0 1px rgba(0,0,0,.6); }
+.no-outline .ch { box-shadow: none !important; }
 #hitmarker { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
 #hitmarker i { position: absolute; width: 10px; height: 2px; background: #fff; box-shadow: 0 0 2px #000; }
 #hitmarker i:nth-child(1) { left: 4px; top: 4px; transform: rotate(45deg); }

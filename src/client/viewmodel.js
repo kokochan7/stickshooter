@@ -2,7 +2,7 @@
 // gun never clips into walls. Springs give the kick, sway and bob their feel.
 import * as THREE from 'three';
 import { buildGun } from './gunModels.js';
-import { toonMaterial, solveIK, Limb, Joint } from './stickman.js';
+import { toonMaterial, solveIK, Limb, Joint, stepRate } from './stickman.js';
 
 class Spring {
   constructor(stiffness = 180, damping = 18) {
@@ -66,8 +66,17 @@ export class ViewModel {
     this.swayY = new Spring(120, 16);
     this.drop = new Spring(90, 14); // deploy / landing
     this.bobT = 0;
+    this.bobAmt = 0;
     this.reloadT = -1;
     this.reloadDur = 1;
+    this.reloadBlend = 0;
+    this.shellReload = null; // { start, each } for shell-by-shell guns
+    this.slap = new Spring(260, 16); // mag seated / slide released
+    // A shell in the left hand while loading shotguns.
+    this.shell = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.05, 8), new THREE.MeshLambertMaterial({ color: 0xb8322a }));
+    this.shell.rotation.x = Math.PI / 2;
+    this.shell.visible = false;
+    this.rig.add(this.shell);
     this.pumpT = -1;
     this.spin = 0;
     this._v = Array.from({ length: 6 }, () => new THREE.Vector3());
@@ -106,9 +115,10 @@ export class ViewModel {
     if (this.gun?.spec.pump) this.pumpT = 0.12;
   }
 
-  reload(duration) {
+  reload(duration, shellReload = null) {
     this.reloadT = 0;
     this.reloadDur = duration;
+    this.shellReload = shellReload;
   }
 
   land(speed) {
@@ -126,30 +136,32 @@ export class ViewModel {
     const sx = Math.max(-0.04, Math.min(0.04, this.swayX.update(dt)));
     const sy = Math.max(-0.04, Math.min(0.04, this.swayY.update(dt)));
 
-    // Walk bob.
+    // Walk bob: one dip per footstep, side to side over two.
     const k = onGround ? Math.min(1, speed / 6) : 0;
-    this.bobT += dt * (4 + speed * 1.1);
-    const bobX = Math.sin(this.bobT) * 0.012 * k;
-    const bobY = -Math.abs(Math.cos(this.bobT)) * 0.012 * k;
+    this.bobAmt += (k - this.bobAmt) * Math.min(1, dt * 8);
+    if (onGround) this.bobT += dt * stepRate(speed);
+    const bobX = Math.sin(this.bobT) * 0.012 * this.bobAmt;
+    const bobY = -Math.abs(Math.sin(this.bobT)) * 0.014 * this.bobAmt;
 
     const kb = this.kickBack.update(dt);
     const kr = this.kickRot.update(dt);
     const ks = this.kickSide.update(dt);
     const drop = this.drop.update(dt);
 
-    // Reload: dip and tilt the gun.
-    let rl = 0;
-    if (reloading && this.reloadT >= 0) {
-      this.reloadT += dt;
-      const t = Math.min(1, this.reloadT / this.reloadDur);
-      rl = Math.sin(Math.min(1, t * 1.1) * Math.PI);
-    } else {
-      this.reloadT = -1;
-    }
+    // Reload pose (see reloadPose); blended so an interrupted reload eases out.
+    if (reloading && this.reloadT >= 0) this.reloadT += dt;
+    else this.reloadT = -1;
+    this.reloadBlend += ((this.reloadT >= 0 ? 1 : 0) - this.reloadBlend) * Math.min(1, dt * 10);
+    const rp = this.reloadPose();
+    const slap = this.slap.update(dt);
 
     const hold = HOLD[this.gun.spec.hold] ?? HOLD.rifle;
-    this.rig.position.set(hold.x + sx + bobX + ks * 0.01, hold.y + sy + bobY - drop * 0.4 - rl * 0.06, hold.z + kb * 0.04);
-    this.rig.rotation.set(kr * 0.02 + drop * 0.6 - rl * 0.5, sx * 2 + ks * 0.01, -sx * 1.5 + rl * 0.5);
+    this.rig.position.set(
+      hold.x + sx + bobX + ks * 0.01 + rp.x,
+      hold.y + sy + bobY - drop * 0.4 + rp.y + slap * 0.01,
+      hold.z + kb * 0.04 + rp.z,
+    );
+    this.rig.rotation.set(kr * 0.02 + drop * 0.6 + rp.pitch + slap * 0.04, sx * 2 + ks * 0.01 + rp.yaw, -sx * 1.5 + rp.roll);
 
     if (this.gun.spin) {
       this.spin += dt * spin * 50;
@@ -167,9 +179,7 @@ export class ViewModel {
     const grip = this._v[0].copy(this.gun.grip);
     const fore = this._v[1].copy(this.gun.fore);
     fore.z += pump;
-    if (reloading && rl > 0.2 && this.gun.spec.hold !== 'pistol') {
-      fore.set(-0.02, -0.12 - rl * 0.05, -0.08);
-    }
+    if (rp.hand) fore.lerp(rp.hand, rp.handW);
     const shoulderR = this._v[2].set(0.24, -0.4, 0.0).sub(this.rig.position).applyEuler(invEuler(this.rig.rotation));
     const shoulderL = this._v[3].set(-0.2, -0.42, -0.06).sub(this.rig.position).applyEuler(invEuler(this.rig.rotation));
     this.limb('R', shoulderR, grip, new THREE.Vector3(0.6, -1, 0.2));
@@ -181,6 +191,101 @@ export class ViewModel {
     }
     this.flash.position.copy(this.gun.muzzle);
     this.flash.position.z -= 0.04;
+  }
+
+  // Reload animation by weapon type, as offsets for the rig plus where the
+  // left hand and the magazine are. Times are fractions of the reload:
+  //   mag guns: tilt, pull the mag, drop it, bring a new one, seat it (the
+  //   mag-in sound plays at 0.6), then rack the bolt / release the slide.
+  //   shotguns: roll the gun over and push shells in one at a time, timed to
+  //   the sim's shell events.
+  reloadPose() {
+    const g = this.gun, rp = this._rp ??= { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0, hand: new THREE.Vector3(), handW: 0 };
+    const b = this.reloadBlend;
+    rp.x = rp.y = rp.z = rp.pitch = rp.yaw = rp.roll = 0;
+    rp.handW = 0;
+    this.shell.visible = false;
+    if (g.mag) { g.mag.position.copy(g.magHome); g.mag.rotation.set(0, 0, 0); }
+    if (b < 0.001 && this.reloadT < 0) return rp;
+    const hold = g.spec.hold;
+    const t = this.reloadT >= 0 ? Math.min(1, this.reloadT / this.reloadDur) : 1;
+
+    if (this.shellReload) {
+      // Gun rolled over to show the loading port, left hand feeding shells.
+      rp.roll = -0.6 * b; rp.pitch = 0.15 * b; rp.yaw = 0.15 * b; rp.y = -0.01 * b; rp.z = -0.07 * b;
+      const { start, each } = this.shellReload;
+      const el = this.reloadT - start;
+      const u = (((el % each) + each) % each) / each; // 0 = shell just went in
+      const port = this._v[5].set(0.0, -0.025, -0.08);
+      const down = smooth(u / 0.45) * (1 - smooth((u - 0.45) / 0.5));
+      rp.hand.copy(port).add(this._v[4].set(-0.02 * down, -0.15 * down, 0.06 * down));
+      rp.handW = b;
+      if (this.reloadT >= 0 && u > 0.2) {
+        this.shell.visible = true;
+        this.shell.position.copy(rp.hand).add(this._v[4].set(0.0, 0.02, -0.03));
+      }
+      return rp;
+    }
+
+    // Tilt in and out.
+    const tilt = smooth(t / 0.12) * (1 - smooth((t - 0.86) / 0.14));
+    // Rolled so the mag well faces the middle of the screen, where the left
+    // hand works.
+    if (hold === 'heavy') { rp.roll = -0.2 * tilt; rp.y = 0.05 * tilt; rp.x = -0.02 * tilt; }
+    else if (hold === 'pistol') { rp.roll = -0.35 * tilt; rp.pitch = 0.3 * tilt; rp.y = 0.03 * tilt; rp.x = -0.02 * tilt; }
+    else { rp.roll = -0.5 * tilt; rp.pitch = 0.1 * tilt; rp.yaw = 0.1 * tilt; rp.y = 0.03 * tilt; rp.x = -0.02 * tilt; }
+    if (!g.mag) return rp;
+
+    const dir = g.magDir, home = g.magHome;
+    const OUT = hold === 'pistol' ? 0.12 : 0.17;
+    // Where the old mag goes and the new one comes from: below and behind
+    // the gun (a top-loading P90 mag still gets swapped from below).
+    const away = dir.y > 0
+      ? this._v[5].copy(home).add(this._v[4].set(-0.25, -0.4, 0.15))
+      : this._v[5].copy(home).addScaledVector(dir, 0.55).add(this._v[4].set(-0.12, -0.05, 0.15));
+    const magPos = g.mag.position;
+    if (t < 0.12) {
+      magPos.copy(home);
+    } else if (t < 0.28) {
+      magPos.copy(home).addScaledVector(dir, OUT * smooth((t - 0.12) / 0.16));
+    } else if (t < 0.42) {
+      const e = smooth((t - 0.28) / 0.14);
+      magPos.copy(home).addScaledVector(dir, OUT).lerp(away, e);
+      g.mag.rotation.x = e * 0.8;
+    } else if (t < 0.55) {
+      const e = smooth((t - 0.42) / 0.13);
+      magPos.copy(away).lerp(this._v[4].copy(home).addScaledVector(dir, OUT), e);
+      g.mag.rotation.x = (1 - e) * 0.8;
+    } else if (t < 0.6) {
+      magPos.copy(home).addScaledVector(dir, OUT * (1 - smooth((t - 0.55) / 0.05)));
+    }
+    if (t >= 0.6 && this._slapAt !== this.reloadDur) { this._slapAt = this.reloadDur; this.slap.v += 3; }
+    if (t < 0.05) this._slapAt = -1;
+
+    // Left hand: from the handguard to the bottom of the mag and back, or on
+    // to the charging handle / slide.
+    const magGrip = this._v[3].copy(magPos).addScaledVector(dir, 0.055);
+    if (t < 0.6) {
+      rp.hand.copy(magGrip);
+      rp.handW = smooth(t / 0.1) * b;
+    } else if (hold === 'rifle' && this.gunId !== 'awp') {
+      // Bolt release: hand to the side of the receiver, slap it forward.
+      const handle = this._v[4].set(-0.04, g.muzzle.y - 0.015, -0.03);
+      const pull = smooth((t - 0.72) / 0.06) * (1 - smooth((t - 0.8) / 0.03));
+      handle.z += pull * 0.05;
+      handle.x -= pull * 0.02;
+      const toHandle = smooth((t - 0.6) / 0.12);
+      rp.hand.copy(magGrip).lerp(handle, toHandle);
+      rp.handW = (1 - smooth((t - 0.84) / 0.12)) * b;
+      if (t > 0.8 && this._boltAt !== this.reloadDur) { this._boltAt = this.reloadDur; this.slap.v -= 2; }
+      if (t < 0.05) this._boltAt = -1;
+    } else {
+      // Pistol slide release / AWP / minigun: hand straight back.
+      rp.hand.copy(magGrip);
+      rp.handW = (1 - smooth((t - 0.6) / 0.16)) * b;
+      if (hold === 'pistol') rp.z = 0.025 * smooth((t - 0.68) / 0.03) * (1 - smooth((t - 0.71) / 0.1));
+    }
+    return rp;
   }
 
   limb(side, shoulder, hand, pole) {
@@ -200,6 +305,11 @@ export class ViewModel {
     this.rig.updateMatrixWorld(true);
     return out.copy(this.gun.eject).applyMatrix4(this.rig.matrixWorld);
   }
+}
+
+function smooth(x) {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
 }
 
 const _ie = new THREE.Euler();
