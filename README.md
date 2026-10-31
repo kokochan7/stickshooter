@@ -24,12 +24,12 @@ Worker (stickshooter.kennk.workers.dev).
 
 ```bash
 npx wrangler login   # once
-npm run deploy       # vite build && wrangler deploy
+npm run deploy       # wrangler builds (npm run build) then deploys
 ```
 
-If the Worker is connected to this repo with Workers Builds, use
-`npm run build` as the build command and `npx wrangler deploy` as the deploy
-command.
+`wrangler.jsonc` runs `npm run build` itself before each deploy, so Workers
+Builds connected to this repo works with the default `npx wrangler deploy`
+deploy command and no build command.
 
 ## Controls
 
