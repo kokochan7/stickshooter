@@ -21,6 +21,11 @@ const DUCK_HITBOXES = [
   { group: 'leg', min: [-0.22, 0, -0.45], max: [0.22, 0.45, 0.2] },
 ];
 
+// Free-for-all players (team 'ffa') are everyone's enemy.
+export function isEnemy(a, b) {
+  return a !== b && (a.team !== b.team || a.team === 'ffa');
+}
+
 export function hitboxesFor(p) {
   return p.ducked || p.duckAmount > 0.5 ? DUCK_HITBOXES : STAND_HITBOXES;
 }
@@ -116,7 +121,7 @@ export function traceBullet(world, players, shooter, origin, dir, weapon, onHit)
     let ph = null, victim = null;
     for (const p of players) {
       if (p === shooter || !p.alive || alreadyHit.has(p)) continue;
-      if (shooter && p.team === shooter.team && p.team !== 'ffa') continue;
+      if (shooter && !isEnemy(shooter, p)) continue;
       const h = rayPlayer(p, src, dir, wallT);
       if (h && (!ph || h.t < ph.t)) { ph = h; victim = p; }
     }

@@ -162,7 +162,8 @@ export class GameView {
   viewFor(p) {
     let v = this.views.get(p.id);
     if (!v) {
-      const man = p.team === 'white'
+      const white = p.skin ? p.skin === 'white' : p.team === 'white';
+      const man = white
         ? new Stickman({ body: 0xffffff, eyes: 0x15171a, outline: 0x22252b })
         : new Stickman({ body: 0x3a3f4b, eyes: 0xff9a3c, outline: 0x0d0e10, glowEyes: true });
       this.scene.add(man.root);
