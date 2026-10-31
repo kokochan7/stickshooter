@@ -22,25 +22,27 @@
     <div id="scope" class="hidden"><div class="scope-ring"></div><div class="scope-h"></div><div class="scope-v"></div></div>
     <div id="vignette"></div>
     <div id="dmg-indicators"></div>
-    <div id="killfeed"></div>
-    <div id="topbar"><span id="score-me">0</span><span class="sep">KILLS</span><span id="score-deaths">0</span><span class="sep">DEATHS</span></div>
-    <div id="fps"></div>
-    <div id="net" class="hidden"></div>
-    <div class="hud-bl">
-      <div class="money"><span>$</span><b id="money">0</b></div>
-      <div class="vitals">
-        <div class="vital"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><b id="health">100</b></div>
-        <div class="vital armor"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z"/></svg><b id="armor">0</b><i id="helmet" title="Helmet">H</i></div>
+    <!-- Everything below is laid out at 1920x1080 and scaled to the screen (see fitUi in hud.js). -->
+    <div id="hud-frame">
+      <div id="killfeed"></div>
+      <div id="topbar"><span id="score-me">0</span><span class="sep">KILLS</span><span id="score-deaths">0</span><span class="sep">DEATHS</span></div>
+      <div id="perf"><div id="fps"></div><div id="net" class="hidden"></div></div>
+      <div class="hud-bl">
+        <div class="money"><span>$</span><b id="money">0</b></div>
+        <div class="vitals">
+          <div class="vital"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><b id="health">100</b></div>
+          <div class="vital armor"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z"/></svg><b id="armor">0</b><i id="helmet" title="Helmet">H</i></div>
+        </div>
       </div>
+      <div class="hud-br">
+        <div id="weapon-name">USP</div>
+        <div class="ammo"><b id="clip">12</b><span>/</span><span id="reserve">100</span></div>
+        <div id="reload-bar"><i></i></div>
+      </div>
+      <div id="center-msg"></div>
+      <div id="hint">B — buy menu &nbsp;·&nbsp; 1/2/Q — weapons &nbsp;·&nbsp; V — third person</div>
+      <div id="scoreboard" class="hidden panel"></div>
     </div>
-    <div class="hud-br">
-      <div id="weapon-name">USP</div>
-      <div class="ammo"><b id="clip">12</b><span>/</span><span id="reserve">100</span></div>
-      <div id="reload-bar"><i></i></div>
-    </div>
-    <div id="center-msg"></div>
-    <div id="hint">B — buy menu &nbsp;·&nbsp; 1/2/Q — weapons &nbsp;·&nbsp; V — third person</div>
-    <div id="scoreboard" class="hidden panel"></div>
   </div>
 
   <div id="menu" class="screen">
@@ -83,9 +85,16 @@
   </div>
 
   <div id="buymenu" class="screen hidden">
-    <div class="buy-card panel">
-      <div class="buy-head"><h2>SHOP</h2><div class="buy-money">$<b id="buy-money">0</b></div><button id="buy-close" class="x" aria-label="Close">✕</button></div>
-      <div id="buy-grid"></div>
+    <div class="buy-card">
+      <div class="buy-head">
+        <svg class="buy-logo" viewBox="0 0 48 48" aria-hidden="true"><circle cx="17" cy="9" r="6"/><path d="M17 15v15M17 30l-7 14M17 30l7 14M17 19l10 5h14M17 19l-8 9"/></svg>
+        <h2 id="buy-title">Buy Menu</h2>
+        <div class="buy-money">$<b id="buy-money">0</b></div>
+      </div>
+      <div class="buy-body">
+        <div id="buy-list"></div>
+        <div id="buy-info"></div>
+      </div>
     </div>
   </div>
 

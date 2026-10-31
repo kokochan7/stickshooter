@@ -24,14 +24,15 @@ export class Input {
     this.locked = false;
     this.enabled = true;
     this.sensScale = 1;
+    this.menuKeys = false; // number keys go to the buy menu instead of weapon slots
     this.listeners = {};
 
     addEventListener('keydown', (e) => {
-      if (e.code === 'Tab' || (e.code === 'Space' && this.locked)) e.preventDefault();
+      if (e.code === 'Tab' || (e.code === 'Space' && this.locked) || (e.code === 'Backspace' && this.menuKeys)) e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code);
       const b = DEFAULT_BINDS;
-      if (!this.enabled) { this.emit('key', e.code); return; }
+      if (!this.enabled || (this.menuKeys && /^(Digit|Numpad)\d$/.test(e.code))) { this.emit('key', e.code); return; }
       if (e.code === b.reload) this.pending.reload = true;
       if (e.code === b.primary) this.pending.slot = 'primary';
       if (e.code === b.secondary) this.pending.slot = 'secondary';
@@ -62,7 +63,7 @@ export class Input {
       // CS-style: degrees per count = 0.022 * sensitivity.
       const k = 0.022 * this.settings.sensitivity * this.sensScale * DEG;
       this.yaw -= e.movementX * k;
-      this.pitch -= e.movementY * k * (this.settings.invertY ? -1 : 1);
+      this.pitch -= e.movementY * k;
       const lim = 89 * DEG;
       if (this.pitch > lim) this.pitch = lim;
       if (this.pitch < -lim) this.pitch = -lim;
