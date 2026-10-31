@@ -83,6 +83,23 @@ function thud(ctx, freq = 90, decay = 0.05, noiseAmt = 0.4, len = 0.15) {
   });
 }
 
+// Heel thud plus a short gritty scuff.
+function footstep(ctx, freq) {
+  return makeBuffer(ctx, 0.16, (d, n) => {
+    let lp = 0, bp = 0, hpPrev = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / SR;
+      const noise = rnd();
+      lp += (noise - lp) * 0.06;
+      const hp = noise - hpPrev; hpPrev = noise;
+      bp += (hp - bp) * 0.35;
+      const heel = (Math.sin(2 * Math.PI * freq * t * (1 + 0.6 * Math.exp(-t / 0.008))) * 0.9 + lp * 2.5) * Math.exp(-t / 0.03);
+      const scuff = bp * 0.5 * Math.exp(-Math.max(0, t - 0.012) / 0.035) * Math.min(1, t / 0.012);
+      d[i] = heel + scuff;
+    }
+  });
+}
+
 function ding(ctx, freq = 1800, decay = 0.12, len = 0.35) {
   return makeBuffer(ctx, len, (d, n) => {
     for (let i = 0; i < n; i++) {
@@ -110,6 +127,7 @@ export class Audio {
     this.buffers = {};
     this.volume = 0.6;
     this.listener = { x: 0, y: 0, z: 0, yaw: 0 };
+    this.sfxOn = true; // off on the main menu, where only the music plays
   }
 
   // Must be called from a user gesture (iOS requirement).
@@ -149,7 +167,8 @@ export class Audio {
     b.hitHelmet = ding(c, 3200, 0.05, 0.2);
     b.killConfirm = blip(c, 900, 1500, 0.12);
     b.hurt = thud(c, 70, 0.08, 0.6, 0.2);
-    b.step = thud(c, 120, 0.025, 1.4, 0.07);
+    // Four footstep variants (two per foot) like CS's pl_step1-4.
+    [92, 104, 98, 110].forEach((f, i) => { b['step' + i] = footstep(c, f); });
     b.land = thud(c, 80, 0.05, 1.4, 0.14);
     b.buy = blip(c, 700, 1100, 0.1);
     b.spin = makeBuffer(c, 0.5, (d, n) => {
@@ -168,7 +187,7 @@ export class Audio {
 
   // pos: world position or null for 2D (local player) sounds.
   play(name, { pos = null, volume = 1, rate = 1, jitter = 0.04 } = {}) {
-    if (!this.ctx || !this.buffers[name]) return;
+    if (!this.ctx || !this.sfxOn || !this.buffers[name]) return;
     const c = this.ctx;
     const src = c.createBufferSource();
     src.buffer = this.buffers[name];

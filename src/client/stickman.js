@@ -2,8 +2,16 @@
 // procedural walk cycle and two-bone IK so the hands always hold the gun.
 import * as THREE from 'three';
 import { buildGun } from './gunModels.js';
+import { U, FOOTSTEP_TIME } from '../sim/constants.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+const RUN_SPEED = 250 * U;
+
+// Walk-cycle speed in radians per second (π per step), matched to the
+// footstep cadence: FOOTSTEP_TIME per step when running.
+export function stepRate(speed) {
+  return (Math.PI / FOOTSTEP_TIME) * Math.sqrt(Math.min(1.2, speed / RUN_SPEED));
+}
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3(), _p = new THREE.Vector3();
 
 let toonGradient = null;
@@ -184,8 +192,10 @@ export class Stickman {
     const speed = Math.hypot(lvx, lvz);
     const duck = s.duck;
     const k = Math.min(1, speed / 5.5);
-    const stride = 0.34 * k * (1 - duck * 0.4);
-    this.walkPhase += (speed * dt) / 0.62 * Math.PI;
+    const stride = 0.42 * k * (1 - duck * 0.4);
+    // One step (half a cycle) per footstep sound at full run, longer and
+    // slower steps when walking.
+    this.walkPhase += stepRate(speed) * dt;
 
     const v = this._v;
     const hipY = 0.92 - duck * 0.47 + (s.onGround ? Math.abs(Math.sin(this.walkPhase)) * 0.03 * k : 0);

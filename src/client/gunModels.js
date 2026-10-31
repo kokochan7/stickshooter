@@ -57,6 +57,7 @@ const SPECS = {
       B(0.006, 0.01, 0.008, 0, 0.078, -0.155, BLACK),
       B(0.02, 0.01, 0.008, 0, 0.078, 0.015, BLACK),
     ],
+    mag: [B(0.024, 0.1, 0.036, 0, -0.04, 0.008, METAL, -0.25)], magDir: [0, -0.97, 0.25],
     muzzle: [0, 0.058, -0.18], fore: [-0.02, -0.035, 0.01], hold: 'pistol', eject: [0.02, 0.06, -0.04],
   }),
   deagle: () => ({
@@ -69,6 +70,7 @@ const SPECS = {
       B(0.008, 0.012, 0.01, 0, 0.093, -0.205, BLACK),
       B(0.026, 0.012, 0.01, 0, 0.093, 0.02, BLACK),
     ],
+    mag: [B(0.028, 0.105, 0.04, 0, -0.04, 0.008, METAL, -0.2)], magDir: [0, -0.98, 0.2],
     muzzle: [0, 0.065, -0.24], fore: [-0.02, -0.04, 0.012], hold: 'pistol', eject: [0.02, 0.07, -0.06],
   }),
   uzi: () => ({
@@ -81,6 +83,7 @@ const SPECS = {
       B(0.01, 0.01, 0.18, -0.02, 0.035, 0.11, METAL),
       B(0.05, 0.05, 0.012, 0, 0.03, 0.2, METAL),
     ],
+    mag: [B(0.028, 0.2, 0.036, 0, -0.07, -0.01, METAL, -0.05)], magDir: [0, -1, 0.05],
     muzzle: [0, 0.055, -0.26], fore: [0, 0.03, -0.16], hold: 'rifle', eject: [0.03, 0.08, -0.06],
   }),
   mp5: () => ({
@@ -90,11 +93,11 @@ const SPECS = {
       C(0.012, 0.08, 0, 0.06, -0.41, METAL),
       B(0.01, 0.035, 0.01, 0, 0.1, -0.37, BLACK),
       C(0.02, 0.03, 0, 0.105, 0.0, BLACK),
-      B(0.028, 0.17, 0.05, 0, -0.05, -0.19, BLACK, 0.28),
       grip(),
       B(0.036, 0.055, 0.2, 0, 0.046, 0.14, BLACK),
       B(0.04, 0.11, 0.022, 0, 0.03, 0.245, BLACK),
     ],
+    mag: [B(0.028, 0.17, 0.05, 0, -0.05, -0.19, BLACK, 0.28)], magDir: [0, -0.96, -0.28],
     muzzle: [0, 0.06, -0.45], fore: [0, 0.015, -0.3], hold: 'rifle', eject: [0.03, 0.07, -0.08],
   }),
   ump45: () => ({
@@ -102,23 +105,23 @@ const SPECS = {
       B(0.056, 0.08, 0.34, 0, 0.06, -0.1, GUNMETAL),
       B(0.03, 0.012, 0.3, 0, 0.106, -0.1, BLACK),
       C(0.013, 0.06, 0, 0.06, -0.3, METAL),
-      B(0.03, 0.16, 0.055, 0, -0.05, -0.18, BLACK, 0.1),
       grip(),
       B(0.03, 0.05, 0.22, 0, 0.05, 0.17, BLACK),
       B(0.036, 0.1, 0.025, 0, 0.03, 0.28, BLACK),
     ],
+    mag: [B(0.03, 0.16, 0.055, 0, -0.05, -0.18, BLACK, 0.1)], magDir: [0, -1, -0.1],
     muzzle: [0, 0.06, -0.335], fore: [0, 0.012, -0.24], hold: 'rifle', eject: [0.03, 0.08, -0.06],
   }),
   p90: () => ({
     parts: [
       B(0.06, 0.1, 0.46, 0, 0.035, -0.06, BLACK),
-      B(0.05, 0.03, 0.32, 0, 0.1, -0.12, TAN),
       B(0.062, 0.07, 0.07, 0, 0.03, -0.31, DARK),
       C(0.012, 0.05, 0, 0.05, -0.37, METAL),
       B(0.03, 0.035, 0.08, 0, 0.13, -0.08, DARK),
       B(0.034, 0.09, 0.04, 0, -0.05, 0.0, BLACK, -0.15),
       B(0.034, 0.03, 0.12, 0, -0.08, -0.05, BLACK),
     ],
+    mag: [B(0.05, 0.03, 0.32, 0, 0.1, -0.12, TAN)], magDir: [-0.3, 0.9, 0.3],
     muzzle: [0, 0.05, -0.4], fore: [0, -0.03, -0.2], hold: 'rifle', eject: [0, -0.02, 0.1],
   }),
   shotgun: () => ({
@@ -153,10 +156,10 @@ const SPECS = {
       B(0.024, 0.06, 0.02, 0, 0.1, -0.25, BLACK),
       B(0.024, 0.06, 0.02, 0, 0.1, 0.09, BLACK),
       C(0.012, 0.14, 0, 0.05, -0.37, METAL),
-      B(0.03, 0.13, 0.06, 0, -0.07, 0.12, BLACK, 0.15),
       grip(-0.02),
       B(0.05, 0.05, 0.2, 0, -0.03, -0.2, DARK),
     ],
+    mag: [B(0.03, 0.13, 0.06, 0, -0.07, 0.12, BLACK, 0.15)], magDir: [0, -0.99, -0.15],
     muzzle: [0, 0.05, -0.45], fore: [0, -0.01, -0.22], hold: 'rifle', eject: [0.03, 0.05, 0.1],
   }),
   ak47: () => ({
@@ -168,11 +171,10 @@ const SPECS = {
       C(0.011, 0.26, 0, 0.065, -0.5, DARK),
       B(0.01, 0.045, 0.012, 0, 0.09, -0.58, DARK),
       C(0.015, 0.04, 0, 0.065, -0.64, DARK),
-      B(0.03, 0.12, 0.06, 0, -0.025, -0.15, DARK, 0.22),
-      B(0.03, 0.1, 0.06, 0, -0.12, -0.19, DARK, 0.5),
       B(0.042, 0.085, 0.28, 0, 0.02, 0.22, WOOD, -0.1),
       grip(0, WOODL),
     ],
+    mag: [B(0.03, 0.12, 0.06, 0, -0.025, -0.15, DARK, 0.22), B(0.03, 0.1, 0.06, 0, -0.12, -0.19, DARK, 0.5)], magDir: [0, -0.95, -0.3],
     muzzle: [0, 0.065, -0.67], fore: [0, 0.025, -0.3], hold: 'rifle', eject: [0.03, 0.09, -0.08],
   }),
   m4a1: () => ({
@@ -183,11 +185,11 @@ const SPECS = {
       C(0.009, 0.2, 0, 0.06, -0.47, DARK),
       B(0.01, 0.06, 0.015, 0, 0.1, -0.39, BLACK),
       C(0.012, 0.04, 0, 0.06, -0.585, DARK),
-      B(0.028, 0.15, 0.065, 0, -0.04, -0.14, DARK, 0.12),
       grip(),
       C(0.017, 0.12, 0, 0.06, 0.13, BLACK),
       B(0.04, 0.075, 0.14, 0, 0.04, 0.21, BLACK),
     ],
+    mag: [B(0.028, 0.15, 0.065, 0, -0.04, -0.14, DARK, 0.12)], magDir: [0, -0.99, -0.12],
     muzzle: [0, 0.06, -0.61], fore: [0, 0.025, -0.3], hold: 'rifle', eject: [0.03, 0.08, -0.06],
   }),
   awp: () => ({
@@ -203,9 +205,9 @@ const SPECS = {
       B(0.02, 0.05, 0.02, 0, 0.105, -0.13, BLACK),
       B(0.02, 0.05, 0.02, 0, 0.105, 0.04, BLACK),
       B(0.05, 0.012, 0.012, 0.045, 0.07, 0.06, METAL),
-      B(0.034, 0.06, 0.07, 0, -0.01, -0.13, BLACK),
       grip(0, GREEN),
     ],
+    mag: [B(0.034, 0.06, 0.07, 0, -0.01, -0.13, BLACK)], magDir: [0, -1, 0],
     muzzle: [0, 0.065, -0.8], fore: [0, 0.0, -0.32], hold: 'rifle', scope: true, eject: [0.03, 0.08, 0.04],
   }),
   minigun: () => {
@@ -222,9 +224,9 @@ const SPECS = {
         C(0.065, 0.24, 0, 0.05, -0.02, DARK, 10),
         B(0.09, 0.09, 0.14, 0, 0.05, 0.14, BLACK),
         B(0.024, 0.07, 0.2, 0, 0.14, 0.02, GUNMETAL),
-        B(0.09, 0.13, 0.15, -0.1, -0.02, 0.06, OLIVE),
-        B(0.034, 0.1, 0.045, 0, -0.04, 0.14, BLACK, -0.2),
+          B(0.034, 0.1, 0.045, 0, -0.04, 0.14, BLACK, -0.2),
       ],
+      mag: [B(0.09, 0.13, 0.15, -0.1, -0.02, 0.06, OLIVE)], magDir: [-0.3, -0.95, 0],
       spin, spinCenter: [0, 0.05, -0.12],
       muzzle: [0, 0.05, -0.72], fore: [0, 0.16, 0.0], gripPoint: [0, -0.02, 0.14], hold: 'heavy', eject: [0.06, 0.02, 0.0],
     };
@@ -239,17 +241,23 @@ export function gunMaterial() {
 
 const geoCache = new Map();
 
-// Returns { group, spin, muzzle: Vector3, fore: Vector3, grip: Vector3, spec }
+// Returns { group, spin, mag, magHome, magDir, muzzle, fore, grip, eject, spec }
 export function buildGun(id) {
   let cached = geoCache.get(id);
   if (!cached) {
     const spec = SPECS[id]();
     const geo = mergeGeometries(spec.parts.map((g) => g.toNonIndexed()));
     const spinGeo = spec.spin ? mergeGeometries(spec.spin.map((g) => g.toNonIndexed())) : null;
-    cached = { spec, geo, spinGeo };
+    const magGeo = spec.mag ? mergeGeometries(spec.mag.map((g) => g.toNonIndexed())) : null;
+    let magCenter = null;
+    if (magGeo) {
+      magGeo.computeBoundingBox();
+      magCenter = magGeo.boundingBox.getCenter(new THREE.Vector3());
+    }
+    cached = { spec, geo, spinGeo, magGeo, magCenter };
     geoCache.set(id, cached);
   }
-  const { spec, geo, spinGeo } = cached;
+  const { spec, geo, spinGeo, magGeo, magCenter } = cached;
   const group = new THREE.Group();
   const mesh = new THREE.Mesh(geo, gunMaterial());
   group.add(mesh);
@@ -259,8 +267,21 @@ export function buildGun(id) {
     spin.position.set(...spec.spinCenter);
     group.add(spin);
   }
+  // The magazine is its own mesh under a pivot at its center, so the reload
+  // animation can pull it out.
+  let mag = null;
+  if (magGeo) {
+    mag = new THREE.Group();
+    mag.position.copy(magCenter);
+    const m = new THREE.Mesh(magGeo, gunMaterial());
+    m.position.copy(magCenter).negate();
+    mag.add(m);
+    group.add(mag);
+  }
   return {
-    group, spin, spec,
+    group, spin, spec, mag,
+    magHome: magCenter ? magCenter.clone() : null,
+    magDir: spec.magDir ? new THREE.Vector3(...spec.magDir).normalize() : null,
     muzzle: new THREE.Vector3(...spec.muzzle),
     fore: new THREE.Vector3(...spec.fore),
     grip: new THREE.Vector3(...(spec.gripPoint ?? [0, -0.01, 0.0])),

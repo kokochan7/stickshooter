@@ -73,6 +73,9 @@ everything else is the static game.
 | V | Third-person view |
 | Esc | Pause |
 
+Every key above except Esc can be rebound in Settings → Controls. Settings
+also has a crosshair editor (length, gap, thickness, dot, outline, dynamic).
+
 ## Weapons
 
 All numbers come from CS 1.6 (prices too). The Mini Gun isn't in CS, so it

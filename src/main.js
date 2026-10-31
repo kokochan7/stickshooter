@@ -12,12 +12,13 @@ import { Game, emptyCmd } from './sim/game.js';
 import { NavGrid } from './sim/nav.js';
 import { BotBrain } from './sim/bot.js';
 import { WEAPONS } from './sim/weapons.js';
-import { TICK_DT, STAND_EYE, DUCK_EYE, U } from './sim/constants.js';
+import { TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED } from './sim/constants.js';
 import { YARD } from './maps/yard.js';
 import { GameView } from './client/scene.js';
 import { Audio } from './client/audio.js';
-import { Input, DEFAULT_BINDS } from './client/input.js';
-import { Hud, BuyMenu, SettingsPanel, loadSettings, renderGunIcons } from './client/hud.js';
+import { Input, keyName } from './client/input.js';
+import { MenuMusic } from './client/music.js';
+import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons } from './client/hud.js';
 import { OnlineSession, roomUrl } from './net/online.js';
 
 const $ = (id) => document.getElementById(id);
@@ -31,8 +32,12 @@ const nav = new NavGrid(game.world, YARD.bounds);
 const view = new GameView(canvas, YARD, game.world, settings);
 const audio = new Audio();
 audio.setVolume(settings.volume);
+audio.sfxOn = false; // main menu: music only, no background gunfire
+const music = new MenuMusic(audio);
+music.set({ level: settings.music, muted: settings.musicMuted });
 const input = new Input(canvas, settings);
 const hud = new Hud();
+hud.chSettings = settings;
 const { icons, glyphs } = renderGunIcons(view.renderer);
 hud.glyphs = glyphs;
 const buyMenu = new BuyMenu(icons, (item) => pendingActions.push({ type: 'buy', item }));
@@ -72,6 +77,8 @@ setupBots();
 
 function onSettingChange(k) {
   if (k === 'volume') audio.setVolume(settings.volume);
+  if (k === 'music') music.set({ level: settings.music });
+  if (k === 'binds') renderControls();
   if (k === 'name' && me) me.name = settings.name;
   if (k === 'bots' && !net) setupBots();
   if (k === 'difficulty' && !net) for (const b of brains.values()) b.setDifficulty(settings.difficulty);
@@ -79,16 +86,52 @@ function onSettingChange(k) {
 
 // ---------- Screens ----------
 
+// Control list on the menu and the in-game hint follow the key binds.
+function renderControls() {
+  const b = settings.binds, k = (a) => `<kbd>${keyName(b[a])}</kbd>`;
+  $('controls').innerHTML = [
+    `${k('forward')}${k('left')}${k('back')}${k('right')} move`, `${k('jump')} jump`,
+    `${k('duck')} crouch`, `${k('walk')} walk`,
+    '<kbd>Mouse 1</kbd> fire', '<kbd>Mouse 2</kbd> scope',
+    `${k('reload')} reload`, `${k('buy')} buy`,
+    `${k('scores')} scores`, '<kbd>Esc</kbd> pause',
+  ].map((t) => `<div>${t}</div>`).join('');
+  $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.lastWeapon)} — weapons &nbsp;·&nbsp; ${keyName(b.thirdPerson)} — third person`;
+}
+renderControls();
+
+// Browsers only allow sound after a click or key press, so the menu music
+// starts on the first one.
+function startAudio() {
+  audio.unlock();
+  music.start();
+}
+for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, startAudio, { once: true });
+
+function renderMusicToggle() {
+  $('music-toggle').classList.toggle('muted', settings.musicMuted);
+  $('music-toggle').setAttribute('aria-label', settings.musicMuted ? 'Unmute menu music' : 'Mute menu music');
+}
+renderMusicToggle();
+$('music-toggle').addEventListener('click', () => {
+  settings.musicMuted = !settings.musicMuted;
+  saveSettings(settings);
+  music.set({ muted: settings.musicMuted });
+  renderMusicToggle();
+});
+
 function showPlaying() {
   $('menu').classList.add('hidden');
   $('pause').classList.add('hidden');
   hud.show(true);
   input.lock();
   mode = 'playing';
+  audio.sfxOn = true;
+  music.set({ active: false });
 }
 
 function startPlaying() {
-  audio.unlock();
+  startAudio();
   if (net) return showPlaying();
   if (!me) {
     me = game.addPlayer({ name: settings.name, team: 'white' });
@@ -106,6 +149,8 @@ function clearPlayers() {
 
 function showMenu(status = '') {
   mode = 'menu';
+  audio.sfxOn = false;
+  music.set({ active: true });
   if (buyMenu.open) setBuyMenu(false);
   input.unlock();
   $('pause').classList.add('hidden');
@@ -119,7 +164,7 @@ function showMenu(status = '') {
 
 // Online: drop the local bots and mirror a server room instead.
 function goOnline() {
-  audio.unlock();
+  startAudio();
   clearPlayers();
   acc = 0;
   $('play-online').disabled = true;
@@ -181,15 +226,16 @@ buyMenu.onClose = () => setBuyMenu(false);
 
 input.on('key', (code) => {
   if (mode !== 'playing') return;
-  if (code === DEFAULT_BINDS.buy) setBuyMenu(!buyMenu.open);
+  const b = settings.binds;
+  if (code === b.buy) setBuyMenu(!buyMenu.open);
   else if (code === 'Escape' && buyMenu.open) setBuyMenu(false);
   else if (buyMenu.open && /^(Digit|Numpad)\d$/.test(code)) buyMenu.key(+code.slice(-1));
   else if (buyMenu.open && code === 'Backspace') buyMenu.key('back');
-  else if (code === DEFAULT_BINDS.thirdPerson) thirdPerson = !thirdPerson;
-  else if (code === DEFAULT_BINDS.scores) hud.showScores(true, game.players, me?.id);
+  else if (code === b.thirdPerson) thirdPerson = !thirdPerson;
+  else if (code === b.scores) hud.showScores(true, game.players, me?.id);
 });
 input.on('keyup', (code) => {
-  if (code === DEFAULT_BINDS.scores) hud.showScores(false);
+  if (code === settings.binds.scores) hud.showScores(false);
 });
 
 // ---------- Events from the sim ----------
@@ -279,17 +325,24 @@ function handleEvent(e) {
     }
     case 'reload': {
       if (isFirstPerson(p)) {
-        view.viewModel.reload(e.duration);
-        audio.play('magOut', { volume: 0.6 });
         const def = WEAPONS[e.weapon];
-        if (!def.shellReload) timers.push({ t: game.time + e.duration * 0.6, fn: () => audio.play('magIn', { volume: 0.6 }) });
+        view.viewModel.reload(e.duration, def.shellReload ?? null);
+        if (!def.shellReload) {
+          // Sounds follow the viewmodel animation: mag out, mag in, bolt/slide.
+          const at = (f, name, volume) => timers.push({ t: game.time + e.duration * f, fn: () => { if (me?.reloading) audio.play(name, { volume }); } });
+          at(0.14, 'magOut', 0.6);
+          at(0.6, 'magIn', 0.65);
+          const hold = view.viewModel.gun?.spec.hold;
+          if (hold === 'pistol') at(0.69, 'bolt', 0.5);
+          else if (hold === 'rifle' && def.id !== 'awp') at(0.8, 'bolt', 0.55);
+        }
       } else if (p) {
         audio.play('magOut', { pos: p.pos, volume: 0.4 });
       }
       break;
     }
     case 'reloaded':
-      if (isFirstPerson(p)) audio.play('bolt', { volume: 0.5 });
+      if (isFirstPerson(p) && (game.activeDef(p)?.id === 'awp' || view.viewModel.gun?.spec.hold === 'heavy')) audio.play('bolt', { volume: 0.5 });
       break;
     case 'shell':
       if (p === me) audio.play('shell', { volume: 0.5 });
@@ -327,19 +380,25 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 
 function footsteps(p, dt, x, z) {
   let s = stepState.get(p.id);
-  if (!s) { s = { dist: 0, x, z, air: false }; stepState.set(p.id, s); }
+  if (!s) { s = { timer: 0, foot: 0, x, z, air: false }; stepState.set(p.id, s); }
   const moved = Math.hypot(x - s.x, z - s.z);
   s.x = x; s.z = z;
   if (!p.alive) { s.air = false; return; }
-  const speed = Math.hypot(p.vel[0], p.vel[2]);
-  // Like CS: walking (shift) and crouching are silent.
-  if (p.onGround && speed > 150 * U && moved < 1) {
-    s.dist += moved;
-    if (s.dist > 1.9) {
-      s.dist = 0;
-      if (p === me) audio.play('step', { volume: 0.18, jitter: 0.15 });
-      else audio.play('step', { pos: p.pos, volume: 0.45, jitter: 0.15 });
+  const speed = Math.hypot(p.vel[0], p.vel[2]) / U;
+  // CS-style: a step every FOOTSTEP_TIME while running; walking (shift) and
+  // crouching are silent. The first step after starting to run is immediate.
+  if (p.onGround && speed > FOOTSTEP_MIN_SPEED && moved < 1) {
+    s.timer -= dt;
+    if (s.timer <= 0) {
+      s.timer += FOOTSTEP_TIME;
+      if (s.timer < 0) s.timer = FOOTSTEP_TIME;
+      s.foot ^= 1;
+      const name = 'step' + (s.foot * 2 + (Math.random() < 0.5 ? 0 : 1));
+      if (p === me) audio.play(name, { volume: 0.32, jitter: 0.05 });
+      else audio.play(name, { pos: p.pos, volume: 0.6, jitter: 0.05 });
     }
+  } else {
+    s.timer = Math.min(s.timer, 0.05);
   }
   if (!p.onGround) s.air = true;
   else if (s.air) {
@@ -530,4 +589,4 @@ $('loading').classList.add('hidden');
 requestAnimationFrame(frame);
 
 // Handy for debugging in the console.
-window.stickshooter = { game, view, settings, input, hud, get me() { return me; }, get net() { return net; } };
+window.stickshooter = { game, view, settings, input, hud, music, audio, get me() { return me; }, get net() { return net; } };

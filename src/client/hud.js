@@ -2,23 +2,33 @@
 import * as THREE from 'three';
 import { WEAPONS, SHOP_ORDER, GEAR } from '../sim/weapons.js';
 import { buildGun } from './gunModels.js';
+import { DEFAULT_BINDS, BIND_LABELS, keyName } from './input.js';
 
 const $ = (id) => document.getElementById(id);
 
 export const DEFAULT_SETTINGS = {
   name: 'Player',
-  sensitivity: 1.5,
+  sensitivity: 3,
   fov: 74,
   volume: 0.6,
+  music: 0.5,
+  musicMuted: false,
+  // Crosshair, CS 1.6 style. Lengths are in screen pixels.
+  chSize: 8,
+  chGap: 3,
+  chThick: 2,
+  chDot: false,
+  chOutline: true,
+  chDynamic: true,
   antialias: true,
   showFps: true,
   bots: 0,
   difficulty: 'normal',
-  version: 3,
+  version: 4,
 };
 
 // Sensitivity uses CS units (0.022 degrees per mouse count per point).
-export const SENS_RANGE = [0.5, 4];
+export const SENS_RANGE = [0.5, 10];
 // The camera's vertical FOV is 60..80; the slider shows it as 90..110.
 export const FOV_RANGE = [60, 80];
 export const FOV_SHOWN_OFFSET = 30;
@@ -30,16 +40,37 @@ export function loadSettings() {
     // v2 made 0 bots the default; older saves always stored 5.
     if ((saved.version ?? 1) < 2) delete saved.bots;
     // v3 narrowed the sensitivity range and dropped render scale and invert mouse.
-    if ((saved.version ?? 1) < 3) delete saved.sensitivity;
+    // v4 made the default sensitivity higher (1.5 -> 3).
+    if ((saved.version ?? 1) < 4) delete saved.sensitivity;
     delete saved.renderScale;
     delete saved.invertY;
     const s = { ...DEFAULT_SETTINGS, ...saved, version: DEFAULT_SETTINGS.version };
     s.sensitivity = clamp(+s.sensitivity || DEFAULT_SETTINGS.sensitivity, ...SENS_RANGE);
     s.fov = clamp(+s.fov || DEFAULT_SETTINGS.fov, ...FOV_RANGE);
+    s.binds = { ...DEFAULT_BINDS, ...(saved.binds ?? {}) };
     return s;
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, binds: { ...DEFAULT_BINDS } };
   }
+}
+
+// Size the four crosshair lines (and the dot) from the settings. extra is the
+// spread gap in pixels added by movement and recoil.
+export function styleCrosshair(root, s, extra = 0) {
+  const len = s.chSize, th = s.chThick;
+  const gap = Math.round(s.chGap + (s.chDynamic ? extra : 0));
+  const half = Math.floor(th / 2);
+  const q = (c) => root.querySelector(c).style;
+  const t = q('.t'), b = q('.b'), l = q('.l'), r = q('.r'), d = q('.dot');
+  t.width = b.width = `${th}px`; t.height = b.height = `${len}px`;
+  t.left = b.left = `${-half}px`;
+  t.top = `${-gap - len}px`; b.top = `${gap + (th % 2)}px`;
+  l.height = r.height = `${th}px`; l.width = r.width = `${len}px`;
+  l.top = r.top = `${-half}px`;
+  l.left = `${-gap - len}px`; r.left = `${gap + (th % 2)}px`;
+  d.display = s.chDot ? '' : 'none';
+  d.width = d.height = `${th}px`; d.left = d.top = `${-half}px`;
+  root.classList.toggle('no-outline', !s.chOutline);
 }
 export function saveSettings(s) {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ }
@@ -140,10 +171,7 @@ export class Hud {
   constructor() {
     this.el = $('hud');
     this.crosshair = $('crosshair');
-    this.ch = {
-      t: this.crosshair.querySelector('.t'), b: this.crosshair.querySelector('.b'),
-      l: this.crosshair.querySelector('.l'), r: this.crosshair.querySelector('.r'),
-    };
+    this.chSettings = null;
     this.hitmarker = $('hitmarker');
     this.hitTime = 0;
     this.vignette = $('vignette');
@@ -207,12 +235,12 @@ export class Hud {
     rb.style.opacity = reloadFrac !== null ? '1' : '0';
     if (reloadFrac !== null) rb.firstElementChild.style.width = `${Math.round(reloadFrac * 100)}%`;
 
-    // Dynamic crosshair.
-    const gap = Math.round(3 + spreadPx);
-    this.ch.t.style.top = `${-gap - 8}px`;
-    this.ch.b.style.top = `${gap}px`;
-    this.ch.l.style.left = `${-gap - 8}px`;
-    this.ch.r.style.left = `${gap}px`;
+    // Dynamic crosshair (only restyled when the gap changes).
+    const cs = this.chSettings;
+    if (cs) {
+      const key = `${cs.chSize},${cs.chGap},${cs.chThick},${cs.chDot},${cs.chOutline},${cs.chDynamic},${cs.chDynamic ? Math.round(spreadPx) : 0}`;
+      if (this.last.ch !== key) { this.last.ch = key; styleCrosshair(this.crosshair, cs, spreadPx); }
+    }
     this.crosshair.style.display = scoped || !p.alive || def?.zoomLevels ? 'none' : '';
     this.scope.classList.toggle('hidden', !scoped);
 
@@ -445,20 +473,52 @@ export class SettingsPanel {
     this.s = settings;
     this.onChange = onChange;
     this.form = $('settings-form');
+    this.capturing = null; // bind action waiting for a key
     // [key, label, type, min, max, step, shown offset]
-    const rows = [
-      ['name', 'Name', 'text'],
-      ['sensitivity', 'Sensitivity', 'range', ...SENS_RANGE, 0.05],
-      ['fov', 'Field of view', 'range', ...FOV_RANGE, 1, FOV_SHOWN_OFFSET],
-      ['volume', 'Volume', 'range', 0, 1, 0.05],
-      ['showFps', 'Show FPS', 'check'],
-      ['antialias', 'Anti-aliasing (reload)', 'check'],
-    ];
-    this.form.innerHTML = rows.map(([key, label, type, min, max, step, off = 0]) => {
+    const tabs = {
+      general: [
+        ['name', 'Name', 'text'],
+        ['sensitivity', 'Sensitivity', 'range', ...SENS_RANGE, 0.05],
+        ['fov', 'Field of view', 'range', ...FOV_RANGE, 1, FOV_SHOWN_OFFSET],
+        ['volume', 'Volume', 'range', 0, 1, 0.05],
+        ['music', 'Menu music', 'range', 0, 1, 0.05],
+        ['showFps', 'Show FPS', 'check'],
+        ['antialias', 'Anti-aliasing (reload)', 'check'],
+      ],
+      crosshair: [
+        ['chSize', 'Length', 'range', 1, 20, 1],
+        ['chGap', 'Gap', 'range', 0, 16, 1],
+        ['chThick', 'Thickness', 'range', 1, 6, 1],
+        ['chDot', 'Center dot', 'check'],
+        ['chOutline', 'Outline', 'check'],
+        ['chDynamic', 'Dynamic', 'check'],
+      ],
+    };
+    const row = ([key, label, type, min, max, step, off = 0]) => {
       if (type === 'range') return `<div class="set-row"><span>${label}</span><input type="range" data-k="${key}" data-off="${off}" min="${min + off}" max="${max + off}" step="${step}" value="${settings[key] + off}"><output>${fmt(settings[key] + off)}</output></div>`;
       if (type === 'check') return `<div class="set-row"><span>${label}</span><input type="checkbox" data-k="${key}" ${settings[key] ? 'checked' : ''}><span></span></div>`;
       return `<div class="set-row"><span>${label}</span><input type="text" maxlength="16" data-k="${key}" value="${esc(settings[key])}"></div>`;
-    }).join('');
+    };
+    this.form.innerHTML = `
+      <div class="set-tabs">
+        <button data-tab="general" class="on">GENERAL</button><button data-tab="crosshair">CROSSHAIR</button><button data-tab="controls">CONTROLS</button>
+      </div>
+      <div class="set-page" data-page="general">${tabs.general.map(row).join('')}</div>
+      <div class="set-page hidden" data-page="crosshair">
+        <div class="ch-preview"><div class="ch-root"><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="ch dot"></i></div></div>
+        ${tabs.crosshair.map(row).join('')}
+        <button class="btn small" data-reset="crosshair">RESET CROSSHAIR</button>
+      </div>
+      <div class="set-page hidden" data-page="controls">
+        <div class="binds">${Object.entries(BIND_LABELS).map(([a, label]) => `<div class="bind-row"><span>${label}</span><button class="bind" data-bind="${a}"></button></div>`).join('')}</div>
+        <p class="set-note">Click a key, then press the new one. Esc cancels. Mouse 1 fires and Mouse 2 scopes.</p>
+        <button class="btn small" data-reset="binds">RESET KEYS</button>
+      </div>`;
+    this.preview = this.form.querySelector('.ch-root');
+
+    for (const b of this.form.querySelectorAll('.set-tabs button')) {
+      b.addEventListener('click', () => this.tab(b.dataset.tab));
+    }
     for (const inp of this.form.querySelectorAll('input')) {
       inp.addEventListener('input', () => {
         const k = inp.dataset.k;
@@ -468,10 +528,76 @@ export class SettingsPanel {
           settings[k] = shown - +inp.dataset.off;
           inp.nextElementSibling.textContent = fmt(shown);
         } else settings[k] = inp.value.trim() || 'Player';
-        saveSettings(settings);
-        this.onChange(k);
+        this.changed(k);
       });
     }
+    for (const b of this.form.querySelectorAll('.bind')) {
+      b.addEventListener('click', () => this.capture(b.dataset.bind));
+    }
+    this.form.querySelector('[data-reset="binds"]').addEventListener('click', () => {
+      Object.assign(settings.binds, DEFAULT_BINDS);
+      this.changed('binds');
+    });
+    this.form.querySelector('[data-reset="crosshair"]').addEventListener('click', () => {
+      for (const k of Object.keys(DEFAULT_SETTINGS)) if (k.startsWith('ch')) settings[k] = DEFAULT_SETTINGS[k];
+      for (const inp of this.form.querySelectorAll('[data-page="crosshair"] input')) {
+        const k = inp.dataset.k;
+        if (inp.type === 'checkbox') inp.checked = settings[k];
+        else { inp.value = settings[k]; inp.nextElementSibling.textContent = fmt(settings[k]); }
+      }
+      this.changed('crosshair');
+    });
+
+    // Capture phase on window so the game's own key handlers never see the
+    // key being bound.
+    addEventListener('keydown', (e) => {
+      if (!this.capturing) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.code !== 'Escape') this.bind(this.capturing, e.code);
+      this.capturing = null;
+      this.renderBinds();
+    }, true);
+    this.renderBinds();
+    styleCrosshair(this.preview, settings);
+  }
+
+  tab(name) {
+    this.capturing = null;
+    this.renderBinds();
+    for (const b of this.form.querySelectorAll('.set-tabs button')) b.classList.toggle('on', b.dataset.tab === name);
+    for (const p of this.form.querySelectorAll('.set-page')) p.classList.toggle('hidden', p.dataset.page !== name);
+  }
+
+  capture(action) {
+    this.capturing = this.capturing === action ? null : action;
+    this.renderBinds();
+  }
+
+  // A key can only do one thing: the action that had it takes our old key.
+  bind(action, code) {
+    const b = this.s.binds;
+    const prev = b[action];
+    for (const [a, c] of Object.entries(b)) if (a !== action && c === code) b[a] = prev;
+    b[action] = code;
+    this.changed('binds');
+  }
+
+  renderBinds() {
+    for (const el of this.form.querySelectorAll('.bind')) {
+      const a = el.dataset.bind;
+      const waiting = this.capturing === a;
+      el.textContent = waiting ? 'Press a key…' : keyName(this.s.binds[a]);
+      el.classList.toggle('waiting', waiting);
+      el.classList.toggle('changed', this.s.binds[a] !== DEFAULT_BINDS[a]);
+    }
+  }
+
+  changed(k) {
+    saveSettings(this.s);
+    if (k === 'binds') this.renderBinds();
+    styleCrosshair(this.preview, this.s);
+    this.onChange(k);
   }
 }
 
