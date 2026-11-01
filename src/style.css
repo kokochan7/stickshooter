@@ -161,10 +161,6 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #team-score .ts.red { color: #ff5a5f; }
 #team-score .ts.blue { color: #4f95ff; }
 #team-score .ts-you { font-size: 11px; letter-spacing: 1.5px; }
-#scoreboard .sb-team + .sb-team { margin-top: 14px; }
-#scoreboard .sb-title { display: flex; justify-content: space-between; padding: 4px 8px 6px; font-weight: 800; letter-spacing: 1.5px; font-size: 14px; border-bottom: 3px solid currentColor; }
-#scoreboard .sb-team.red .sb-title { color: #ff5a5f; }
-#scoreboard .sb-team.blue .sb-title { color: #4f95ff; }
 #topbar .sep { font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-right: 8px; }
 #perf { position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column; gap: 2px; font: 700 13px ui-monospace, monospace; text-shadow: 0 1px 2px #000; }
 #fps { color: #b8ffbf; }
@@ -208,13 +204,41 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 12px; color: rgba(255,255,255,.55); text-shadow: 0 1px 2px #000; transition: opacity 1s; }
 
 .panel { background: var(--panel); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 18px; }
-#scoreboard { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 560px; padding: 18px; }
-#scoreboard table { width: 100%; border-collapse: collapse; font-size: 15px; }
-#scoreboard th { text-align: left; color: var(--muted); font-size: 11px; letter-spacing: 1px; padding: 4px 8px; }
-#scoreboard td { padding: 7px 8px; border-top: 1px solid var(--line); font-weight: 700; }
-#scoreboard tr.me td { color: var(--accent); }
+
+/* ---------- Scoreboard ---------- */
+/* Teams side by side, big FFA in two ranked columns. Row size shrinks with
+   column length (.compact / .tight); --sb-fit scales it down as a last resort. */
+#scoreboard { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(var(--sb-fit, 1)); width: 600px; padding: 16px 18px 18px; --row: 34px; --fs: 15px; }
+#scoreboard.wide { width: 1040px; }
+#scoreboard.compact { --row: 27px; --fs: 14px; }
+#scoreboard.tight { --row: 22px; --fs: 13px; }
+#scoreboard .sb-cols { display: flex; gap: 22px; align-items: flex-start; }
+#scoreboard .sb-col { flex: 1 1 0; min-width: 0; }
+#scoreboard .sb-bar { display: flex; justify-content: space-between; font: 800 11px var(--body); letter-spacing: 1.5px; color: var(--muted); margin: 0 4px 10px; }
+#scoreboard .sb-head { text-align: center; font: 400 24px var(--title); letter-spacing: 1px; color: var(--accent); margin: 0 0 12px; }
+#scoreboard .sb-head .win { display: block; font: 400 52px/1.05 var(--title); letter-spacing: 1px; color: var(--accent); text-shadow: 0 4px 0 #1b1f27; }
+#scoreboard .sb-head .win.team-red { color: #ff5a5f; }
+#scoreboard .sb-head .win.team-blue { color: #4f95ff; }
+#scoreboard .sb-head small { display: block; font: 700 14px var(--body); letter-spacing: 1px; color: var(--muted); margin-top: 6px; }
+#scoreboard .sb-title { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 10px; border-radius: 10px 10px 0 0; font-weight: 800; letter-spacing: 1.5px; font-size: 15px; border-bottom: 3px solid currentColor; background: color-mix(in srgb, currentColor 14%, transparent); }
+#scoreboard .sb-title small { margin-left: 10px; font-size: 10px; letter-spacing: 1px; color: var(--muted); }
+#scoreboard .sb-title b { font-size: 24px; line-height: 1; font-variant-numeric: tabular-nums; }
+#scoreboard .sb-team.red .sb-title { color: #ff5a5f; }
+#scoreboard .sb-team.blue .sb-title { color: #4f95ff; }
+#scoreboard table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs); }
+#scoreboard col.c-rk { width: 30px; }
+#scoreboard col.c-n { width: 40px; }
+#scoreboard col.c-hs { width: 54px; }
+#scoreboard th { text-align: left; color: var(--muted); font-size: 10px; letter-spacing: 1px; padding: 6px 6px 4px; }
+#scoreboard td { height: var(--row); padding: 0 6px; border-top: 1px solid var(--line); font-weight: 700; white-space: nowrap; }
+#scoreboard tr:nth-child(odd) td { background: rgba(255, 255, 255, .025); }
+#scoreboard td.nm { overflow: hidden; text-overflow: ellipsis; }
+#scoreboard td.nm small { margin-left: 6px; font-size: .72em; opacity: .5; }
+#scoreboard .rk { text-align: right; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; padding-right: 8px; }
 #scoreboard td.num, #scoreboard th.num { text-align: right; font-variant-numeric: tabular-nums; }
-#scoreboard .dead { opacity: .45; }
+#scoreboard td.hs { color: var(--muted); }
+#scoreboard tr.me td { color: var(--accent); background: rgba(255, 210, 63, .1); }
+#scoreboard .dead td:not(.rk) { opacity: .45; }
 
 /* ---------- Buy menu ---------- */
 /* CS 1.6 layout: numbered list on the left, picture and stats on the right.
@@ -267,14 +291,9 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #goal:empty { display: none; }
 #center-msg .count { display: block; font: 400 110px/1 var(--title); color: #fff; text-shadow: 0 6px 0 #1b1f27, 0 10px 30px rgba(0,0,0,.5); animation: countPop .5s ease-out; }
 #center-msg .count.go { color: var(--accent); }
-#scoreboard .sb-head .win { display: block; font: 400 52px/1.05 var(--title); letter-spacing: 1px; color: var(--accent); text-shadow: 0 4px 0 #1b1f27; }
-#scoreboard .sb-head .win.team-red { color: #ff5a5f; }
-#scoreboard .sb-head .win.team-blue { color: #4f95ff; }
-#scoreboard .sb-head small { display: block; font: 700 14px var(--body); letter-spacing: 1px; color: var(--muted); margin-top: 6px; }
 @keyframes countPop { from { transform: scale(1.5); opacity: 0; } }
 #prompt { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: var(--panel); font-weight: 700; font-size: 16px; }
 #prompt kbd { font-size: 13px; padding: 3px 8px; background: var(--accent); color: var(--accent-ink); }
-#scoreboard .sb-head { text-align: center; font: 400 24px var(--title); letter-spacing: 1px; color: var(--accent); margin: 0 0 10px; }
 
 /* ---------- Touch controls (phones / tablets) ---------- */
 #touch { position: fixed; inset: 0; z-index: 8; touch-action: none; -webkit-touch-callout: none; }
