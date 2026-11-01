@@ -401,23 +401,47 @@ export class Hud {
     el.innerHTML = `<span class="ts red">${red}</span><span class="ts-you team-${myTeam}">${myTeam === 'red' ? 'RED' : 'BLUE'}</span><span class="ts blue">${blue}</span>`;
   }
 
+  // Teams sit side by side; a big FFA splits its ranking into two columns.
+  // Rows get denser as columns get longer, and if the board still doesn't fit
+  // (huge rooms on short screens) it is scaled down to fit the HUD frame.
   showScores(show, players, meId, mode = 'ffa', kills = { red: 0, blue: 0 }, title = '') {
-    this.scoreboard.classList.toggle('hidden', !show);
+    const sb = this.scoreboard;
+    sb.classList.toggle('hidden', !show);
     if (!show) return;
-    const top = title ? `<div class="sb-head">${title}</div>` : '';
-    const head = '<tr><th>PLAYER</th><th class="num">K</th><th class="num">D</th><th class="num">HS</th></tr>';
-    const table = (list) => list.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths).map((p) => {
+    const rank = (a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name);
+    const rows = (list, from = 0) => list.map((p, i) => {
       const hs = p.kills ? Math.round((p.headshots / p.kills) * 100) : 0;
-      return `<tr class="${p.id === meId ? 'me' : ''} ${p.alive ? '' : 'dead'}"><td>${esc(p.name)}${p.isBot ? ' <small style="opacity:.5">BOT</small>' : ''}</td><td class="num">${p.kills}</td><td class="num">${p.deaths}</td><td class="num">${hs}%</td></tr>`;
+      const cls = `${p.id === meId ? 'me' : ''} ${p.alive ? '' : 'dead'}`;
+      return `<tr class="${cls}"><td class="rk">${from + i + 1}</td><td class="nm"><span>${esc(p.name)}</span>${p.isBot ? '<small>BOT</small>' : ''}</td><td class="num">${p.kills}</td><td class="num">${p.deaths}</td><td class="num hs">${hs}%</td></tr>`;
     }).join('');
-    if (mode !== 'teams') {
-      this.scoreboard.innerHTML = `${top}<table>${head}${table([...players])}</table>`;
-      return;
+    const table = (list, from) => `<table><colgroup><col class="c-rk"><col><col class="c-n"><col class="c-n"><col class="c-hs"></colgroup><tr><th class="rk">#</th><th>PLAYER</th><th class="num">K</th><th class="num">D</th><th class="num hs">HS</th></tr>${rows(list, from)}</table>`;
+    const teams = mode === 'teams';
+    const head = title
+      ? `<div class="sb-head">${title}</div>`
+      : `<div class="sb-bar"><span>${teams ? 'TEAMS' : 'FREE FOR ALL'}</span><span>${players.length} PLAYER${players.length === 1 ? '' : 'S'}</span></div>`;
+    let cols, longest;
+    if (teams) {
+      const lists = ['red', 'blue'].map((t) => players.filter((p) => p.team === t).sort(rank));
+      longest = Math.max(...lists.map((l) => l.length));
+      cols = ['red', 'blue'].map((t, i) => {
+        const alive = lists[i].filter((p) => p.alive).length;
+        return `<div class="sb-col sb-team ${t}"><div class="sb-title"><span>${t === 'red' ? 'RED' : 'BLUE'}<small>${alive}/${lists[i].length} ALIVE</small></span><b>${kills[t]}</b></div>${table(lists[i], 0)}</div>`;
+      });
+    } else {
+      const list = [...players].sort(rank);
+      const split = list.length > 12;
+      const half = Math.ceil(list.length / 2);
+      longest = split ? half : list.length;
+      cols = split
+        ? [list.slice(0, half), list.slice(half)].map((l, i) => `<div class="sb-col">${table(l, i * half)}</div>`)
+        : [`<div class="sb-col">${table(list, 0)}</div>`];
     }
-    this.scoreboard.innerHTML = top + ['red', 'blue'].map((t) => {
-      const list = players.filter((p) => p.team === t);
-      return `<div class="sb-team ${t}"><div class="sb-title"><span>${t === 'red' ? 'RED TEAM' : 'BLUE TEAM'}</span><b>${kills[t]}</b></div><table>${head}${table(list)}</table></div>`;
-    }).join('');
+    const density = longest > 16 ? 'tight' : longest > 10 ? 'compact' : '';
+    sb.className = `panel ${cols.length > 1 ? 'wide' : ''} ${density}`;
+    sb.style.setProperty('--sb-fit', '1');
+    sb.innerHTML = `${head}<div class="sb-cols">${cols.join('')}</div>`;
+    const room = (sb.parentElement?.clientHeight || 0) - 24;
+    if (room > 0 && sb.offsetHeight > room) sb.style.setProperty('--sb-fit', String(room / sb.offsetHeight));
   }
 }
 
