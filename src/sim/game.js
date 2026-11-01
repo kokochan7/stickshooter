@@ -299,7 +299,7 @@ export class Game {
     if (lo.armor) this.buy(p, lo.armor, true);
     if (lo.primary) this.buy(p, lo.primary, true);
     if (lo.defuser) this.buy(p, 'defuser', true);
-    this.emit({ type: 'spawn', pid: p.id });
+    this.emit({ type: 'spawn', pid: p.id, yaw: p.yaw }); // yaw: cmds later in the tick overwrite p.yaw
   }
 
   buy(p, item, silent = false) {

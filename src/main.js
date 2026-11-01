@@ -169,7 +169,7 @@ const mapPick = document.querySelector('.map-pick');
 mapPick.innerHTML = MAP_LIST.map((m) => {
   const [a, b] = MAP_SWATCH[m.id] ?? ['#888', '#555'];
   const kind = m.type === 'bomb' ? 'BOMB' : m.type === 'hostage' ? 'HOSTAGE' : 'DM';
-  return `<button class="map-btn" data-map="${m.id}" role="radio" style="--sw:${a};--sw2:${b}"><i></i>${m.name.toUpperCase()}<small>${kind}</small></button>`;
+  return `<button class="map-btn" data-map="${m.id}" role="radio" style="--sw:${a};--sw2:${b}"><i></i>${m.name.toUpperCase()}<small>${kind}${m.size ? ' · ' + m.size.toUpperCase() : ''}</small></button>`;
 }).join('');
 function renderMapPick() {
   for (const b of mapPick.querySelectorAll('.map-btn')) {
@@ -844,7 +844,7 @@ function handleEvent(e) {
     case 'spawn': {
       const v = view.views.get(p.id);
       if (v) v.man.revive();
-      if (p === me) { input.setAngles(me.yaw, 0); killInfo = null; }
+      if (p === me) { input.setAngles(e.yaw ?? me.yaw, 0); killInfo = null; }
       break;
     }
     // ----- Objective rounds -----

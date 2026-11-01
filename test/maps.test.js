@@ -46,6 +46,43 @@ for (const map of MAP_LIST) {
     }
   });
 
+  test(`${map.name}: the team bases are far apart and the walk is fair`, () => {
+    const nav = new Game(map).nav;
+    const walk = (a, b) => {
+      const p = nav.findPath(a[0], a[1], b[0], b[1]);
+      assert.ok(p, `${map.id}: no path ${a} -> ${b}`);
+      let d = 0, q = a;
+      for (const w of p) { d += Math.hypot(w[0] - q[0], w[1] - q[1]); q = w; }
+      return d;
+    };
+    const base = (team) => {
+      const ss = map.teamSpawns[team];
+      return [ss.reduce((a, s) => a + s.pos[0], 0) / ss.length, ss.reduce((a, s) => a + s.pos[2], 0) / ss.length];
+    };
+    const red = base('red'), blue = base('blue');
+    const mid = (r) => [(r.min[0] + r.max[0]) / 2, (r.min[1] + r.max[1]) / 2];
+    assert.ok(walk(red, blue) > (map.type === 'dm' ? 55 : 90), `${map.id}: spawns only ${walk(red, blue).toFixed(0)} m apart`);
+    if (map.type === 'dm') {
+      // Both teams reach the middle in the same time.
+      const c = [(map.bounds.min[0] + map.bounds.max[0]) / 2, (map.bounds.min[1] + map.bounds.max[1]) / 2];
+      const r = walk(red, c), b = walk(blue, c);
+      assert.ok(Math.abs(r - b) < 0.1 * Math.max(r, b), `${map.id}: red ${r.toFixed(0)} m vs blue ${b.toFixed(0)} m to the middle`);
+    } else if (map.type === 'bomb') {
+      // Both teams walk to every site; Blue (defending) gets there first,
+      // but not by much more than CS's usual head start.
+      for (const [name, r] of Object.entries(map.sites)) {
+        const dr = walk(red, mid(r)), db = walk(blue, mid(r));
+        assert.ok(db > 40, `${map.id}: Blue is only ${db.toFixed(0)} m from ${name}`);
+        assert.ok(db < dr && db > 0.55 * dr, `${map.id} ${name}: red ${dr.toFixed(0)} m, blue ${db.toFixed(0)} m`);
+      }
+    } else {
+      // Blue has a long way to the hostages, and back.
+      for (const h of map.hostages) {
+        assert.ok(walk(blue, [h[0], h[2]]) > 70, `${map.id}: hostage at ${h} is close to Blue`);
+      }
+    }
+  });
+
   if (map.type === 'dm') continue;
 
   test(`${map.name}: both teams can walk to the objective`, () => {
@@ -72,27 +109,28 @@ test('maps with water slow you down and are wadeable', () => {
   const g = new Game(MAPS.canal, { seed: 1 });
   const a = g.addPlayer({ name: 'A' });
   g.spawn(a);
+  // The canal runs east-west across the map: z -16..-10.
   // Run east along the dry quay, then along the canal itself.
-  place(a, -30, 0, -7.5); a.yaw = -Math.PI / 2;
+  place(a, -29, 0, -21); a.yaw = -Math.PI / 2;
   run(g, 1.5, (p) => hold(p, { fwd: 1 }));
   const dry = Math.hypot(a.vel[0], a.vel[2]);
-  place(a, -30, -0.4, 0); a.yaw = -Math.PI / 2;
+  place(a, -29, -0.4, -13); a.yaw = -Math.PI / 2;
   run(g, 1.5, (p) => hold(p, { fwd: 1 }));
   assert.ok(g.inWater(a), 'standing in the canal');
   const wet = Math.hypot(a.vel[0], a.vel[2]);
   assert.ok(wet < dry * 0.85, `wading is slower (${wet.toFixed(2)} vs ${dry.toFixed(2)})`);
-  // Walk out the other bank: canal z -3..3, bed 0.4 below the quay.
-  place(a, -30, -0.4, 1); a.yaw = Math.PI; // facing +z
+  // Walk out the south bank: bed 0.4 below the quay.
+  place(a, -29, -0.4, -11.5); a.yaw = Math.PI; // facing +z
   run(g, 2, (p) => hold(p, { fwd: 1 }));
-  assert.ok(a.pos[2] > 3.5 && Math.abs(a.pos[1]) < 0.01, `stepped out onto the quay (${a.pos})`);
+  assert.ok(a.pos[2] > -9.5 && Math.abs(a.pos[1]) < 0.01, `stepped out onto the quay (${a.pos})`);
 });
 
 test('the nav grid walks under the high bridge but not up a sheer bank', () => {
   const g = new Game(MAPS.canal);
   const nav = g.nav;
-  assert.ok(nav.floorAt(0, 0) < -0.3, 'under the high bridge the floor is the canal bed');
-  assert.ok(Math.abs(nav.floorAt(-20.5, 0) - 0.15) < 0.01, 'the footbridge deck is a floor');
-  const path = nav.findPath(-30, 0, 30, 0); // along the canal
+  assert.ok(nav.floorAt(0, -13) < -0.3, 'under the high bridge the floor is the canal bed');
+  assert.ok(Math.abs(nav.floorAt(-22, -13) - 0.15) < 0.01, 'the footbridge deck is a floor');
+  const path = nav.findPath(-28, -13, 28, -13); // along the canal
   assert.ok(path, 'you can wade the length of the canal');
 });
 
