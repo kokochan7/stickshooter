@@ -19,7 +19,7 @@ import {
 import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
 import { GameView } from './client/scene.js';
-import { Audio } from './client/audio.js';
+import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, STEP_SOUNDS } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
 import { TouchControls, isTouchDevice } from './client/touch.js';
@@ -738,8 +738,7 @@ function handleEvent(e) {
       if (me && e.attacker === me.id && e.victim !== me.id) {
         const killed = victim && victim.health <= 0;
         hud.hit(killed, e.group === 'head');
-        if (e.group === 'head') audio.play(e.armorHit ? 'hitHelmet' : 'hitHead', { volume: 0.7 });
-        else audio.play('hitBody', { volume: 0.6 });
+        audio.play(hitSound(e), { volume: e.group === 'head' ? 0.7 : 0.6 });
       }
       if (me && e.victim === me.id) {
         audio.play('hurt', { volume: 0.8 });
@@ -748,7 +747,7 @@ function handleEvent(e) {
           hud.hurt(-ang, e.damage);
         }
       } else if (victim) {
-        audio.play(e.group === 'head' ? (e.armorHit ? 'hitHelmet' : 'hitHead') : 'hitBody', { pos: e.pos, volume: 0.5 });
+        audio.play(hitSound(e), { pos: e.pos, volume: 0.5 });
       }
       break;
     }
@@ -775,24 +774,28 @@ function handleEvent(e) {
         const def = WEAPONS[e.weapon];
         view.viewModel.reload(e.duration, def.shellReload ?? null);
         if (!def.shellReload) {
-          // Sounds follow the viewmodel animation: mag out, mag in, bolt/slide.
-          const at = (f, name, volume) => timers.push({ t: game.time + e.duration * f, fn: () => { if (me?.reloading) audio.play(name, { volume }); } });
-          at(0.14, 'magOut', 0.6);
-          at(0.6, 'magIn', 0.65);
-          const hold = view.viewModel.gun?.spec.hold;
-          if (hold === 'pistol') at(0.69, 'bolt', 0.5);
-          else if (hold === 'rifle' && def.id !== 'awp') at(0.8, 'bolt', 0.55);
+          // Sounds follow the viewmodel animation: mag out, mag in, bolt/slide,
+          // each gun with its own recorded parts.
+          const parts = RELOAD_SOUNDS[def.id] ?? [[0.14, 'magOut', 0.6], [0.6, 'magIn', 0.65]];
+          parts.forEach(([f, name, volume], i) => {
+            const alt = i === 0 ? 'magOut' : /clipin|boxin/.test(name) ? 'magIn' : 'bolt';
+            timers.push({ t: game.time + e.duration * f, fn: () => { if (me?.reloading) audio.play(name, { volume, alt }); } });
+          });
         }
       } else if (p) {
-        audio.play('magOut', { pos: p.pos, volume: 0.4 });
+        const first = RELOAD_SOUNDS[e.weapon]?.[0]?.[1] ?? 'magOut';
+        audio.play(first, { pos: p.pos, volume: 0.45, alt: 'magOut' });
       }
       break;
     }
     case 'reloaded':
-      if (isFirstPerson(p) && (game.activeDef(p)?.id === 'awp' || view.viewModel.gun?.spec.hold === 'heavy')) audio.play('bolt', { volume: 0.5 });
+      if (isFirstPerson(p)) {
+        const id = game.activeDef(p)?.id;
+        if (RELOADED_SOUNDS[id]) audio.play(RELOADED_SOUNDS[id], { volume: 0.55, alt: 'bolt' });
+      }
       break;
     case 'shell':
-      if (p === me) audio.play('shell', { volume: 0.5 });
+      if (p === me) audio.play(SHELL_SOUNDS[game.activeDef(p)?.id] ?? 'shell', { volume: 0.55, alt: 'shell' });
       break;
     case 'deploy':
       if (p === me) {
@@ -827,7 +830,7 @@ function handleEvent(e) {
       audio.play('win', { volume: 0.6 });
       break;
     case 'dry':
-      if (p === me) audio.play('dry', { volume: 0.7 });
+      if (p === me) audio.play(game.activeDef(p)?.slot === 'secondary' ? 'dryPistol' : 'dryRifle', { volume: 0.7 });
       break;
     case 'zoom':
       if (p === me) audio.play('zoom', { volume: 0.6 });
@@ -900,19 +903,38 @@ function handleEvent(e) {
 }
 
 
-// Where bullets land: a debris crack and sometimes a ricochet whine.
-// Throttled so a spray doesn't turn into noise.
+// Bullet hitting a player: helmet dink, kevlar thud, headshot or flesh.
+function hitSound(e) {
+  if (e.group === 'head') return e.armorHit ? 'hitHelmet' : 'hitHead';
+  return e.armorHit ? 'hitKevlar' : 'hitBody';
+}
+
+// Where bullets land: a ricochet off concrete or metal, CS style. Throttled
+// so a spray from one gun doesn't turn into noise.
 let lastRic = 0;
 function bulletSounds(e) {
   const now = performance.now();
   const im = e.impacts[e.impacts.length - 1];
-  if (im) {
-    audio.play('impact', { pos: im.pos, volume: 0.35, jitter: 0.12 });
-    if (now - lastRic > 120 && Math.random() < 0.3) {
-      lastRic = now;
-      audio.play('ric' + Math.floor(Math.random() * 3), { pos: im.pos, volume: 0.4, jitter: 0.08 });
-    }
-  }
+  if (!im || now - lastRic < 45) return;
+  lastRic = now;
+  const metal = im.material === 'metal' || im.material === 'grate';
+  audio.play(metal ? 'ricMetal' : 'ricConcrete', { pos: im.pos, volume: 0.4, jitter: 0.06 });
+}
+
+// What's underfoot: the material of the box we stand on, or the map's ground.
+const _under = [];
+function surfaceUnder(p) {
+  if (game.inWater(p)) return 'water';
+  _under.length = 0;
+  const [x, y, z] = p.pos;
+  game.world.overlapping(x - 0.05, y - 0.06, z - 0.05, x + 0.05, y + 0.01, z + 0.05, _under);
+  const box = _under.find((b) => b.kind !== 'ground');
+  return box?.material ?? game.map.ground ?? 'concrete';
+}
+
+function stepSound(p) {
+  const s = surfaceUnder(p);
+  return s === 'water' ? 'splash' : STEP_SOUNDS[s] ?? 'step';
 }
 
 function norm(v) {
@@ -938,8 +960,7 @@ function footsteps(p, dt, x, z) {
     if (s.timer <= 0) {
       s.timer += FOOTSTEP_TIME;
       if (s.timer < 0) s.timer = FOOTSTEP_TIME;
-      s.foot ^= 1;
-      const name = (game.inWater(p) ? 'splash' : 'step') + (s.foot * 2 + (Math.random() < 0.5 ? 0 : 1));
+      const name = stepSound(p);
       // Your own steps are soft. Other players' steps are loud up close and
       // fade out completely by FOOTSTEP_RANGE, so you can tell how near they are.
       if (p === me) audio.play(name, { volume: 0.16, jitter: 0.05 });
@@ -953,8 +974,9 @@ function footsteps(p, dt, x, z) {
     s.air = false;
     const ls = p.landSpeed ?? 0;
     if (ls > 3) {
-      if (p === me) { audio.play('land', { volume: 0.4 }); view.viewModel.land(ls); }
-      else audio.play('land', { pos: p.pos, volume: 0.4 });
+      // CS plays a firm footstep on landing.
+      if (p === me) { audio.play(stepSound(p), { volume: 0.4 }); view.viewModel.land(ls); }
+      else audio.play(stepSound(p), { pos: p.pos, volume: 0.6, range: FOOTSTEP_RANGE });
     }
   }
 }

@@ -435,11 +435,16 @@ on the left (short push walks), drag on the right to look (`touchSens`),
 FIRE doubles as a look pad, plus jump, crouch toggle, reload, scope, weapon
 cycle, knife, drop, buy, scores and pause.
 
-**Sounds** are all synthesized at startup in audio.js (no files, no Valve
-audio): layered shots (transient, crack, resonant body, boom, action clack,
-saturation, slap-back room, 22 kHz-style grit), metal-modal reload parts,
-brass, impacts and ricochets, concrete footsteps, knife. The menu song is the
-only audio file.
+**Sounds** come from the sound pack Kenny supplied (Nov 2026), converted to
+22 kHz mono 56 kbps mp3 in `public/audio/sfx/` (about 1 MB). `SAMPLES` in
+audio.js maps game sounds to files: per-gun shots, per-gun reload parts
+(`RELOAD_SOUNDS`, timed to the viewmodel), shotgun shells and pump, dry fire,
+flesh/kevlar/helmet/headshot hits, concrete and metal ricochets, knife, and
+footsteps per surface (`STEP_SOUNDS`: the box underfoot, else the map's
+`ground`, water sloshes). The synthesized versions are built at startup and
+play until each sample decodes, and still cover the bomb, keypad, zoom and UI
+sounds. Decoded samples get their silent lead-in cut (Safari keeps mp3
+encoder padding) and are peak-normalized.
 
 ### 5.10 Knife
 

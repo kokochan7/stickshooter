@@ -98,5 +98,6 @@ export const CANAL = {
   bounds: { min: [-B, -B], max: [B, B] },
   sky: { top: 0x4f9de0, bottom: 0xd6ecf7 },
   groundColor: m.C.ground,
+  ground: 'dirt', // footstep surface for open ground
   bedColor: m.C.bed,
 };

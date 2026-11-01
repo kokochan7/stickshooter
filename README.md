@@ -170,14 +170,15 @@ src/sim/      Game rules. No DOM or Three.js. Runs in Node (tests) and could
   world.js      Box collision world and materials
   bot.js/nav.js Bot AI and A* navigation
 src/maps/     Map definitions (boxes + spawns)
-src/client/   Rendering (Three.js), audio (synthesized), input, HUD
+src/client/   Rendering (Three.js), audio (sound pack + synth fallback), input, HUD
 src/main.js   Glue + main loop
 ```
 
 **Performance:** the sim ticks at a fixed 128 Hz; rendering runs at the
 display's refresh rate (120/144 Hz monitors get 120/144 FPS) and interpolates
 between ticks. Mouse look is applied every frame. The map is one draw call,
-effects are pooled, sounds are generated at startup (no audio downloads), and
+effects are pooled, the sound pack is about 1 MB of 22 kHz mono mp3s fetched
+after the first click (synthesized stand-ins play until they arrive), and
 the whole game is about 155 KB gzipped.
 
 **Multiplayer plan** (details in [docs/DESIGN.md](docs/DESIGN.md)): clients send the same `cmd` objects the bots produce;
