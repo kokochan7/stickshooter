@@ -146,6 +146,13 @@ export function mapBuilder(palette = {}) {
       b.box(x - 0.4, 4.2, z - 1.6, x + 0.4, 4.5, z + 1.6, 'foliage', 'leaves');
     },
 
+    // Solid mass that shapes the playable area (a cliff, a block of houses,
+    // stacked containers): nobody gets in, bullets stop on it. Maps aren't
+    // all rectangles; these carve the corners and narrows out of the bounds.
+    block(x0, z0, x1, z1, h = 8, col = 'wall', material = 'concrete') {
+      b.box(x0, 0, z0, x1, h, z1, material, col, { kind: 'block' });
+    },
+
     perimeter(x0, z0, x1, z1, h = 7, col = 'wall') {
       b.box(x0 - 1, 0, z0 - 1, x1 + 1, h, z0, 'concrete', col);
       b.box(x0 - 1, 0, z1, x1 + 1, h, z1 + 1, 'concrete', col);

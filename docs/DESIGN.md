@@ -76,6 +76,29 @@ The player stickman is white with no headband or vest. Skins come later
   map the client wants; the first human in an empty room sets it, and
   `welcome` tells the client which map the room plays. Protocol v5.
 
+### Map layouts (shapes, sizes and spawn distance)
+
+Each map has its own footprint and size (`size` on the map, shown on the
+map cards). `builder.block()` places solid masses (cliffs, house rows,
+stacked containers) that carve non-rectangular shapes out of the bounds.
+
+| Map | Footprint | Size | Red base | Blue base |
+|---|---|---|---|---|
+| Yard (dm) | 56 x 56 m with two corners walled off, point-symmetric | Small | north-west corner | south-east corner |
+| Canal (bomb) | 60 x 128 m, long north-south, narrow spawn streets | Large | north end | south end |
+| Dunes (bomb) | 132 x 72 m, wide west-east, tapering between cliffs | Large | west end | east end |
+| Harbor (hostage) | L shape, 88 m arms around a container terminal | Medium | north arm, east end | west arm, south end |
+| Frost (hostage) | 80 x 108 m hourglass valley, 44 m waist | Large | behind the lodge (north) | cabins (south) |
+
+Balance rules, checked by `test/maps.test.js` with nav-grid walking
+distances between the team spawn centers: spawns are over 90 m apart on
+objective maps (over 55 m on Yard); on bomb maps Blue walks over 40 m to
+each site and gets there first, but walks at least 55% of Red's distance
+(about 50 m vs 80 m); on hostage maps every hostage is over 70 m from Blue;
+on Yard both teams are the same distance from the middle. The local
+player now faces the way the spawn points (the `spawn` event carries the
+yaw). Protocol v7.
+
 ## 3. Architecture
 
 ```

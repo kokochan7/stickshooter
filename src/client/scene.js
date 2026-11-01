@@ -214,10 +214,13 @@ export class GameView {
     // Maps with water draw their ground as boxes (so the banks show) and the
     // big plane becomes the riverbed.
     const hasWater = map.water?.length > 0;
-    const groundGeo = new THREE.PlaneGeometry(160, 160);
+    // Big enough to reach past the walls of the largest map in every direction.
+    const reach = Math.max(...map.bounds.min.map(Math.abs), ...map.bounds.max.map(Math.abs));
+    const size = Math.ceil(reach * 2 + 60);
+    const groundGeo = new THREE.PlaneGeometry(size, size);
     groundGeo.rotateX(-Math.PI / 2);
     const uv = groundGeo.attributes.uv.array;
-    for (let i = 0; i < uv.length; i++) uv[i] *= 160;
+    for (let i = 0; i < uv.length; i++) uv[i] *= size;
     const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ color: hasWater ? map.bedColor : map.groundColor, map: this.tex }));
     ground.position.y = hasWater ? -WATER_DEPTH : 0;
     grp.add(ground);

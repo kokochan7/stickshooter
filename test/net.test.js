@@ -48,8 +48,10 @@ test('lag compensation hook wraps each shot and is undone', () => {
   const a = g.addPlayer({ name: 'A', team: 'ffa' });
   const b = g.addPlayer({ name: 'B', team: 'ffa' });
   g.spawn(a); g.spawn(b);
+  // A stands in the open, facing north.
+  a.pos = [0, 0, -6]; a.prevPos = [0, 0, -6]; a.yaw = 0;
   // Put B somewhere A can't hit, but "rewind" B into A's sights.
-  b.pos = [40, 0, 40];
+  b.pos = [24, 0, 24];
   let calls = 0;
   g.lagComp = (shooter) => {
     calls++;
@@ -60,7 +62,7 @@ test('lag compensation hook wraps each shot and is undone', () => {
   };
   for (let i = 0; i < 64; i++) g.tick(new Map([[a.id, { ...emptyCmd(), fire: i === 50, yaw: a.yaw, pitch: 0 }]]));
   assert.equal(calls, 1);
-  assert.deepEqual(b.pos, [40, 0, 40], 'B is put back after the trace');
+  assert.deepEqual(b.pos, [24, 0, 24], 'B is put back after the trace');
   assert.ok(b.health < 100 || !b.alive, 'the rewound B was hit');
 });
 
