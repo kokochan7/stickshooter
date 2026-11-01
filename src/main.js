@@ -19,7 +19,7 @@ import {
 import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
 import { GameView } from './client/scene.js';
-import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, STEP_SOUNDS } from './client/audio.js';
+import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, DEPLOY_SOUNDS, STEP_SOUNDS } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
 import { TouchControls, isTouchDevice } from './client/touch.js';
@@ -543,7 +543,9 @@ function announceMultiKill(n) {
   hud.multiKill(text, n);
   // A newer call cuts off the last one (a shotgun double then triple).
   try { announcer?.stop(); } catch { /* already ended */ }
-  announcer = audio.play('announce_' + clip, { volume: 1, jitter: 0 });
+  announcer = audio.play('announce_' + clip, { volume: 1, jitter: 0, voice: true });
+  // Duck the gunfire under the voice line so it can be heard mid-fight.
+  if (announcer) audio.duck(announcer.buffer.duration + 0.15);
 }
 
 // ---------- Admin console (~) ----------
@@ -701,7 +703,8 @@ function handleEvent(e) {
   switch (e.type) {
     case 'shot': {
       const def = WEAPONS[e.weapon];
-      const vol = def.id === 'awp' ? 1 : 0.8;
+      // Kept well under the announcer (voice lines play at 1).
+      const vol = def.id === 'awp' ? 0.55 : def.pellets || def.id === 'deagle' ? 0.5 : 0.42;
       let muzzle;
       if (isFirstPerson(p)) {
         view.viewModel.fire(def.pellets ? 1.6 : def.id === 'awp' || def.id === 'deagle' ? 1.4 : 1);
@@ -801,7 +804,7 @@ function handleEvent(e) {
       if (p === me) {
         view.viewModel.deploy();
         if (e.weapon === 'knife') audio.play('knifeDeploy', { volume: 0.35 });
-        else audio.play('deploy', { volume: 0.4 });
+        else audio.play(DEPLOY_SOUNDS[e.weapon] ?? 'deploy', { volume: 0.4, alt: 'deploy' });
       }
       break;
     case 'melee': {
@@ -866,13 +869,14 @@ function handleEvent(e) {
       if (e.type === 'plantStart') {
         for (let i = 0; i < 5; i++) timers.push({ t: game.time + 0.15 + i * 0.5, fn: () => { if (p.task?.kind === 'plant' || p === me && me.task) audio.play('keypad' + (i % 3), { pos, volume: 0.5 }); } });
       } else {
-        audio.play('magOut', { pos, volume: 0.5 });
+        audio.play('bombDisarm', { pos, volume: 0.5, alt: 'magOut' });
       }
       break;
     }
     case 'planted':
       alertMsg = { html: `<span class="alert">BOMB PLANTED${e.site ? ` AT ${e.site}` : ''}</span>`, until: performance.now() + 2500 };
       audio.play('alert', { volume: 0.6 });
+      if (game.bomb?.pos) audio.play('bombPlant', { pos: game.bomb.pos, volume: 0.6 });
       nextBeep = 0;
       break;
     case 'defused':
@@ -1151,7 +1155,8 @@ function bombBeeps() {
   if (game.time < nextBeep) return;
   const left = Math.max(0, b.explodeAt - game.time);
   nextBeep = game.time + 0.1 + 0.9 * Math.min(1, left / 35);
-  audio.play('bombBeep', { pos: b.pos, volume: 0.55, jitter: 0 });
+  const stage = left > 20 ? 1 : left > 10 ? 2 : left > 5 ? 3 : left > 2 ? 4 : 5;
+  audio.play('bombBeep' + stage, { pos: b.pos, volume: 0.55, jitter: 0, alt: 'bombBeep' });
 }
 
 // "Hold E to plant" and friends.

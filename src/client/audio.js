@@ -479,16 +479,16 @@ const GROUPS = {
   shot_usp: ['usp_unsil-1'],
   shot_deagle: ['deagle-1', 'deagle-2'],
   shot_uzi: ['mac10-1'],
-  shot_mp5: ['mp5-1', 'mp5-2'],
+  shot_mp5: ['mp5-2'],
   shot_ump45: ['ump45-1'],
   shot_p90: ['p90-1'],
   shot_shotgun: ['m3-1'],
   shot_autoshotgun: ['xm1014-1'],
-  shot_famas: ['famas-1', 'famas-2'],
-  shot_ak47: ['ak47-1', 'ak47-2'],
+  shot_famas: ['famas-2'],
+  shot_ak47: ['ak47-2'],
   shot_m4a1: ['m4a1_unsil-1', 'm4a1_unsil-2'],
   shot_awp: ['awp1'],
-  shot_minigun: ['m249-1', 'm249-2'],
+  shot_minigun: ['m249-2'],
   magOut: ['clipout1'],
   magIn: ['clipin1'],
   dryPistol: ['dryfire_pistol'],
@@ -510,13 +510,23 @@ const GROUPS = {
   stepGrate: n4('pl_grate'),
   stepTile: n4('pl_tile'),
   splash: n4('pl_slosh'),
+  zoom: ['zoom'],
+  keypad0: ['c4_click'],
+  keypad1: ['c4_click'],
+  keypad2: ['c4_click'],
+  bombPlant: ['c4_plant'],
+  bombDisarm: ['c4_disarm'],
+  defused: ['c4_disarmed'],
+  explode: ['c4_explode1'],
+  // The planted bomb's beep, higher and more urgent as it runs out (1 -> 5).
+  ...Object.fromEntries([1, 2, 3, 4, 5].map((i) => ['bombBeep' + i, ['c4_beep' + i]])),
 };
 
 // Reload parts, played on the beat of the viewmodel animation: weapon ->
 // [fraction of the reload time, file, volume]. Shotguns load shell by shell
 // (SHELL_SOUNDS) and pump at the end (RELOADED_SOUNDS).
 export const RELOAD_SOUNDS = {
-  usp: [[0.14, 'usp_clipout', 0.6], [0.6, 'usp_clipin', 0.65], [0.69, 'usp_sliderelease', 0.55]],
+  usp: [[0.14, 'usp_clipout', 0.6], [0.6, 'usp_clipin', 0.65], [0.69, 'usp_slideback', 0.55]],
   deagle: [[0.14, 'de_clipout', 0.6], [0.6, 'de_clipin', 0.65], [0.69, 'p228_sliderelease', 0.55]],
   uzi: [[0.14, 'mac10_clipout', 0.6], [0.6, 'mac10_clipin', 0.65], [0.8, 'mac10_boltpull', 0.55]],
   mp5: [[0.14, 'mp5_clipout', 0.6], [0.6, 'mp5_clipin', 0.65], [0.8, 'mp5_slideback', 0.55]],
@@ -530,6 +540,7 @@ export const RELOAD_SOUNDS = {
 };
 export const SHELL_SOUNDS = { shotgun: 'm3_insertshell', autoshotgun: 'xm1014_insertshell' };
 export const RELOADED_SOUNDS = { awp: 'scout_bolt', shotgun: 'm3_pump' };
+export const DEPLOY_SOUNDS = { awp: 'awp_deploy', m4a1: 'm4a1_deploy', deagle: 'de_deploy' };
 
 // Surface under the feet -> footstep sound. Wood has no file in the pack,
 // so it uses the plain concrete steps.
@@ -542,7 +553,7 @@ export const SAMPLES = (() => {
   for (const [name, files] of Object.entries(GROUPS)) out[name] = files.map(url);
   const singles = [
     ...Object.values(RELOAD_SOUNDS).flat().map((r) => r[1]),
-    ...Object.values(SHELL_SOUNDS), ...Object.values(RELOADED_SOUNDS),
+    ...Object.values(SHELL_SOUNDS), ...Object.values(RELOADED_SOUNDS), ...Object.values(DEPLOY_SOUNDS),
   ];
   for (const f of singles) out[f] = [url(f)];
   return out;
@@ -575,16 +586,36 @@ export class Audio {
     this.listener = { x: 0, y: 0, z: 0, yaw: 0 };
     this.sfxOn = true; // off on the main menu and while paused
     this.sfx = null; // game sounds go through this gain, so pausing can cut them at once
+    this.voice = null; // announcer lines: own bus, so ducking the game sounds leaves them clear
+    this.duckLevel = 1; // < 1 while a voice line plays
   }
 
   // Game sounds on or off. Off also silences sounds already playing.
   setSfx(on) {
     this.sfxOn = on;
     if (!this.sfx) return;
-    const g = this.sfx.gain, now = this.ctx.currentTime;
+    this.ramp(this.sfx.gain, on ? this.duckLevel : 0, 0.05);
+    this.ramp(this.voice.gain, on ? 1 : 0, 0.05);
+  }
+
+  ramp(g, to, time) {
+    const now = this.ctx.currentTime;
     g.cancelScheduledValues(now);
     g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(on ? 1 : 0, now + 0.05);
+    g.linearRampToValueAtTime(to, now + time);
+  }
+
+  // Pull the game sounds down to `level` for `seconds` (an announcer line),
+  // then bring them back.
+  duck(seconds, level = 0.35) {
+    if (!this.sfx) return;
+    this.duckLevel = level;
+    if (this.sfxOn) this.ramp(this.sfx.gain, level, 0.06);
+    clearTimeout(this.duckTimer);
+    this.duckTimer = setTimeout(() => {
+      this.duckLevel = 1;
+      if (this.sfxOn) this.ramp(this.sfx.gain, 1, 0.4);
+    }, seconds * 1000);
   }
 
   // Must be called from a user gesture (iOS requirement).
@@ -602,6 +633,9 @@ export class Audio {
       this.sfx = this.ctx.createGain();
       this.sfx.gain.value = this.sfxOn ? 1 : 0;
       this.sfx.connect(this.master);
+      this.voice = this.ctx.createGain();
+      this.voice.gain.value = this.sfxOn ? 1 : 0;
+      this.voice.connect(this.master);
       this.build();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -660,7 +694,8 @@ export class Audio {
 
   // pos: world position or null for 2D (local player) sounds.
   // alt: a sound to play instead while `name` isn't loaded (yet).
-  play(name, { pos = null, volume = 1, rate = 1, jitter = 0.04, range = 0, alt = null } = {}) {
+  // voice: play on the announcer bus (not ducked) instead of the game bus.
+  play(name, { pos = null, volume = 1, rate = 1, jitter = 0.04, range = 0, alt = null, voice = false } = {}) {
     if (alt && !this.buffers[name]) name = alt;
     if (!this.ctx || !this.sfxOn || !this.buffers[name]) return null;
     const c = this.ctx;
@@ -696,7 +731,7 @@ export class Audio {
       }
     }
     g.gain.value = gain;
-    node.connect(this.sfx);
+    node.connect(voice ? this.voice : this.sfx);
     src.start();
     return src;
   }
