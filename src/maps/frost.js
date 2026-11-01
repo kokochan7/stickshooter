@@ -81,5 +81,6 @@ export const FROST = {
   bounds: { min: [-B, -B], max: [B, B] },
   sky: { top: 0x8ea9c4, bottom: 0xe4ebf1 },
   groundColor: m.C.ground,
+  ground: 'snow', // footstep surface for open ground
   bedColor: m.C.bed,
 };

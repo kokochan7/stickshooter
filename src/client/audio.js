@@ -1,13 +1,10 @@
-// Procedural sound: every gunshot, reload, knife, footstep and UI sound is
-// synthesized into a buffer at startup, so there are no audio files to
-// download. (The exceptions: the menu song, see music.js, and the announcer
-// voice lines in public/audio/announcer/, loaded by loadClips.)
-//
-// The sounds aim for the character of Counter-Strike 1.6 without using any of
-// its audio: short, punchy, mid-heavy shots with a gritty saturated edge and a
-// roomy slap-back echo, clacky metal reload parts, crisp concrete footsteps and
-// a slightly lo-fi finish (everything is rendered at 22 kHz-ish detail like
-// GoldSrc's samples, then played back at the device rate).
+// Game sound. Most effects are recorded samples from Kenny's sound pack
+// (public/audio/sfx/, mp3 at 22 kHz mono, about 1 MB in all), listed in
+// SAMPLES below and fetched once audio is unlocked. Every effect also has a
+// synthesized version, built instantly at startup, which plays until its
+// sample arrives (or for good if the fetch fails) and covers the sounds the
+// pack has no file for (explosion, keypad, UI blips, zoom). The menu song is
+// in music.js and the announcer voice lines in public/audio/announcer/.
 
 const SR = 44100;
 
@@ -426,6 +423,8 @@ export function buildAll() {
   const b = {};
   for (const [id, r] of Object.entries(GUN_SOUNDS)) b['shot_' + id] = gunshot(r);
   b.dry = dryFire();
+  b.dryPistol = b.dry;
+  b.dryRifle = b.dry;
   b.magOut = magOut();
   b.magIn = magIn();
   b.bolt = bolt();
@@ -435,15 +434,19 @@ export function buildAll() {
   b.hitBody = fleshHit();
   b.hitHead = fleshHit(1.6);
   b.hitHelmet = helmetHit();
+  b.hitKevlar = b.hitBody;
   b.ric0 = ricochet(2900);
   b.ric1 = ricochet(3600);
   b.ric2 = ricochet(2300);
   b.impact = impactHard();
+  b.ricConcrete = b.impact;
+  b.ricMetal = b.ric0;
   b.killConfirm = blip(900, 1500, 0.12);
   b.hurt = hurt();
-  for (let i = 0; i < 4; i++) b['step' + i] = footstep(i);
+  b.step = [0, 1, 2, 3].map(footstep);
+  for (const k of ['stepDirt', 'stepMetal', 'stepGrate', 'stepTile']) b[k] = b.step;
   b.land = land();
-  for (let i = 0; i < 4; i++) b['splash' + i] = splash(i);
+  b.splash = [0, 1, 2, 3].map(splash);
   b.bombBeep = tone(1760, 0.09);
   b.keypad0 = keypad(1180);
   b.keypad1 = keypad(1320);
@@ -468,6 +471,101 @@ export function buildAll() {
 const CLIPS = Object.fromEntries(
   ['double', 'triple', 'multi', 'ultra', 'monster'].map((k) => [`announce_${k}`, `/audio/announcer/${k}.mp3`]),
 );
+
+// Recorded effects from the sound pack: game name -> file variants in
+// public/audio/sfx/ (one is picked at random each time it plays).
+const n4 = (base) => [1, 2, 3, 4].map((i) => base + i);
+const GROUPS = {
+  shot_usp: ['usp_unsil-1'],
+  shot_deagle: ['deagle-1', 'deagle-2'],
+  shot_uzi: ['mac10-1'],
+  shot_mp5: ['mp5-1', 'mp5-2'],
+  shot_ump45: ['ump45-1'],
+  shot_p90: ['p90-1'],
+  shot_shotgun: ['m3-1'],
+  shot_autoshotgun: ['xm1014-1'],
+  shot_famas: ['famas-1', 'famas-2'],
+  shot_ak47: ['ak47-1', 'ak47-2'],
+  shot_m4a1: ['m4a1_unsil-1', 'm4a1_unsil-2'],
+  shot_awp: ['awp1'],
+  shot_minigun: ['m249-1', 'm249-2'],
+  magOut: ['clipout1'],
+  magIn: ['clipin1'],
+  dryPistol: ['dryfire_pistol'],
+  dryRifle: ['dryfire_rifle'],
+  hitBody: ['bhit_flesh-1', 'bhit_flesh-2', 'bhit_flesh-3'],
+  hitKevlar: ['bhit_kevlar-1'],
+  hitHead: n4('headshot'),
+  hitHelmet: ['bhit_helmet-1'],
+  ricConcrete: ['ric_conc-1', 'ric_conc-2'],
+  ricMetal: ['ric_metal-1', 'ric_metal-2'],
+  knifeSlash: ['knife_slash1', 'knife_slash2'],
+  knifeStab: ['knife_stab'],
+  knifeHit: n4('knife_hit'),
+  knifeWall: ['knife_hitwall1'],
+  knifeDeploy: ['knife_deploy1'],
+  step: n4('pl_step'),
+  stepDirt: n4('pl_dirt'),
+  stepMetal: n4('pl_metal'),
+  stepGrate: n4('pl_grate'),
+  stepTile: n4('pl_tile'),
+  splash: n4('pl_slosh'),
+};
+
+// Reload parts, played on the beat of the viewmodel animation: weapon ->
+// [fraction of the reload time, file, volume]. Shotguns load shell by shell
+// (SHELL_SOUNDS) and pump at the end (RELOADED_SOUNDS).
+export const RELOAD_SOUNDS = {
+  usp: [[0.14, 'usp_clipout', 0.6], [0.6, 'usp_clipin', 0.65], [0.69, 'usp_sliderelease', 0.55]],
+  deagle: [[0.14, 'de_clipout', 0.6], [0.6, 'de_clipin', 0.65], [0.69, 'p228_sliderelease', 0.55]],
+  uzi: [[0.14, 'mac10_clipout', 0.6], [0.6, 'mac10_clipin', 0.65], [0.8, 'mac10_boltpull', 0.55]],
+  mp5: [[0.14, 'mp5_clipout', 0.6], [0.6, 'mp5_clipin', 0.65], [0.8, 'mp5_slideback', 0.55]],
+  ump45: [[0.14, 'ump45_clipout', 0.6], [0.6, 'ump45_clipin', 0.65], [0.8, 'ump45_boltslap', 0.55]],
+  p90: [[0.1, 'p90_cliprelease', 0.5], [0.18, 'p90_clipout', 0.6], [0.6, 'p90_clipin', 0.65], [0.8, 'p90_boltpull', 0.55]],
+  famas: [[0.14, 'famas_clipout', 0.6], [0.6, 'famas_clipin', 0.65], [0.8, 'famas_forearm', 0.55]],
+  ak47: [[0.14, 'ak47_clipout', 0.6], [0.6, 'ak47_clipin', 0.65], [0.8, 'ak47_boltpull', 0.55]],
+  m4a1: [[0.14, 'm4a1_clipout', 0.6], [0.6, 'm4a1_clipin', 0.65], [0.8, 'm4a1_boltpull', 0.55]],
+  awp: [[0.14, 'awp_clipout', 0.6], [0.6, 'awp_clipin', 0.65]],
+  minigun: [[0.08, 'm249_coverup', 0.55], [0.25, 'm249_boxout', 0.6], [0.5, 'm249_boxin', 0.65], [0.66, 'm249_chain', 0.55], [0.85, 'm249_coverdown', 0.6]],
+};
+export const SHELL_SOUNDS = { shotgun: 'm3_insertshell', autoshotgun: 'xm1014_insertshell' };
+export const RELOADED_SOUNDS = { awp: 'scout_bolt', shotgun: 'm3_pump' };
+
+// Surface under the feet -> footstep sound. Wood has no file in the pack,
+// so it uses the plain concrete steps.
+export const STEP_SOUNDS = { concrete: 'step', wood: 'step', metal: 'stepMetal', grate: 'stepGrate', tile: 'stepTile', dirt: 'stepDirt', sand: 'stepDirt', snow: 'stepDirt', foliage: 'stepDirt' };
+
+// Every sample: name -> [urls].
+export const SAMPLES = (() => {
+  const out = {};
+  const url = (f) => `/audio/sfx/${f}.mp3`;
+  for (const [name, files] of Object.entries(GROUPS)) out[name] = files.map(url);
+  const singles = [
+    ...Object.values(RELOAD_SOUNDS).flat().map((r) => r[1]),
+    ...Object.values(SHELL_SOUNDS), ...Object.values(RELOADED_SOUNDS),
+  ];
+  for (const f of singles) out[f] = [url(f)];
+  return out;
+})();
+
+// Decoded mp3s start with a few ms of encoder padding (Safari keeps it), which
+// would delay every gunshot. Cut the silent lead-in and bring every sample to
+// the same peak as the synthesized buffers so the call-site volumes match.
+function tidy(ctx, buf) {
+  const d = buf.getChannelData(0);
+  let peak = 0;
+  for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+  if (peak === 0) return buf;
+  let start = 0;
+  while (start < d.length && Math.abs(d[start]) < peak * 0.01) start++;
+  start = Math.max(0, start - Math.floor(buf.sampleRate * 0.001));
+  const n = d.length - start;
+  const out = ctx.createBuffer(1, n, buf.sampleRate);
+  const o = out.getChannelData(0);
+  const k = 0.9 / peak;
+  for (let i = 0; i < n; i++) o[i] = d[start + i] * k;
+  return out;
+}
 
 export class Audio {
   constructor() {
@@ -515,17 +613,42 @@ export class Audio {
   }
 
   build() {
-    for (const [name, d] of Object.entries(buildAll())) this.buffers[name] = toBuffer(this.ctx, d);
+    for (const [name, d] of Object.entries(buildAll())) this.buffers[name] = Array.isArray(d) ? d.map((x) => toBuffer(this.ctx, x)) : toBuffer(this.ctx, d);
     this.loadClips(CLIPS);
+    this.loadSamples(SAMPLES);
   }
+
+  // Sound-pack samples. A name keeps its synthesized buffer until the first
+  // variant decodes; after that it plays a random loaded variant.
+  loadSamples(samples) {
+    const loaded = {};
+    for (const [name, urls] of Object.entries(samples)) {
+      for (const url of urls) {
+        this.fetchBuffer(url)
+          .then((buf) => {
+            const list = (loaded[name] ??= []);
+            list.push(tidy(this.ctx, buf));
+            this.buffers[name] = list;
+          })
+          .catch(() => { /* keep the synthesized sound */ });
+      }
+    }
+  }
+
+  fetchBuffer(url) {
+    return fetch(url)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(url))))
+      // Safari's old decodeAudioData only takes callbacks.
+      .then((data) => new Promise((ok, bad) => this.ctx.decodeAudioData(data, ok, bad)));
+  }
+
+  // Is there anything (sample or synth) to play under this name?
+  has(name) { return !!this.buffers[name]; }
 
   // Small recorded sounds: { name: url }. Each plays by name once loaded.
   loadClips(clips) {
     for (const [name, url] of Object.entries(clips)) {
-      fetch(url)
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(url))))
-        // Safari's old decodeAudioData only takes callbacks.
-        .then((data) => new Promise((ok, bad) => this.ctx.decodeAudioData(data, ok, bad)))
+      this.fetchBuffer(url)
         .then((buf) => { this.buffers[name] = buf; })
         .catch(() => { /* no announcer, no harm */ });
     }
@@ -536,11 +659,14 @@ export class Audio {
   }
 
   // pos: world position or null for 2D (local player) sounds.
-  play(name, { pos = null, volume = 1, rate = 1, jitter = 0.04, range = 0 } = {}) {
+  // alt: a sound to play instead while `name` isn't loaded (yet).
+  play(name, { pos = null, volume = 1, rate = 1, jitter = 0.04, range = 0, alt = null } = {}) {
+    if (alt && !this.buffers[name]) name = alt;
     if (!this.ctx || !this.sfxOn || !this.buffers[name]) return null;
     const c = this.ctx;
     const src = c.createBufferSource();
-    src.buffer = this.buffers[name];
+    const b = this.buffers[name];
+    src.buffer = Array.isArray(b) ? b[Math.floor(Math.random() * b.length)] : b;
     src.playbackRate.value = rate * (1 + (Math.random() * 2 - 1) * jitter);
     const g = c.createGain();
     let gain = volume;

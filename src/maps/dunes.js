@@ -88,5 +88,6 @@ export const DUNES = {
   bounds: { min: [-B, -B], max: [B, B] },
   sky: { top: 0x6aa9e0, bottom: 0xf3e3c2 },
   groundColor: m.C.ground,
+  ground: 'dirt', // footstep surface for open ground
   bedColor: m.C.bed,
 };
