@@ -60,3 +60,52 @@ test('bots pick roam spots away from each other', () => {
   }
   assert.ok(min > 4, `closest two roam spots are ${min.toFixed(1)} m apart`);
 });
+
+test('cover a bot picks really hides it, and its peek spot sees the enemy', () => {
+  const g = new Game(YARD, { seed: 2, mode: 'teams' });
+  const me = g.addPlayer({ name: 'R', team: 'red', isBot: true });
+  const foe = g.addPlayer({ name: 'B', team: 'blue' });
+  g.spawn(me); g.spawn(foe);
+  const brain = new BotBrain(g, me, null, 'normal');
+  brain.think(TICK_DT);
+  const nav = g.nav;
+  let rand = 7;
+  const rnd = () => ((rand = (rand * 16807) % 2147483647) / 2147483647);
+  let found = 0, tries = 0;
+  for (let i = 0; i < 400 && tries < 60; i++) {
+    const [ax, az] = nav.randomOpenPoint(rnd), [bx, bz] = nav.randomOpenPoint(rnd);
+    const d = Math.hypot(bx - ax, bz - az);
+    if (d < 10 || d > 25 || !nav.isMain(...nav.cellOf(ax, az))) continue;
+    place(me, ax, az, 0); me.pos[1] = nav.floorAt(ax, az);
+    place(foe, bx, bz, 0); foe.pos[1] = nav.floorAt(bx, bz);
+    const ee = g.eyePos(foe);
+    if (!g.world.visible(ee[0], ee[1], ee[2], ...g.eyePos(me))) continue;
+    tries++;
+    const c = brain.findCover(foe, null);
+    if (!c) continue;
+    found++;
+    const fy = nav.floorAt(c.spot[0], c.spot[1]);
+    const hideY = c.low ? 1.0 : 1.6;
+    assert.ok(!g.world.visible(ee[0], ee[1], ee[2], c.spot[0], fy + hideY, c.spot[1]), 'hidden at the spot');
+    if (c.low) assert.ok(g.world.visible(ee[0], ee[1], ee[2], c.spot[0], fy + 1.6, c.spot[1]), 'standing up sees them');
+    else assert.ok(g.world.visible(ee[0], ee[1], ee[2], c.peek[0], nav.floorAt(c.peek[0], c.peek[1]) + 1.6, c.peek[1]), 'peek spot sees them');
+  }
+  assert.ok(found >= 5, `found cover in ${found}/${tries} fights`);
+});
+
+test('team strategies change from round to round', async () => {
+  const { teamPlan } = await import('../src/sim/botplan.js');
+  const { MAPS } = await import('../src/maps/index.js');
+  const g = new Game(MAPS.canal, { seed: 1, mode: 'teams' });
+  g.addPlayer({ name: 'r', team: 'red', isBot: true });
+  g.addPlayer({ name: 'b', team: 'blue', isBot: true });
+  g.restartMatch();
+  const names = [];
+  for (let n = 0; n < 12; n++) {
+    g.round.n = 100 + n;
+    names.push(teamPlan(g, 'red').name);
+    assert.equal(teamPlan(g, 'red').name, names.at(-1), 'a plan lasts the whole round');
+  }
+  for (let i = 1; i < names.length; i++) assert.notEqual(names[i], names[i - 1], 'never the same plan twice in a row');
+  assert.ok(new Set(names).size >= 3, names.join(','));
+});
