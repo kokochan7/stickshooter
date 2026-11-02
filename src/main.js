@@ -550,7 +550,7 @@ function announceMultiKill(n) {
   try { announcer?.stop(); } catch { /* already ended */ }
   announcer = audio.play('announce_' + clip, { volume: 1, jitter: 0, voice: true });
   // Duck the gunfire under the voice line so it can be heard mid-fight.
-  if (announcer) audio.duck(announcer.buffer.duration + 0.15);
+  if (announcer) audio.duck(announcer.buffer.duration + 0.7); // + the echo tail
 }
 
 // ---------- Admin console (~) ----------
