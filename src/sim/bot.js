@@ -6,6 +6,7 @@ import { STAND_EYE, DUCK_EYE } from './constants.js';
 import { forwardVec, rightVec } from './movement.js';
 import { isEnemy } from './combat.js';
 import { siteAt, canPlant, canDefuse, hostageInReach } from './objective.js';
+import { teamPlan, mapMiddle } from './botplan.js';
 
 const DEG = Math.PI / 180;
 
@@ -67,6 +68,7 @@ export class BotBrain {
     // of enemies don't always pick the same one.
     this.scanEvery = 0.085 + Math.random() * 0.05;
     this.bias = Math.random() * 1000;
+    this.mood = 0;
     brainsOf(game).set(player.id, this);
     this.reset();
   }
@@ -142,6 +144,13 @@ export class BotBrain {
     this.investigating = false;
     this.ignoreNoiseUntil = 0;
     this.hostageGoal = null;
+    this.cover = null; // { spot, peek, low, enemy, phase, ... }
+    this.coverSearchAt = 0;
+    this.decideAt = 0;
+    this.engagedWith = null;
+    this.engageRoll = 0;
+    this.pushing = false;
+    this.rotateRoll = Math.random();
   }
 
   think(dt) {
@@ -160,6 +169,7 @@ export class BotBrain {
       this.wasAlive = true;
       this.yaw = p.yaw; this.pitch = 0;
       if (!this.role || this.roleTeam !== p.team) this.pickRole();
+      this.mood = (Math.random() - 0.5) * 0.3;
       this.buyLoadout();
     }
     const t = g.time;
@@ -238,9 +248,27 @@ export class BotBrain {
         }
       }
 
+      // Cover or open ground? Push in the open only when there's an opening;
+      // otherwise find something to hide behind and peek from it.
+      if (t >= this.decideAt || this.engagedWith !== tgt.id) {
+        if (this.engagedWith !== tgt.id) { this.engagedWith = tgt.id; this.engageRoll = Math.random(); this.pushing = false; }
+        this.decideAt = t + 0.4;
+        if (!this.pushing && this.seesOpening(tgt, dist, def)) { this.pushing = true; this.cover = null; }
+      }
+      if (this.cover && (this.cover.enemy !== tgt.id || t >= this.cover.until)) this.cover = null;
+      if (!this.pushing && !this.cover && t >= this.coverSearchAt) {
+        this.coverSearchAt = t + 1 + Math.random() * 0.6;
+        this.cover = this.findCover(tgt, def);
+      }
+
       // Movement in a fight: stop to shoot accurately, strafe in between.
       const close = def?.pellets || def?.id === 'uzi' || def?.id === 'p90';
-      if (def?.melee) {
+      if (this.cover) {
+        const cm = this.coverStep(cmd, true, w, def);
+        moveDir = cm.moveDir;
+        cmd.duck = cm.duck;
+        if (!cm.fireOk) wantFire = false;
+      } else if (def?.melee) {
         // Knife: run straight at them, weaving a little.
         const f = forwardVec(this.yaw), r = rightVec(this.yaw);
         const weave = Math.sin(t * 3 + this.wobblePhase[0]) * 0.35;
@@ -255,13 +283,15 @@ export class BotBrain {
         }
         const r = rightVec(this.yaw);
         moveDir = [r[0] * this.strafeDir, r[2] * this.strafeDir];
-        if (close && dist > 8) {
+        if ((close || this.pushing) && dist > 8) {
           const f = forwardVec(this.yaw);
           moveDir = [f[0] + r[0] * this.strafeDir * 0.5, f[2] + r[2] * this.strafeDir * 0.5];
         }
         // Don't fight shoulder to shoulder: one grenade, one spray.
         moveDir = this.spreadOut(moveDir, 3.5, 1.2);
       }
+    } else if (this.holdCover(cmd, w, def, dt)) {
+      // Behind cover, waiting to peek the enemy we just lost sight of.
     } else {
       // --- Roam / hunt / play the objective ---
       let goal = null;
@@ -283,7 +313,8 @@ export class BotBrain {
           roaming = true;
           if (Math.hypot(goal[0] - p.pos[0], goal[2] - p.pos[2]) < 1.5) {
             const [a, b] = this.style.hold;
-            this.holdUntil = t + a + Math.random() * (b - a);
+            const holdMul = this.plan().name === 'hold' ? 2 : this.plan().name === 'push' ? 0.4 : 1;
+            this.holdUntil = t + (a + Math.random() * (b - a)) * holdMul;
             this.holdYaw = this.yaw + (Math.random() < 0.5 ? -1 : 1) * (0.6 + Math.random() * 1.6);
             this.roamGoal = null;
             goal = null;
@@ -306,7 +337,7 @@ export class BotBrain {
       if (obj?.hold) {
         // Planting or defusing: stand still with the key held.
       } else if (goal && !moveDir && (!this.path || this.pathIdx >= this.path.length || t >= this.repathAt)) {
-        this.path = this.routeTo(goal, !drop && !obj?.urgent);
+        this.path = this.routeTo(goal, drop ? false : obj?.detour ?? !obj?.urgent);
         this.pathIdx = 0;
         this.repathAt = t + (drop ? 1 : roaming ? 8 : 1.5);
         if (!this.path) {
@@ -386,7 +417,12 @@ export class BotBrain {
   objective(cmd) {
     const g = this.game, p = this.p, t = g.time;
     if (g.round.state !== 'live' && g.round.state !== 'freeze') return null;
+    const plan = this.plan();
     const b = g.bomb;
+    const sites = Object.keys(g.map.sites ?? {});
+    const [idx, n] = this.teamIndex();
+    const late = g.round.endsAt - t < 35; // no time left for slow plans
+    const waiting = !late && t < plan.goAt; // slow / fake plans before they commit
     if (g.objective === 'bomb') {
       if (p.team === 'red') {
         if (b.state === 'carried' && b.carrier === p.id) {
@@ -401,38 +437,70 @@ export class BotBrain {
             }
             return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
           }
+          // Slow and fake plans: the bomb waits in the middle until the call.
+          if (waiting) return { goal: this.spotGoal('mid', this.midRect(8), 0, 10) };
           this.pickSpot('plant', g.map.sites[g.plan], 0.25);
-          return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
+          return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: plan.name === 'rush' || late };
         }
         if (b.state === 'dropped') return { goal: b.pos, urgent: true };
         if (b.state === 'planted') {
-          this.pickSpot('guard' + b.site, { min: [b.pos[0] - 7, b.pos[2] - 7], max: [b.pos[0] + 7, b.pos[2] + 7] }, 0, 8);
-          return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
+          // Spread out around the bomb, some close, some watching from range.
+          const r = this.role === 'anchor' || this.role === 'lurk' ? 12 : 7;
+          return { goal: this.spotGoal('guard' + b.site, { min: [b.pos[0] - r, b.pos[2] - r], max: [b.pos[0] + r, b.pos[2] + r] }, 0, 8) };
         }
-        // Lurkers hang around the other site for a while to catch rotators
-        // (and maybe find an easy plant); everyone else heads for the plan.
-        const sites = Object.keys(g.map.sites);
+        const site = g.map.sites[g.plan];
         const other = sites.find((k) => k !== g.plan);
-        if (this.role === 'lurk' && other && t < g.round.freezeEnd + 35) {
-          this.pickSpot('lurk' + other, g.map.sites[other], 0.2, 12);
-          return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
+        switch (plan.name) {
+          case 'rush':
+            return { goal: this.spotGoal('rush' + g.plan, site, 0.15, 6), urgent: true, detour: false };
+          case 'split':
+            // Two groups, each round its own side, meeting on the site.
+            return { goal: this.spotGoal('split' + g.plan, site, 0.15, 10), detour: idx % 2 ? plan.flip : -plan.flip };
+          case 'fake':
+            if (waiting && other) return { goal: this.spotGoal('fake' + other, g.map.sites[other], 0.15, 8), detour: false };
+            return { goal: this.spotGoal('hit' + g.plan, site, 0.15, 10), urgent: true, detour: false };
+          case 'slow':
+            if (waiting) return { goal: this.spotGoal('mid', this.midRect(14), 0, 9) };
+            return { goal: this.spotGoal('hit' + g.plan, site, 0.15, 10) };
+          case 'spread':
+            // Lurkers hang around the other site for a while to catch
+            // rotators; everyone else takes their own way in.
+            if (this.role === 'lurk' && other && t < g.round.freezeEnd + 35) {
+              return { goal: this.spotGoal('lurk' + other, g.map.sites[other], 0.2, 12) };
+            }
+            return { goal: this.spotGoal('escort' + g.plan, site, 0.15, 10) };
+          default: // execute: everyone onto the site together, detours by role
+            return { goal: this.spotGoal('escort' + g.plan, site, 0.15, 10) };
         }
-        this.pickSpot('escort' + g.plan, g.map.sites[g.plan], 0.15, 10);
-        return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
       }
       // Blue.
       if (b.state === 'planted') {
         if (p.task?.kind === 'defuse' || canDefuse(g, p)) { cmd.use = true; return { hold: true, urgent: true }; }
         return { goal: b.pos, urgent: true };
       }
-      // Hold a site until the bomb shows up, the team dealt out across the
-      // sites. With enough of us, the rusher goes looking for them instead.
-      const [idx, n] = this.teamIndex();
-      if (this.role === 'rush' && n >= 3 && b.state !== 'planted') return null;
-      const sites = Object.keys(g.map.sites);
-      const site = sites[idx % sites.length];
-      this.pickSpot('hold' + site, g.map.sites[site], 0.2, 12);
-      return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
+      // Someone called where Red is: most of the other site rotates over.
+      if (plan.called && t - plan.calledAt < 20 && this.role !== 'anchor' && this.rotateRoll < 0.75) {
+        return { goal: this.spotGoal('rotate' + plan.called, g.map.sites[plan.called], 0.2, 10), urgent: true, detour: false };
+      }
+      let site = sites[idx % sites.length];
+      switch (plan.name) {
+        case 'stack': {
+          const heavy = Math.ceil(n * 0.65);
+          site = idx < heavy ? plan.site : sites.find((k) => k !== plan.site) ?? plan.site;
+          break;
+        }
+        case 'push':
+          // One or two go to meet them in the middle, then fall back.
+          if (idx < (n >= 4 ? 2 : 1) && t < plan.pushFor) return { goal: this.spotGoal('push', this.midRect(12), 0, 8) };
+          break;
+        case 'retake':
+          // One on each site; the rest wait in between to retake.
+          if (idx >= sites.length) return { goal: this.spotGoal('between', this.betweenRect(), 0, 10) };
+          break;
+        default: // even
+          if (this.role === 'rush' && n >= 3) return null;
+      }
+      return { goal: this.spotGoal('hold' + site, g.map.sites[site], 0.2, 12) };
     }
     // Hostage rescue.
     const hs = g.hostages.filter((h) => h.state !== 'rescued');
@@ -445,36 +513,238 @@ export class BotBrain {
         this.useToggle = !this.useToggle;
         cmd.use = this.useToggle;
       }
-      if (free.length && (mine.length < 2 || mine.length + free.length <= 2)) {
-        // Go for the nearest hostage nobody else on the team is going for.
-        const taken = new Set(this.allies().map((b) => b.hostageGoal));
-        const dist = (h) => Math.hypot(h.pos[0] - p.pos[0], h.pos[2] - p.pos[2]) + (taken.has(h.id) ? 25 : 0);
-        free.sort((a, b2) => dist(a) - dist(b2));
-        this.hostageGoal = free[0].id;
-        return { goal: free[0].pos, urgent: true };
-      }
-      this.hostageGoal = null;
       if (mine.length) {
         // Lead them home, waiting for anyone falling behind.
+        if (free.length && mine.length < 2 && near) return { goal: free[0].pos, urgent: true };
         const lag = mine.some((h) => Math.hypot(h.pos[0] - p.pos[0], h.pos[2] - p.pos[2]) > 7);
         if (lag) return { hold: true };
         this.pickSpot('rescue', g.map.rescue[0], 0.3, 30);
         return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
       }
+      if (plan.name === 'slow' && waiting) {
+        this.hostageGoal = null;
+        return { goal: this.spotGoal('mid', this.midRect(14), 0, 9) };
+      }
+      if (free.length) {
+        // Go for the nearest hostage nobody else on the team is going for.
+        const taken = new Set(this.allies().map((b) => b.hostageGoal));
+        const dist = (h) => Math.hypot(h.pos[0] - p.pos[0], h.pos[2] - p.pos[2]) + (taken.has(h.id) ? 25 : 0);
+        free.sort((a, b2) => dist(a) - dist(b2));
+        this.hostageGoal = free[0].id;
+        if (plan.name === 'split') return { goal: free[0].pos, detour: idx % 2 ? plan.flip : -plan.flip };
+        return { goal: free[0].pos, urgent: true };
+      }
+      this.hostageGoal = null;
       // Nothing to do for the hostages: push toward them anyway.
-      const h = hs[this.teamIndex()[0] % Math.max(1, hs.length)];
+      const h = hs[idx % Math.max(1, hs.length)];
       return h ? { goal: h.pos } : null;
     }
     // Red: guard the hostages, one or two of us on each, moving around them
     // now and then. A rusher with enough teammates goes hunting instead.
-    const [idx, n] = this.teamIndex();
     const follow = hs.find((x) => x.state === 'follow');
-    if (this.role === 'rush' && n >= 3 && !follow) return null;
-    const h = follow ?? hs[idx % Math.max(1, hs.length)];
+    if (follow) return { goal: follow.pos, urgent: true };
+    if (plan.name === 'forward' && idx % 2 && n >= 2) return { goal: this.spotGoal('fwd', this.midRect(14), 0, 10) };
+    if (plan.name === 'guard' && this.role === 'rush' && n >= 3) return null;
+    const h = hs[idx % Math.max(1, hs.length)];
     if (!h) return null;
-    if (h.state === 'follow') return { goal: h.pos, urgent: true };
-    this.pickSpot('guard' + h.id, { min: [h.pos[0] - 8, h.pos[2] - 8], max: [h.pos[0] + 8, h.pos[2] + 8] }, 0, 7);
-    return { goal: [this.objSpot[0], 0, this.objSpot[1]] };
+    const r = plan.name === 'ambush' ? 4 : 8;
+    return { goal: this.spotGoal('guard' + h.id, { min: [h.pos[0] - r, h.pos[2] - r], max: [h.pos[0] + r, h.pos[2] + r] }, 0, 7) };
+  }
+
+  // pickSpot, as a goal for the path finder.
+  spotGoal(key, rect, inset, keep) {
+    this.pickSpot(key, rect, inset, keep);
+    return [this.objSpot[0], 0, this.objSpot[1]];
+  }
+
+  // A square of half-size r around the middle of the map.
+  midRect(r) {
+    const [x, z] = mapMiddle(this.game.map);
+    return { min: [x - r, z - r], max: [x + r, z + r] };
+  }
+
+  // Halfway between the bomb sites and Blue's base: where retakers wait.
+  betweenRect() {
+    const m = this.game.map;
+    const rects = Object.values(m.sites);
+    let x = 0, z = 0;
+    for (const r of rects) { x += (r.min[0] + r.max[0]) / 2; z += (r.min[1] + r.max[1]) / 2; }
+    x /= rects.length; z /= rects.length;
+    const bs = m.teamSpawns?.blue;
+    if (bs?.length) {
+      let bx = 0, bz = 0;
+      for (const s of bs) { bx += (s.pos ?? s)[0]; bz += (s.pos ?? s)[2]; }
+      x = (x + bx / bs.length) / 2; z = (z + bz / bs.length) / 2;
+    }
+    return { min: [x - 6, z - 6], max: [x + 6, z + 6] };
+  }
+
+  // How keen this bot is to fight in the open: the team plan, the role, and
+  // a mood rolled each life.
+  aggression() {
+    const plan = this.plan();
+    const role = { rush: 0.25, flank: 0.05, anchor: -0.25, support: 0, lurk: -0.1 }[this.role] ?? 0;
+    return Math.max(0, Math.min(1, plan.aggr + role + this.mood));
+  }
+
+  plan() {
+    const g = this.game;
+    return teamPlan(g, g.mode === 'teams' ? this.p.team : this.p.id);
+  }
+
+  // Is there a reason to fight this enemy in the open instead of from cover?
+  seesOpening(tgt, dist, def) {
+    const p = this.p;
+    if (def?.melee || dist < 4.5) return true;
+    if (tgt.health <= 30 || tgt.reloading) return true;
+    // Looking the other way.
+    const of = forwardVec(tgt.yaw);
+    const dx = p.pos[0] - tgt.pos[0], dz = p.pos[2] - tgt.pos[2];
+    if ((dx * of[0] + dz * of[2]) / (Math.hypot(dx, dz) || 1) < 0.3) return true;
+    // Two or more of us already on it, and we're healthy.
+    let on = 0;
+    for (const b of this.allies()) if (b.targetVisible && b.target === tgt.id) on++;
+    if (on >= 2 && p.health > 50 && this.game.mode !== 'ffa') return true;
+    // Close-range guns want to close the gap.
+    if ((def?.pellets || def?.id === 'uzi' || def?.id === 'p90') && dist < 12) return this.engageRoll < 0.7;
+    // Otherwise it's down to temperament, rolled once per fight.
+    return this.engageRoll < this.aggression() * 0.45;
+  }
+
+  // Somewhere close, walkable in a straight line, that `tgt` can't see:
+  // either low cover (crouch to hide, stand to shoot) or full cover with a
+  // peek spot a step to the side. Null if there's nothing near.
+  findCover(tgt, def) {
+    const g = this.game, p = this.p, nav = this.nav, world = g.world;
+    const ex = tgt.pos[0], ey = tgt.pos[1] + (tgt.ducked ? DUCK_EYE : STAND_EYE), ez = tgt.pos[2];
+    const d0 = Math.hypot(ex - p.pos[0], ez - p.pos[2]) || 1;
+    const ux = (ex - p.pos[0]) / d0, uz = (ez - p.pos[2]) / d0;
+    const taken = this.allies().map((b) => b.cover?.spot).filter(Boolean);
+    const seen = (x, y, z) => world.visible(ex, ey, ez, x, y, z);
+    let best = null, bestScore = -Infinity;
+    const a0 = Math.random() * Math.PI * 2;
+    for (const r of [1, 2, 3.2, 4.6, 6]) {
+      for (let k = 0; k < 12; k++) {
+        const a = a0 + (k * Math.PI) / 6;
+        const [ci, cj] = nav.cellOf(p.pos[0] + Math.cos(a) * r, p.pos[2] + Math.sin(a) * r);
+        if (!nav.isMain(ci, cj)) continue;
+        const [x, z] = nav.cellCenter(ci, cj);
+        const fy = nav.floorAt(x, z);
+        if (Math.abs(fy - p.pos[1]) > 1.5 || !nav.walkable(p.pos[0], p.pos[2], x, z)) continue;
+        const de = Math.hypot(ex - x, ez - z);
+        if (de < 6) continue;
+        const standSeen = seen(x, fy + STAND_EYE, z);
+        let low = false, peek = null;
+        if (standSeen) {
+          // Low cover: ducked head and body hidden.
+          if (seen(x, fy + DUCK_EYE, z) || seen(x, fy + 0.6, z)) continue;
+          low = true;
+        } else {
+          if (seen(x, fy + 1.1, z)) continue;
+          // Full cover: a step to either side should see them.
+          const vx = (ex - x) / de, vz = (ez - z) / de;
+          const side = Math.random() < 0.5 ? 1 : -1;
+          for (const sgn of [side, -side]) {
+            for (const step of [0.9, 1.5]) {
+              const qx = x - vz * sgn * step, qz = z + vx * sgn * step;
+              const [qi, qj] = nav.cellOf(qx, qz);
+              if (!nav.isMain(qi, qj) || !nav.walkable(x, z, qx, qz)) continue;
+              if (seen(qx, nav.floorAt(qx, qz) + STAND_EYE, qz)) { peek = [qx, qz]; break; }
+            }
+            if (peek) break;
+          }
+          if (!peek) continue;
+        }
+        let score = -r - Math.max(0, Math.cos(a) * ux + Math.sin(a) * uz) * r * 0.8;
+        if (!low) score += 0.6;
+        // Snipers like it far, shotguns like it close.
+        if (def?.zoomLevels) score += Math.min(de, 40) * 0.05;
+        if (def?.pellets) score -= de * 0.1;
+        for (const o of taken) if (Math.hypot(o[0] - x, o[1] - z) < 2.5) score -= 6;
+        if (score > bestScore) { bestScore = score; best = { spot: [x, z], peek, low }; }
+      }
+    }
+    if (!best) return null;
+    const t = g.time;
+    return {
+      ...best, enemy: tgt.id, phase: 'move', phaseUntil: t + 3,
+      until: t + 7 + Math.random() * 6, peeks: 0, maxPeeks: 2 + Math.floor(Math.random() * 3),
+      hurtAt: p.lastHurtTime,
+    };
+  }
+
+  // One tick of the hide / peek cycle. Returns { moveDir, duck, fireOk }.
+  coverStep(cmd, visible, w, def) {
+    const c = this.cover, p = this.p, t = this.game.time;
+    const goTo = (pt, near) => {
+      const dx = pt[0] - p.pos[0], dz = pt[1] - p.pos[2], d = Math.hypot(dx, dz);
+      return d > near ? [dx / d, dz / d] : null;
+    };
+    const hide = () => {
+      c.phase = 'hide';
+      c.phaseUntil = t + 0.5 + Math.random() * (1.4 - this.aggression());
+      c.hurtAt = p.lastHurtTime;
+      if (++c.peeks >= c.maxPeeks) c.until = Math.min(c.until, t + 0.3);
+    };
+    if (c.phase === 'move') {
+      const dir = goTo(c.spot, 0.3);
+      if (!dir || t >= c.phaseUntil) { c.phase = 'hide'; c.phaseUntil = t + 0.3 + Math.random() * 0.8; }
+      // Duck behind low cover as we get there; shoot only if it's right here.
+      const near = Math.hypot(c.spot[0] - p.pos[0], c.spot[1] - p.pos[2]);
+      return { moveDir: dir, duck: c.low && near < 1, fireOk: near < 0.6 && !c.low };
+    }
+    if (c.phase === 'hide') {
+      // Still in their sight while hiding (they moved, or the cover was
+      // worse than it looked): this spot is no good, find another.
+      const at = Math.hypot(c.spot[0] - p.pos[0], c.spot[1] - p.pos[2]) < 0.5 && (!c.low || p.ducked);
+      if (visible && at) {
+        c.exposedSince ??= t;
+        if (t - c.exposedSince > 0.25) { this.cover = null; this.coverSearchAt = 0; return { moveDir: null, duck: false, fireOk: true }; }
+      } else c.exposedSince = null;
+      if (w && !def?.melee && !p.reloading && w.clip < WEAPONS[w.id].clip * 0.6 && w.reserve > 0) cmd.reload = true;
+      if (t >= c.phaseUntil && !p.reloading) {
+        c.phase = 'peek';
+        c.phaseUntil = t + 0.8 + Math.random() * 1.2 + this.aggression() * 0.8;
+        c.hurtAt = p.lastHurtTime;
+      }
+      return { moveDir: goTo(c.spot, 0.25), duck: c.low, fireOk: false };
+    }
+    // Peek: stand up, or step out to the side.
+    const hurt = p.lastHurtTime > c.hurtAt && p.health < 70;
+    if (hurt || t >= c.phaseUntil || (w && !def?.melee && w.clip === 0)) {
+      hide();
+      return { moveDir: goTo(c.spot, 0.25), duck: c.low, fireOk: false };
+    }
+    if (!visible && t > c.phaseUntil - 0.4) c.until = Math.min(c.until, t + 1.5); // nobody there any more
+    const dir = c.low ? null : goTo(c.peek, 0.2);
+    return { moveDir: dir, duck: false, fireOk: !dir || visible };
+  }
+
+  // Lost sight of the enemy while using cover: keep the cycle going for a
+  // while, watching where they were. False when there's no cover to work, or
+  // the objective needs us now.
+  holdCover(cmd, w, def, dt) {
+    const g = this.game, p = this.p, t = g.time;
+    const c = this.cover;
+    if (!c) return false;
+    const urgent = p.task || (g.objective === 'bomb' && g.bomb.state === 'planted' && p.team === 'blue') ||
+      (g.objective === 'bomb' && g.bomb.carrier === p.id && canPlant(g, p)) ||
+      (g.objective === 'hostage' && g.hostages.some((h) => h.state === 'follow' && h.leader === p.id));
+    const enemy = g.getPlayer(c.enemy);
+    if (urgent || t >= c.until || !enemy?.alive || t - this.lastSeenTime > 5) { this.cover = null; return false; }
+    const cm = this.coverStep(cmd, false, w, def);
+    cmd.duck = cm.duck;
+    if (cm.moveDir) {
+      const f = forwardVec(this.yaw), r = rightVec(this.yaw);
+      cmd.fwd = Math.max(-1, Math.min(1, cm.moveDir[0] * f[0] + cm.moveDir[1] * f[2]));
+      cmd.side = Math.max(-1, Math.min(1, cm.moveDir[0] * r[0] + cm.moveDir[1] * r[2]));
+    }
+    const lp = this.lastSeenPos ?? enemy.pos;
+    const eye = g.eyePos(p);
+    const dx = lp[0] - eye[0], dz = lp[2] - eye[2];
+    this.turnTowards(Math.atan2(-dx, -dz), Math.atan2(lp[1] + 1.4 - eye[1], Math.hypot(dx, dz)), dt);
+    this.burstLeft = 0;
+    return true;
   }
 
   // Our place among the team's bots (by id) and how many there are, so jobs
@@ -592,6 +862,15 @@ export class BotBrain {
       }
       this.target = best.id;
       this.targetVisible = true;
+      // Defending a bomb site: call out where Red is.
+      if (g.objective === 'bomb' && p.team === 'blue' && g.bomb.state !== 'planted' && g.round.state === 'live') {
+        for (const [k, r] of Object.entries(g.map.sites)) {
+          if (best.pos[0] > r.min[0] - 8 && best.pos[0] < r.max[0] + 8 && best.pos[2] > r.min[1] - 8 && best.pos[2] < r.max[1] + 8) {
+            const plan = this.plan();
+            if (plan.called !== k || t - plan.calledAt > 5) { plan.called = k; plan.calledAt = t; }
+          }
+        }
+      }
       this.lastSeenPos = [...best.pos];
       this.lastSeenTime = t;
       this.investigating = false;
@@ -616,8 +895,24 @@ export class BotBrain {
   // spots, scored by the role. Everyone prefers spots their team isn't
   // already heading for.
   pickRoamGoal() {
-    const nav = this.nav, p = this.p;
+    const nav = this.nav, p = this.p, g = this.game;
     const heads = this.allies().map(BotBrain.heading);
+    // The team plan pulls the choice somewhere: a rally point to move as a
+    // loose group, the enemy's side of the map, or close to where we are.
+    const plan = this.plan();
+    let pull = null, pullW = 0;
+    if (plan.name === 'group') {
+      if (!plan.rally || g.time > plan.rallyUntil) {
+        plan.rally = nav.randomOpenPoint(Math.random);
+        plan.rallyUntil = g.time + 15 + Math.random() * 15;
+      }
+      pull = plan.rally; pullW = 1.2;
+    } else if (plan.name === 'push' && g.mode === 'teams') {
+      const es = g.map.teamSpawns?.[p.team === 'red' ? 'blue' : 'red'];
+      if (es?.length) { const s = es[Math.floor(Math.random() * es.length)].pos; pull = [s[0], s[2]]; pullW = 0.8; }
+    } else if (plan.name === 'hold') {
+      pull = [p.pos[0], p.pos[2]]; pullW = 1;
+    }
     let best = null, bestScore = -Infinity;
     for (let i = 0; i < 10; i++) {
       const [x, z] = nav.randomOpenPoint(Math.random);
@@ -629,6 +924,7 @@ export class BotBrain {
       let score = Math.min(apart, 25) * (this.role === 'lurk' ? 2 : 1);
       if (this.role === 'rush') score += Math.min(self, 40) * 0.6;
       else if (this.role === 'anchor') score -= Math.max(0, self - 20) * 0.8;
+      if (pull) score -= Math.max(0, Math.hypot(x - pull[0], z - pull[1]) - 8) * pullW;
       score += Math.random() * 6;
       if (score > bestScore) { bestScore = score; best = [x, 0, z]; }
     }
@@ -637,12 +933,14 @@ export class BotBrain {
 
   // A path to goal ([x, y, z]); flankers and lurkers go round by a detour
   // point, kept for as long as the goal stays roughly the same.
-  routeTo(goal, allowDetour) {
+  // detour: true lets the role decide, false never, +1 / -1 always, on that
+  // side of the straight line.
+  routeTo(goal, detour) {
     const nav = this.nav, p = this.p;
     const gx = goal[0], gz = goal[2] ?? goal[1];
     if (!this.viaFor || Math.hypot(this.viaFor[0] - gx, this.viaFor[1] - gz) > 6) {
       this.viaFor = [gx, gz];
-      this.via = allowDetour ? this.pickVia(gx, gz) : null;
+      this.via = detour ? this.pickVia(gx, gz, detour === true ? 0 : detour) : null;
     }
     if (Array.isArray(this.via)) {
       const a = nav.findPath(p.pos[0], p.pos[2], this.via[0], this.via[1]);
@@ -655,8 +953,8 @@ export class BotBrain {
 
   // A point off to one side of the straight line to (gx, gz), not too far
   // out of the way, and away from the detours our team is already taking.
-  pickVia(gx, gz) {
-    if (Math.random() >= this.style.detour) return null;
+  pickVia(gx, gz, sideSign = 0) {
+    if (!sideSign && Math.random() >= this.style.detour) return null;
     const nav = this.nav, p = this.p;
     const ax = p.pos[0], az = p.pos[2];
     const L = Math.hypot(gx - ax, gz - az);
@@ -669,7 +967,9 @@ export class BotBrain {
       if (!nav.isMain(ci, cj)) continue;
       const detour = (Math.hypot(x - ax, z - az) + Math.hypot(gx - x, gz - z)) / L;
       if (detour < 1.12 || detour > 1.7) continue;
-      const side = Math.abs((gx - ax) * (z - az) - (gz - az) * (x - ax)) / L;
+      const cross = ((gx - ax) * (z - az) - (gz - az) * (x - ax)) / L;
+      if (sideSign && Math.sign(cross) !== sideSign) continue;
+      const side = Math.abs(cross);
       if (side < L * 0.2) continue;
       let apart = 20;
       for (const o of others) apart = Math.min(apart, Math.hypot(x - o[0], z - o[1]));
