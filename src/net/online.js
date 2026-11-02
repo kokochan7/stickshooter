@@ -5,12 +5,22 @@
 //   state and replay the cmds it hasn't consumed yet;
 // - everyone else is drawn INTERP_DELAY in the past, interpolated between
 //   the two snapshots around that time;
-// - shots, hits and kills come from server events, so the server decides
-//   every hit (with lag compensation, see worker/room.js).
+// - our own gun is predicted too (CS 1.6's client weapon prediction): the
+//   shot, its tracer and impacts, the recoil and the ammo happen the moment
+//   we click, using the same per-shot random seed the server uses, so the
+//   spread lands in the same place on both;
+// - hits and kills come from server events, so the server decides every hit
+//   (with lag compensation, see worker/room.js).
 import { SEND_EVERY, INTERP_DELAY, DEFAULT_ROOM, PROTOCOL_VERSION } from './protocol.js';
 import { applyObjectiveInfo } from '../sim/objective.js';
+import { TICK_DT } from '../sim/constants.js';
 
 const PING_EVERY = 2000;
+// Our own events the browser predicts. The server's copies are dropped when
+// they match one we already showed.
+const PREDICTED = new Set(['shot', 'dry', 'deploy', 'reload', 'reloaded', 'shell', 'zoom']);
+// A prediction the server hasn't confirmed after this long never will be.
+const PREDICT_EXPIRE = 1500;
 
 // { rooms: { [room]: humans }, maps: { [room]: map id } } for the quick play
 // rooms, or null if the server can't say.
@@ -58,6 +68,9 @@ export class OnlineSession {
     this.offset = null; // server time - local time
     this.rtt = 0;
     this.closed = false;
+    // Server time our newest cmd will run at (our own gun's clock).
+    this.predTime = 0;
+    this.predicted = []; // { type, weapon, at } shown locally, not yet confirmed
 
     this.ws = new WebSocket(url);
     this.ws.onopen = () => this.send({ t: 'hello', v: PROTOCOL_VERSION, name, map });
@@ -194,14 +207,53 @@ export class OnlineSession {
       this.me = me;
       Object.assign(me, msg.me);
       this.pending = this.pending.filter((c) => c.seq > msg.ack);
-      if (me.alive) for (const c of this.pending) g.moveStep(me, c.cmd);
+      // The snapshot is the state right after the acked cmd ran at msg.time;
+      // each later cmd runs one tick after the one before it.
+      let t = msg.time;
+      for (const c of this.pending) {
+        t += TICK_DT;
+        if (!me.alive) continue;
+        g.moveStep(me, c.cmd);
+        this.stepWeapon(me, c.cmd, t, false);
+      }
+      this.predTime = t;
       if (!wasReady) {
         me.prevPos = [...me.pos];
         this.onWelcome?.(me);
       }
     }
 
-    for (const e of msg.events) this.events.push(e);
+    const now = performance.now();
+    this.predicted = this.predicted.filter((x) => now - x.at < PREDICT_EXPIRE);
+    for (const e of msg.events) {
+      if (e.pid === this.myId && PREDICTED.has(e.type)) {
+        const i = this.predicted.findIndex((x) => x.type === e.type && x.weapon === e.weapon);
+        if (i >= 0) { this.predicted.splice(i, 1); continue; }
+      }
+      this.events.push(e);
+    }
+  }
+
+  // Run our gun for one cmd at server time t. live: a new cmd, so show what
+  // happens (shots, sounds); otherwise we're replaying after a snapshot and
+  // only the state needs to catch up.
+  stepWeapon(me, cmd, t, live) {
+    const g = this.game;
+    const saved = g.time;
+    g.time = t;
+    g.predicting = true;
+    g.replaying = !live;
+    const n = g.events.length;
+    g.updateWeapon(me, g.frozen(me) ? { ...cmd, fire: false, alt: false } : cmd, TICK_DT);
+    g.predicting = g.replaying = false;
+    g.time = saved;
+    if (!live) return;
+    const now = performance.now();
+    for (const e of g.events.splice(n)) {
+      if (!PREDICTED.has(e.type)) continue;
+      this.predicted.push({ type: e.type, weapon: e.weapon, at: now });
+      this.events.push(e);
+    }
   }
 
   // One 128 Hz client tick: predict ourselves and queue the cmd for the server.
@@ -209,12 +261,19 @@ export class OnlineSession {
     const me = this.me;
     if (!me) return;
     const seq = ++this.seq;
+    // What we're looking at as we make this cmd; the server rewinds everyone
+    // to it when this cmd fires.
+    cmd.vt = this.viewTime();
     this.pending.push({ seq, cmd });
     this.outbox.push(cmd);
     me.prevPos[0] = me.pos[0]; me.prevPos[1] = me.pos[1]; me.prevPos[2] = me.pos[2];
     me.prevPunch[0] = me.punch[0]; me.prevPunch[1] = me.punch[1];
     me.prevDuck = me.duckAmount;
-    if (me.alive) this.game.moveStep(me, cmd);
+    this.predTime += TICK_DT;
+    if (me.alive) {
+      this.game.moveStep(me, cmd);
+      this.stepWeapon(me, cmd, this.predTime, true);
+    }
     if (this.outbox.length >= SEND_EVERY) {
       this.send({ t: 'cmds', seq, vt: this.viewTime(), cmds: this.outbox });
       this.outbox = [];

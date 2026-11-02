@@ -379,8 +379,11 @@ movement state: **air**, **run** (horizontal speed above 140 u/s, 170 for
 the P90), **duck**, **stand**.
 
 - **Rifles and SMGs** (`type: rifle`): `acc` grows with consecutive shots,
-  `acc = shots^pow / div + offset`, capped at `max`. Shots fired decays
-  when you stop firing, so tapping and bursting stay accurate.
+  `acc = shots^pow / div + offset`, capped at `max`. Like CS 1.6, the
+  division is on whole numbers and rounds down (only the MP5's 220.1 doesn't),
+  so the first few bullets of a burst are equally tight (five for the AK,
+  six for the M4A1) and then the spread jumps. Shots fired decays when you
+  stop firing, so tapping and bursting stay accurate.
 - **Pistols** (`type: pistol`): `acc = 1 − pistolAccuracy`. Accuracy starts
   at `start`, drops by `loss` when you fire faster than `window`, and
   recovers with time between shots, down to a floor of `min`.
@@ -612,12 +615,15 @@ behind (roughly three snapshot intervals), interpolating between the two
 snapshots around that time, which keeps them smooth through jitter and the
 odd lost packet.
 
-**Shooting.** In v1, shots, hits and kills come from the server's events, so
-there's one round trip between clicking and seeing your tracer. **Later:**
-predict your own shots locally (muzzle flash, sound, recoil, tracer and
-impacts at once, as offline), while damage, hit markers and kills still wait
-for the server. This matters for gun feel and should come soon after v1
-(see 6.6 for making predicted tracers match).
+**Shooting (CS 1.6 client weapon prediction).** The client also runs its own
+gun (`Game.updateWeapon` with `predicting` set): the shot, muzzle flash,
+sound, tracer, impacts, recoil, ammo, reloads and zooms happen the instant
+you click, as offline. Damage, hit markers and kills still come from the
+server. On a snapshot the gun state is reset with the rest of the player and
+the unacked cmds are replayed with `replaying` set, which updates the state
+without tracing or showing anything again. The server's own copies of the
+predicted events are dropped when they match one already shown. The knife
+and grenades aren't predicted.
 
 ### 6.4 Tick and snapshot rates
 
@@ -640,9 +646,13 @@ Hit registration is judged on the server **as the shooter saw it**:
 
 1. The server keeps a short history of every player's position and duck
    state per tick.
-2. When it processes a player's shot, it works out the shooter's view time:
-   their latency plus the client's interpolation delay, capped at 200 ms.
+2. Every cmd carries the view time (`vt`) the client was drawing others at
+   when it made that cmd, capped at 200 ms back. Using the cmd's own time,
+   not the batch's, matters because a cmd can wait in the server's queue for
+   a few ticks.
 3. It rewinds every other player's position and duck state to that time,
+   blending the two recorded ticks around it the way the client blends
+   snapshots,
    runs the normal `traceBullet` for that shooter, then restores them. The
    world itself is static, so only players move.
 4. Because of the 200 ms cap, players with very high ping have to lead their
@@ -652,21 +662,13 @@ The known trade-off (the same as CS): a defender can occasionally be hit
 just after reaching cover, because on the shooter's screen they were still
 in the open.
 
-### 6.6 Spread and recoil online (later)
+### 6.6 Spread and recoil online
 
-The server rolls spread with its own seeded RNG, so the client's predicted
-tracers can differ slightly from where the server's bullet went. Two
-options:
-
-- **Shared seed (preferred).** Send a per-player seed when the player joins
-  and derive each shot's spread from `(seed, cmd sequence)`. Client and server
-  then pick the same spread, and predicted tracers match the real ones.
-  Needs a small change: per-player RNG instead of one `Game.rand`.
-- **Server only.** Simpler, but tracers can disagree with hits.
-
-Recoil (view punch) is deterministic given shots fired and movement state,
-except the KickBack direction flip, which uses the same RNG and is covered
-by the shared seed.
+Each shot's spread and recoil direction come from `shotRng(playerId,
+shotSeed)`, where `shotSeed` counts the player's shots (CS 1.6's
+`shared_random_seed`). The client and the server pick the same random
+numbers, so predicted tracers land exactly where the server's bullets go,
+and the recoil the client shows is the recoil the server applies.
 
 ### 6.7 Protocol and bandwidth
 

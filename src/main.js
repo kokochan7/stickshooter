@@ -1163,12 +1163,12 @@ function updateView(dt, alpha) {
     const w = game.activeWeapon(me);
     let spreadPx = 0;
     if (def) {
-      const s = game.currentSpread(me, def);
+      const s = game.currentSpread(me, def, undefined, gunTime());
       const h = innerHeight;
       spreadPx = Math.min(80, (s * 0.5 * (h / 2)) / Math.tan((fov * DEG) / 2)) + Math.hypot(me.punch[0], me.punch[1]) * 1.5;
     }
     let reloadFrac = null;
-    if (me.reloading && def && !def.shellReload) reloadFrac = 1 - (me.reloadEnd - game.time) / def.reload;
+    if (me.reloading && def && !def.shellReload) reloadFrac = 1 - (me.reloadEnd - gunTime()) / def.reload;
     // The part of the recoil the camera isn't showing (screen shake setting)
     // moves the crosshair, so it still marks where the next bullet goes.
     const f = (innerHeight / 2) / Math.tan((fov * DEG) / 2);
@@ -1342,6 +1342,12 @@ function escapeHtml(s) {
 }
 
 // ---------- Main loop ----------
+
+// The clock our own gun runs on. Online it's predicted ahead of the server
+// time the rest of the world is drawn at.
+function gunTime() {
+  return net?.ready ? net.predTime : game.time;
+}
 
 // Online: same 128 Hz cmd cadence as practice, but the cmds go to the server
 // and only our own movement is predicted locally. The server keeps running

@@ -9,7 +9,7 @@ import {
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
   DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE, NEVER, WATER_SPEED_MUL,
   NADE_FUSE, NADE_GRAVITY, NADE_PIN_TIME, NADE_SWITCH_TIME, NADE_BOUNCE, NADE_RADIUS,
-  PLAYER_RADIUS, STAND_HEIGHT,
+  PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL,
 } from './constants.js';
 import { WEAPONS, GEAR } from './weapons.js';
 import { World } from './world.js';
@@ -43,7 +43,7 @@ function makeWeapon(id) {
 // 4 grenade.
 export const SLOTS = ['primary', 'secondary', 'melee', 'grenade'];
 
-// Small seeded RNG so a server and clients could agree on spread later.
+// Small seeded RNG.
 function mulberry32(seed) {
   return function () {
     seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
@@ -51,6 +51,14 @@ function mulberry32(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+// Per-shot random numbers, like CS 1.6's shared_random_seed: seeded by who
+// shot and how many shots they've fired, so the server and the shooter's own
+// browser (which predicts its shots) agree on exactly where the spread puts
+// every bullet and which way the recoil kicks.
+export function shotRng(playerId, shotSeed) {
+  return mulberry32(Math.imul(playerId | 0, 0x9E3779B1) ^ Math.imul(shotSeed | 0, 0x85EBCA77));
 }
 
 export class Game {
@@ -61,6 +69,9 @@ export class Game {
     this.time = 0;
     this.tickCount = 0;
     this.events = [];
+    // Set by OnlineSession while it predicts its own gun (see emit, fire).
+    this.predicting = false;
+    this.replaying = false;
     this.rand = mulberry32(seed >>> 0);
     this.nextId = 1;
     // Optional lag compensation: (shooter) => restore(). The server sets this to
@@ -148,7 +159,7 @@ export class Game {
       loadout: { primary: null, secondary: 'usp', armor: null },
       nextAttack: 0, deployEnd: 0, reloading: false, reloadEnd: 0, shellNext: 0,
       shotsFired: 0, decreaseShotsAt: 0, delayFire: false, pistolAcc: 0.9, accuracy: 0.2, lastFire: -10,
-      punch: [0, 0], prevPunch: [0, 0], recoilDir: 1,
+      punch: [0, 0], prevPunch: [0, 0], recoilDir: 1, shotSeed: 0,
       zoom: 0, resumeZoomAt: 0, resumeZoom: 0,
       spin: 0, fireHeld: false, altHeld: false, reloadHeld: false,
       tagMul: 1, lastHitDir: null, lastAttacker: null, lastHurtTime: -10,
@@ -266,7 +277,10 @@ export class Game {
     return this.players.find((p) => p.id === id);
   }
 
+  // replaying: a browser re-running its own unacknowledged cmds after a
+  // snapshot (online). The state catches up, but nothing is shown again.
   emit(e) {
+    if (this.replaying) return;
     e.time = this.time;
     this.events.push(e);
   }
@@ -631,6 +645,9 @@ export class Game {
     const w = this.activeWeapon(p);
     if (!w) return;
     const def = WEAPONS[w.id];
+    // A browser predicting its own player (online) leaves the knife and
+    // grenades to the server; it only predicts guns.
+    if ((def.melee || def.grenade) && (this.predicting || this.replaying)) return;
     if (def.melee) { this.updateMelee(p, cmd, def); return; }
     if (def.grenade) { this.updateGrenade(p, cmd, def, w); return; }
 
@@ -923,6 +940,7 @@ export class Game {
     }
     p.shotsFired++;
     p.lastFire = t;
+    const rand = shotRng(p.id, p.shotSeed++);
 
     // Fire direction = view angles + punch (like GoldSrc).
     const yaw = p.yaw + p.punch[1] * DEG;
@@ -932,19 +950,27 @@ export class Game {
     const up = cross(right, fwd);
     const origin = this.eyePos(p);
 
+    if (this.replaying) {
+      this.kick(p, def, state, rand);
+      this.afterShot(p, def);
+      return;
+    }
+
     const pellets = def.pellets ?? 1;
     const ends = [];
     const impacts = [];
     const hitsByVictim = new Map();
-    const restore = this.lagComp ? this.lagComp(p) : null;
+    // Predicting (online, our own shot): others are already drawn where we
+    // saw them, so there's nothing to rewind.
+    const restore = this.lagComp && !this.predicting ? this.lagComp(p) : null;
     for (let i = 0; i < pellets; i++) {
       let x, y;
       if (def.pellets) {
-        x = (this.rand() - 0.5 + this.rand() - 0.5) * def.pelletSpread * 2;
-        y = (this.rand() - 0.5 + this.rand() - 0.5) * def.pelletSpread * 2;
+        x = (rand() - 0.5 + rand() - 0.5) * def.pelletSpread * 2;
+        y = (rand() - 0.5 + rand() - 0.5) * def.pelletSpread * 2;
       } else {
-        x = (this.rand() - 0.5 + this.rand() - 0.5) * spread;
-        y = (this.rand() - 0.5 + this.rand() - 0.5) * spread;
+        x = (rand() - 0.5 + rand() - 0.5) * spread;
+        y = (rand() - 0.5 + rand() - 0.5) * spread;
       }
       const d = norm([fwd[0] + x * right[0] + y * up[0], fwd[1] + x * right[1] + y * up[1], fwd[2] + x * right[2] + y * up[2]]);
       const res = traceBullet(this.world, this.players, p, origin, d, def, (victim, dmg, group, point, wallbang) => {
@@ -959,15 +985,22 @@ export class Game {
 
     this.emit({ type: 'shot', pid: p.id, weapon: def.id, origin, dir: fwd, ends, impacts });
 
-    for (const [victim, hits] of hitsByVictim) {
-      for (const h of hits) {
-        if (!victim.alive) break;
-        this.damage(victim, p, h.dmg, h.group, h.point, def, h.wallbang, fwd);
+    // Only the server (or practice) decides hits.
+    if (!this.predicting) {
+      for (const [victim, hits] of hitsByVictim) {
+        for (const h of hits) {
+          if (!victim.alive) break;
+          this.damage(victim, p, h.dmg, h.group, h.point, def, h.wallbang, fwd);
+        }
       }
     }
 
-    this.kick(p, def, state);
+    this.kick(p, def, state, rand);
+    this.afterShot(p, def);
+  }
 
+  afterShot(p, def) {
+    const t = this.time;
     // Fire rate: keep the cadence exact across 128 Hz ticks.
     if (t - p.nextAttack > TICK_DT * 1.5) p.nextAttack = t;
     p.nextAttack += def.cycle;
@@ -991,20 +1024,27 @@ export class Game {
 
   rifleAccuracy(p, acc) {
     // First shot is the most accurate; it gets worse as the spray goes on.
+    // CS 1.6 divides whole numbers here (shots^3 / 200 for the AK), which
+    // rounds down: the first few bullets of a burst stay just as tight, then
+    // the spread jumps. Only the MP5 divides by 220.1 and grows smoothly.
     const n = p.shotsFired;
-    return n === 0 ? Math.min(0.2, acc.offset) : Math.min(acc.max, Math.pow(n, acc.pow) / acc.div + acc.offset);
+    if (n === 0) return Math.min(0.2, acc.offset);
+    const q = Math.pow(n, acc.pow) / acc.div;
+    return Math.min(acc.max, (Number.isInteger(acc.div) ? Math.floor(q) : q) + acc.offset);
   }
 
-  nextPistolAcc(p, acc) {
+  nextPistolAcc(p, acc, now = this.time) {
     // Pistol accuracy recovers with time between shots.
-    const since = this.time - p.lastFire;
+    const since = now - p.lastFire;
     const a = p.pistolAcc - (acc.window - since) * acc.loss;
     return Math.max(acc.min, Math.min(acc.start, a));
   }
 
   // Spread (CS 1.6 formulas) the next shot would have. Pure: used by fire()
   // and by the client's dynamic crosshair.
-  currentSpread(p, def, state = this.moveState(p, def)) {
+  // now: the clock p's gun runs on (online, our own gun runs ahead of the
+  // server's clock; see OnlineSession.predTime).
+  currentSpread(p, def, state = this.moveState(p, def), now = this.time) {
     const acc = def.accuracy;
     if (def.pellets) return def.pelletSpread;
     if (acc.type === 'rifle') {
@@ -1013,7 +1053,7 @@ export class Game {
     }
     if (acc.type === 'pistol') {
       const s = def.spread[state];
-      return s[0] + s[1] * (1 - this.nextPistolAcc(p, acc));
+      return s[0] + s[1] * (1 - this.nextPistolAcc(p, acc, now));
     }
     if (acc.type === 'sniper') {
       const sp = def.sniperSpread;
@@ -1029,13 +1069,13 @@ export class Game {
     return 0;
   }
 
-  kick(p, def, state) {
+  kick(p, def, state, rand = this.rand) {
     const k = def.kick;
     // Same pattern shape as CS 1.6, all of it scaled by RECOIL_SCALE.
     const R = RECOIL_SCALE;
     if (k.punch) {
       const range = state === 'air' && k.airPunch ? k.airPunch : k.punch;
-      p.punch[0] += (range[0] + this.rand() * (range[1] - range[0])) * R;
+      p.punch[0] += (range[0] + rand() * (range[1] - range[0])) * R;
       return;
     }
     let [upBase, latBase, upMod, latMod, upMax, latMax, dirChange] = k[state];
@@ -1054,7 +1094,7 @@ export class Game {
       p.punch[1] -= side;
       if (p.punch[1] < -latMax) p.punch[1] = -latMax;
     }
-    if (Math.floor(this.rand() * (dirChange + 1)) === 0) p.recoilDir = -p.recoilDir;
+    if (Math.floor(rand() * (dirChange + 1)) === 0) p.recoilDir = -p.recoilDir;
   }
 
   // from: where the damage came from, for the hurt indicator (the attacker,
@@ -1069,8 +1109,15 @@ export class Game {
     victim.lastHitDir = dir;
     victim.lastAttacker = attacker?.id ?? null;
     victim.lastHurtTime = this.time;
-    // Aim punch: getting shot knocks your view.
-    victim.punch[0] += group === 'head' ? 3 : 1.2;
+    // Aim punch, CS 1.6 CBasePlayer::TraceAttack: a hit to the head or body
+    // snaps your view up (0.5 or 0.1 degrees per point of damage, capped at 12
+    // and 4). It replaces the current punch rather than adding to it, so
+    // taking several hits doesn't keep shoving your aim higher. Arms and legs
+    // don't flinch, and neither does a grenade blast.
+    const hitDmg = raw * (HITGROUP_MUL[group] ?? 1);
+    if (def.grenade) { /* blasts don't flinch your aim */ }
+    else if (group === 'head') victim.punch[0] = Math.min(12, hitDmg * 0.5);
+    else if (group === 'chest' || group === 'stomach') victim.punch[0] = Math.min(4, hitDmg * 0.1);
     this.emit({
       type: 'hit', attacker: attacker?.id, victim: victim.id, damage, group, pos: point,
       armorHit, wallbang, weapon: def.id, from: from ? [...from] : attacker ? [...attacker.pos] : null,
