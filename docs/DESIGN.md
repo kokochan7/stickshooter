@@ -104,11 +104,21 @@ stacked containers) that carve non-rectangular shapes out of the bounds.
 
 | Map | Footprint | Size | Red base | Blue base |
 |---|---|---|---|---|
-| Yard (dm) | 56 x 56 m with two corners walled off, point-symmetric | Small | north-west corner | south-east corner |
-| Canal (bomb) | 60 x 128 m, long north-south, narrow spawn streets | Large | north end | south end |
-| Dunes (bomb) | 132 x 72 m, wide west-east, tapering between cliffs | Large | west end | east end |
-| Harbor (hostage) | L shape, 88 m arms around a container terminal | Medium | north arm, east end | west arm, south end |
-| Frost (hostage) | 80 x 108 m hourglass valley, 44 m waist | Large | behind the lodge (north) | cabins (south) |
+| Yard (dm) | 73 x 73 m with two corners walled off, point-symmetric | Medium | north-west corner | south-east corner |
+| Canal (bomb) | 90 x 192 m, long north-south, narrow spawn streets | Huge | north end | south end |
+| Dunes (bomb) | 198 x 108 m, wide west-east, tapering between cliffs | Huge | west end | east end |
+| Harbor (hostage) | L shape, 132 m arms around a container terminal | Large | north arm, east end | west arm, south end |
+| Frost (hostage) | 120 x 162 m hourglass valley, 66 m waist | Huge | behind the lodge (north) | cabins (south) |
+
+Maps are laid out in the source at their original size and spread out by
+`scaleMap(map, k)` (builder.js) to CS 1.6 scale: k = 1.5 for the bomb and
+hostage maps, 1.3 for Yard. Only horizontal positions and lengths scale:
+heights, crates, barrels, tree trunks and leaves, and fence sheets keep their
+size, so doors, lanes and rooms get wider and walks get longer. On the
+objective maps Red now walks about 120 m to a bomb site (about 22 s, like a
+CS 1.6 T walk), Blue about 77 m, and Blue about 140 m to the hostages. The
+nav grid's A* step limit grows with the grid so cross-map paths still
+resolve.
 
 Balance rules, checked by `test/maps.test.js` with nav-grid walking
 distances between the team spawn centers: spawns are over 90 m apart on

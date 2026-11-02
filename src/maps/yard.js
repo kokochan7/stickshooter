@@ -8,7 +8,7 @@
 //   metal    - containers are solid; the thin fence sheets can be shot through
 //   concrete - thick walls stop everything; the 20 cm lane walls stop all but rifles/AWP
 //   grate    - platform railing
-import { mapBuilder, toSpawn } from './builder.js';
+import { mapBuilder, scaleMap, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xd9d1c1, wall: 0xc9bfae, wood: 0xc68a4e, crate: 0xb8743a, metal: 0x8d9aa8, grate: 0x5f6b78,
@@ -84,15 +84,16 @@ const teamSpawns = {
   blue: redSpots.map(([x, y, z]) => toSpawn([-x, y, -z])),
 };
 
-export const YARD = {
+// Laid out in meters at the original size, then spread out to CS 1.6 scale.
+export const YARD = scaleMap({
   id: 'yard',
   name: 'Yard',
   type: 'dm',
-  size: 'Small',
+  size: 'Medium',
   boxes: m.boxes,
   spawns,
   teamSpawns,
   bounds: { min: [-S, -S], max: [S, S] },
   sky: { top: 0x5fa8e8, bottom: 0xcfe6f5 },
   groundColor: m.C.ground,
-};
+}, 1.3);

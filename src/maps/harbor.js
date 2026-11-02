@@ -9,7 +9,7 @@
 //               wade under). Blue spawns at its south end, where the
 //               rescue zone is, so every hostage has to be walked all the
 //               way round the corner.
-import { mapBuilder, spawnGrid, toSpawn } from './builder.js';
+import { mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xbfc3c4, bed: 0x5d6d6e,
@@ -84,11 +84,12 @@ m.crates(-12, 33); m.barrel(-40, 32); m.crate(-24, 42.5);
 const ground = m.finishGround(-B, -B, B, B);
 
 const center = [-20, -20];
-export const HARBOR = {
+// Laid out in meters at the original size, then spread out to CS 1.6 scale.
+export const HARBOR = scaleMap({
   id: 'harbor',
   name: 'Harbor',
   type: 'hostage',
-  size: 'Medium',
+  size: 'Large',
   boxes: m.boxes,
   water: m.waterRects,
   groundBoxes: ground,
@@ -108,4 +109,4 @@ export const HARBOR = {
   sky: { top: 0x6f9fca, bottom: 0xdbe5ea },
   groundColor: m.C.ground,
   bedColor: m.C.bed,
-};
+}, 1.5);

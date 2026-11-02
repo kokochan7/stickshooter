@@ -25,6 +25,9 @@ export class NavGrid {
     this.blocked = new Uint8Array(this.w * this.h);
     this.floor = new Float32Array(this.w * this.h);
     this.swim = new Uint8Array(this.w * this.h); // 1 = deep water you swim through
+    // A* gives up after this many steps. Big maps need room for a path from
+    // one end to the other (a few times the cells on the way).
+    this.maxIter = Math.max(20000, this.w * this.h);
     const column = [];
     for (let j = 0; j < this.h; j++) {
       for (let i = 0; i < this.w; i++) {
@@ -187,7 +190,7 @@ export class NavGrid {
     heap.push(start, 0);
     const gi = g0[0], gj = g0[1];
     let found = false, iter = 0;
-    while (heap.size && iter++ < 20000) {
+    while (heap.size && iter++ < this.maxIter) {
       const cur = heap.pop();
       if (cur === goal) { found = true; break; }
       if (closed[cur]) continue;

@@ -216,3 +216,34 @@ export function spawnGrid(x0, z0, x1, z1, cols, rows, face, y = 0) {
   }
   return out;
 }
+
+// Spread a finished map out horizontally by k (CS 1.6 scale), keeping it
+// human-sized: heights never change, and props (crates, barrels, tree
+// trunks and leaves, thin fence sheets) keep their size and only move. Walls,
+// buildings, stairs, bridges and open ground stretch, so doors, lanes and
+// rooms get wider and every walk gets longer by k.
+const KEEP_SIZE = new Set(['crate', 'barrel', 'trunk', 'sheet']);
+export function scaleMap(map, k) {
+  const pt = ([x, z]) => [x * k, z * k];
+  const rect = (r) => ({ ...r, min: pt(r.min), max: pt(r.max) });
+  const box = (b) => {
+    if (!KEEP_SIZE.has(b.kind) && b.material !== 'foliage') {
+      return { ...b, min: [b.min[0] * k, b.min[1], b.min[2] * k], max: [b.max[0] * k, b.max[1], b.max[2] * k] };
+    }
+    const cx = ((b.min[0] + b.max[0]) / 2) * (k - 1), cz = ((b.min[2] + b.max[2]) / 2) * (k - 1);
+    return { ...b, min: [b.min[0] + cx, b.min[1], b.min[2] + cz], max: [b.max[0] + cx, b.max[1], b.max[2] + cz] };
+  };
+  const spawn = (s) => ({ ...s, pos: [s.pos[0] * k, s.pos[1], s.pos[2] * k] });
+  const out = {
+    ...map,
+    boxes: map.boxes.map(box),
+    spawns: map.spawns.map(spawn),
+    teamSpawns: { red: map.teamSpawns.red.map(spawn), blue: map.teamSpawns.blue.map(spawn) },
+    bounds: rect(map.bounds),
+  };
+  if (map.water) out.water = map.water.map(rect);
+  if (map.sites) out.sites = Object.fromEntries(Object.entries(map.sites).map(([n, r]) => [n, rect(r)]));
+  if (map.hostages) out.hostages = map.hostages.map(([x, y, z]) => [x * k, y, z * k]);
+  if (map.rescue) out.rescue = map.rescue.map(rect);
+  return out;
+}

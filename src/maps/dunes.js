@@ -10,7 +10,7 @@
 //   Site B - a pillared hall with doors west (tunnel), north (mid) and east
 // The sites sit east of the middle: Blue gets there first, Red walks
 // further, but both teams have a long way to go.
-import { mapBuilder, spawnGrid, toSpawn } from './builder.js';
+import { mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xe2cc9a, bed: 0x8d8259,
@@ -86,11 +86,12 @@ m.crates(56, -11); m.crate(57, 11); m.barrel(52, -4); m.barrel(52.6, -4.6);
 const ground = m.finishGround(-X, -Z, X, Z);
 
 const center = [0, 0];
-export const DUNES = {
+// Laid out in meters at the original size, then spread out to CS 1.6 scale.
+export const DUNES = scaleMap({
   id: 'dunes',
   name: 'Dunes',
   type: 'bomb',
-  size: 'Large',
+  size: 'Huge',
   boxes: m.boxes,
   water: m.waterRects,
   groundBoxes: ground,
@@ -113,4 +114,4 @@ export const DUNES = {
   groundColor: m.C.ground,
   ground: 'dirt', // footstep surface for open ground
   bedColor: m.C.bed,
-};
+}, 1.5);
