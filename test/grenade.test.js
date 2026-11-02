@@ -169,11 +169,21 @@ test('grenades bounce off walls and come to rest', () => {
   assert.equal(packNades(g.nades)[0].id, 1);
 });
 
-test('the grenade rebuys on respawn with the rest of the loadout', () => {
+test('nothing is rebought on respawn: a new life starts with a USP and a knife', () => {
   const { g, a } = setup();
   g.buy(a, 'hegrenade');
+  g.buy(a, 'ak47');
+  g.buy(a, 'kevlarHelmet');
+  const money = a.money;
+  a.alive = false;
   g.spawn(a);
-  assert.equal(a.weapons.grenade?.id, 'hegrenade');
+  assert.equal(a.weapons.grenade, null);
+  assert.equal(a.weapons.primary, null);
+  assert.equal(a.weapons.secondary.id, 'usp');
+  assert.equal(a.weapons.melee.id, 'knife');
+  assert.equal(a.armor, 0);
+  assert.equal(a.helmet, false);
+  assert.equal(a.money, money, 'and no money is spent');
   assert.equal(a.active, 'secondary');
 });
 

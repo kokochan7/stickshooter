@@ -230,6 +230,43 @@ test('releasing E stops the plant; defusing with and without a kit', () => {
   assert.equal(g.bomb.state, 'defused');
 });
 
+test('round survivors keep their gear; the dead start over with a USP and a knife (CS 1.6)', () => {
+  const { g, red, blue } = bombGame();
+  red.money = blue.money = 16000;
+  for (const item of ['ak47', 'kevlarHelmet', 'hegrenade']) assert.ok(g.buy(red, item));
+  for (const item of ['m4a1', 'kevlarHelmet', 'defuser']) assert.ok(g.buy(blue, item));
+  red.weapons.primary.clip = 17;
+  red.armor = 64;
+  run(g, ROUND_FREEZE + 0.1);
+  g.kill(blue, red, null, false, false);
+  run(g, 0.1);
+  assert.equal(g.round.state, 'end');
+  const money = red.money;
+  run(g, ROUND_END_TIME + 0.1);
+  assert.equal(g.round.n, 2);
+  assert.ok(red.alive && blue.alive);
+  // The survivor: same AK with the same ammo, damaged armor, helmet, grenade.
+  assert.equal(red.weapons.primary?.id, 'ak47');
+  assert.equal(red.weapons.primary.clip, 17);
+  assert.equal(red.weapons.grenade?.id, 'hegrenade');
+  assert.equal(red.armor, 64);
+  assert.ok(red.helmet);
+  assert.equal(red.active, 'primary');
+  assert.equal(red.health, 100);
+  assert.ok(red.money >= money, 'nothing was rebought');
+  // The dead: everything is gone, no kit, and nothing is bought for them.
+  assert.equal(blue.weapons.primary, null);
+  assert.equal(blue.weapons.secondary?.id, 'usp');
+  assert.equal(blue.weapons.melee?.id, 'knife');
+  assert.equal(blue.weapons.grenade, null);
+  assert.equal(blue.armor, 0);
+  assert.ok(!blue.helmet && !blue.defuser);
+  // A new match strips everyone.
+  g.restartMatch();
+  assert.equal(red.weapons.primary, null);
+  assert.equal(red.armor, 0);
+});
+
 test('the carrier dying drops the bomb, a teammate picks it up; wipes and time end rounds', () => {
   const g = new Game(MAPS.canal, { seed: 3, mode: 'teams' });
   const r1 = g.addPlayer({ name: 'R1', team: 'red' });
