@@ -115,7 +115,8 @@ Press **~** in a match to open the console. Type `help` for the list:
 - Kills within 4 s of each other chain into DOUBLE, TRIPLE, MULTI, ULTRA and
   MONSTER KILL, with a voice line. The voice lines in
   `public/audio/announcer/` are original: generated with the Apache-2.0
-  Kokoro TTS model, then pitched down with an arena echo in ffmpeg.
+  Kokoro TTS model, then pitched down with an arena echo in ffmpeg. In game
+  they also run through a live reverb + echo (`arenaVoice` in audio.js).
 
 ## Weapons
 

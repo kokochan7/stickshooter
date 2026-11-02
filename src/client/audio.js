@@ -507,6 +507,55 @@ export function buildAll() {
   return b;
 }
 
+// Arena treatment for the announcer: input -> dry + reverb + echo -> out.
+// The reverb is a convolver with a generated 2.4 s stereo impulse (decaying
+// noise, darker as it fades); the echo is a 0.32 s feedback delay, low-passed
+// so each repeat is softer and duller, panned a little apart for width.
+export function arenaVoice(ctx, input, out) {
+  const dry = ctx.createGain();
+  dry.gain.value = 0.85;
+  input.connect(dry).connect(out);
+
+  const len = Math.floor(ctx.sampleRate * 2.4);
+  const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / ctx.sampleRate;
+      const k = 0.15 + 0.8 * (t / 2.4); // more smoothing (darker) later on
+      lp += (rnd() - lp) * (1 - k);
+      // 25 ms pre-delay, then a fast build and a long exponential decay.
+      d[i] = t < 0.025 ? 0 : lp * Math.min(1, (t - 0.025) / 0.02) * Math.exp(-(t - 0.025) / 0.55);
+    }
+  }
+  const verb = ctx.createConvolver();
+  verb.buffer = ir;
+  const verbGain = ctx.createGain();
+  verbGain.gain.value = 0.7;
+  input.connect(verb).connect(verbGain).connect(out);
+
+  const delay = ctx.createDelay(1);
+  delay.delayTime.value = 0.32;
+  const fb = ctx.createGain();
+  fb.gain.value = 0.45;
+  const tone = ctx.createBiquadFilter();
+  tone.type = 'lowpass';
+  tone.frequency.value = 2600;
+  const echoGain = ctx.createGain();
+  echoGain.gain.value = 0.6;
+  input.connect(delay);
+  delay.connect(tone).connect(fb).connect(delay);
+  let echoOut = tone.connect(echoGain);
+  if (ctx.createStereoPanner) {
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = 0.25;
+    echoOut = echoOut.connect(pan);
+  }
+  echoOut.connect(out);
+  echoOut.connect(verb); // repeats feed the reverb too, so they sit in the room
+}
+
 // Announcer voice lines for multi-kills (original recordings, see README).
 const CLIPS = Object.fromEntries(
   ['double', 'triple', 'multi', 'ultra', 'monster'].map((k) => [`announce_${k}`, `/audio/announcer/${k}.mp3`]),
@@ -683,6 +732,10 @@ export class Audio {
       this.voice = this.ctx.createGain();
       this.voice.gain.value = this.sfxOn ? 1 : 0;
       this.voice.connect(this.master);
+      // Announcer lines go in through voiceIn: dry, plus a big arena reverb
+      // and a slap echo, so every multi-kill call booms like a stadium PA.
+      this.voiceIn = this.ctx.createGain();
+      arenaVoice(this.ctx, this.voiceIn, this.voice);
       this.build();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -788,7 +841,7 @@ export class Audio {
       }
     }
     g.gain.value = gain;
-    node.connect(voice ? this.voice : this.sfx);
+    node.connect(voice ? this.voiceIn : this.sfx);
     src.start();
     return src;
   }
