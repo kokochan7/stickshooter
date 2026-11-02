@@ -6,7 +6,7 @@
 //           (thin wooden walls: most guns shoot through).
 //   South - Blue spawns by the cabins, where the rescue zone is, and has to
 //           cross the whole valley to the lodge and back.
-import { mapBuilder, spawnGrid, toSpawn } from './builder.js';
+import { mapBuilder, spawnGrid, toSpawn, WATER_DEPTH } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xeef2f6, bed: 0x6f8592,
@@ -55,7 +55,7 @@ m.water(-22, -3, 22, 2);
 m.bridge(-14, -3.6, -11, 2.6, 'z'); // log footbridge
 m.highBridgeZ(9, 13, -3, 2, 2.5); // old stone bridge
 m.box(-4, -0.4, -1, 1, 0.3, 0, 'wood', 'trunk'); // fallen log in the water
-m.box(17, -0.4, -1.5, 19, 0.5, 0.5, 'concrete', 'stone'); // boulder
+m.box(17, -WATER_DEPTH, -1.5, 19, 0.5, 0.5, 'concrete', 'stone'); // boulder
 m.crate(-19, -6); m.crate(19, 6);
 
 // --- South woods ---

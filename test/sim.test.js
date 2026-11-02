@@ -239,3 +239,9 @@ test('recoil is the CS pattern scaled down by RECOIL_SCALE', () => {
   g.kick(p, WEAPONS.ak47, 'stand');
   assert.ok(Math.abs(p.punch[0] - WEAPONS.ak47.kick.stand[0] * RECOIL_SCALE) < 1e-9);
 });
+
+test('crouch-walking is faster than CS 1.6 but still silent', async () => {
+  const { DUCK_SPEED_MUL, FOOTSTEP_MIN_SPEED } = await import('../src/sim/constants.js');
+  assert.ok(DUCK_SPEED_MUL > 0.5, 'faster than a third of run speed');
+  assert.ok(250 * DUCK_SPEED_MUL < FOOTSTEP_MIN_SPEED, 'no footsteps while crouched');
+});

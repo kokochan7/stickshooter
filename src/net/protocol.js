@@ -11,17 +11,18 @@
 //   { t: 'admin', key, line, login }           admin console command; key = the ADMIN_KEY secret
 // server -> client
 //   { t: 'welcome', id, mode, map, time, tickRate, snapEvery }
-//   { t: 'snap', time, ack, me, players: [...], events: [...], match, drops: [...], obj }
+//   { t: 'snap', time, ack, me, players: [...], events: [...], match, drops: [...], nades: [...], obj }
 //     obj = Game.objectiveInfo(): rounds, the bomb and the hostages (null outside objective rounds)
 //     match = Game.matchInfo(): state 'live' | 'over', endsAt, winner, winnerTeam, teamKills
 //     drops = guns on the ground: { id, w, pos, yaw, exp }
+//     nades = grenades in flight: { id, pos, vel, rest }
 //   { t: 'pong', c, time }
 //   { t: 'full' }  room is full
 //   { t: 'admin', ok, lines: [string], auth }  admin console reply
 //   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -57,11 +58,12 @@ const OWN = [
   'weapons', 'active', 'lastActive', 'nextAttack', 'deployEnd', 'reloading', 'reloadEnd',
   'shotsFired', 'pistolAcc', 'accuracy', 'lastFire', 'punch', 'zoom', 'spin', 'landSpeed',
   'nextStab', 'frozenUntil', 'life', 'task', 'defuser', 'useHeld',
+  'nadePin', 'swimming', 'waterJump', 'wjDir',
 ];
 // What other clients need to draw, interpolate and list someone.
 const OTHER = [
   'id', 'name', 'team', 'isBot', 'alive', 'pos', 'vel', 'yaw', 'pitch', 'onGround', 'ducked', 'duckAmount',
-  'health', 'kills', 'deaths', 'headshots', 'active', 'reloading', 'zoom', 'spin', 'task',
+  'health', 'kills', 'deaths', 'headshots', 'active', 'reloading', 'zoom', 'spin', 'task', 'swimming',
 ];
 
 function pick(p, keys) {
@@ -77,6 +79,11 @@ export function packDrops(drops) {
   return drops.map((d) => ({ id: d.id, w: d.weapon.id, pos: d.pos, yaw: d.yaw, exp: d.expiresAt }));
 }
 
+// Grenades in flight. Clients carry them forward between snapshots.
+export function packNades(nades) {
+  return nades.map((n) => ({ id: n.id, pos: n.pos, vel: n.vel, rest: n.rest }));
+}
+
 export function packOther(p) {
   const o = pick(p, OTHER);
   // Others only need the active gun's id to draw it.
@@ -88,7 +95,7 @@ export function packOther(p) {
 // Cmd fields the server accepts; anything else a client sends is dropped.
 export function sanitizeCmd(c) {
   const num = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : 0);
-  const slot = c.slot === 'primary' || c.slot === 'secondary' || c.slot === 'melee' ? c.slot : null;
+  const slot = ['primary', 'secondary', 'melee', 'grenade'].includes(c.slot) ? c.slot : null;
   let actions = null;
   if (Array.isArray(c.actions)) {
     actions = c.actions.slice(0, 4).map(cleanAction).filter(Boolean);

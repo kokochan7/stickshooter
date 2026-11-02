@@ -105,33 +105,53 @@ for (const map of MAP_LIST) {
   });
 }
 
-test('maps with water slow you down and are wadeable', () => {
+test('deep water: you swim, float with your eyes above the surface, dive and climb out', () => {
   const g = new Game(MAPS.canal, { seed: 1 });
   const a = g.addPlayer({ name: 'A' });
   g.spawn(a);
-  // The canal runs east-west across the map: z -16..-10.
-  // Run east along the dry quay, then along the canal itself.
+  // The canal runs east-west across the map: z -16..-10, surface at -0.1.
+  const surf = g.waterSurface(-29, -13);
+  assert.equal(surf, -0.1);
+  place(a, -29, 0.5, -13); a.yaw = -Math.PI / 2;
+  run(g, 3, (p) => hold(p));
+  assert.ok(a.swimming, 'swimming');
+  const eye = g.eyePos(a)[1];
+  assert.ok(eye > surf && eye < surf + 0.3, `floating, eyes just above the water (${eye.toFixed(2)})`);
+  // Crouch dives; let go and you come back up.
+  run(g, 1, (p) => hold(p, { duck: true }));
+  assert.ok(a.pos[1] < -2.1, `dove to the bottom (${a.pos[1].toFixed(2)})`);
+  run(g, 3, (p) => hold(p));
+  assert.ok(g.eyePos(a)[1] > surf, 'floated back up');
+  // Swimming is slower than running.
+  place(a, -16, -1.55, -15); a.yaw = -Math.PI / 2; // east, clear of boats and bridges
+  run(g, 1.5, (p) => hold(p, { fwd: 1 }));
+  const swim = Math.hypot(a.vel[0], a.vel[2]);
   place(a, -29, 0, -21); a.yaw = -Math.PI / 2;
   run(g, 1.5, (p) => hold(p, { fwd: 1 }));
   const dry = Math.hypot(a.vel[0], a.vel[2]);
-  place(a, -29, -0.4, -13); a.yaw = -Math.PI / 2;
-  run(g, 1.5, (p) => hold(p, { fwd: 1 }));
-  assert.ok(g.inWater(a), 'standing in the canal');
-  const wet = Math.hypot(a.vel[0], a.vel[2]);
-  assert.ok(wet < dry * 0.85, `wading is slower (${wet.toFixed(2)} vs ${dry.toFixed(2)})`);
-  // Walk out the south bank: bed 0.4 below the quay.
-  place(a, -29, -0.4, -11.5); a.yaw = Math.PI; // facing +z
+  assert.ok(swim < dry * 0.85 && swim > dry * 0.5, `swim ${swim.toFixed(2)} vs run ${dry.toFixed(2)}`);
+  // Swim into the south bank and climb out onto the quay.
+  place(a, -29, -1.55, -11.5); a.yaw = Math.PI; // facing +z
   run(g, 2, (p) => hold(p, { fwd: 1 }));
-  assert.ok(a.pos[2] > -9.5 && Math.abs(a.pos[1]) < 0.01, `stepped out onto the quay (${a.pos})`);
+  assert.ok(a.pos[2] > -9.8 && Math.abs(a.pos[1]) < 0.01 && a.onGround, `climbed out onto the quay (${a.pos})`);
+  assert.ok(!a.swimming);
 });
 
-test('the nav grid walks under the high bridge but not up a sheer bank', () => {
+test('the nav grid uses bridges over deep water and only swims when it must', () => {
   const g = new Game(MAPS.canal);
   const nav = g.nav;
-  assert.ok(nav.floorAt(0, -13) < -0.3, 'under the high bridge the floor is the canal bed');
+  assert.ok(Math.abs(nav.floorAt(0, -13) - 1.8) < 0.01, 'the high bridge deck is a floor');
   assert.ok(Math.abs(nav.floorAt(-22, -13) - 0.15) < 0.01, 'the footbridge deck is a floor');
-  const path = nav.findPath(-28, -13, 28, -13); // along the canal
-  assert.ok(path, 'you can wade the length of the canal');
+  assert.ok(nav.isSwim(-28, -13) && !nav.isSwim(-22, -13), 'open water is swum, the footbridge is not');
+  // Across the canal: over a bridge, not through the water.
+  const path = nav.findPath(-21, -20, -21, -6);
+  assert.ok(path, 'a way across');
+  for (let i = 1; i < path.length; i++) {
+    const [x0, z0] = i === 1 ? [-21, -20] : path[i - 2], [x1, z1] = path[i - 1];
+    for (let t = 0; t <= 1; t += 0.05) assert.ok(!nav.isSwim(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t), 'stays dry');
+  }
+  // Someone in the water can always get out.
+  assert.ok(nav.findPath(-28, -13, 28, -20), 'a swimmer finds a way out');
 });
 
 // ---------- Bomb defusal ----------

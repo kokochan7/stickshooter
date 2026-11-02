@@ -161,8 +161,8 @@ export class OnlineSession {
       p.name = s.name; p.team = s.team; p.alive = s.alive; p.health = s.health;
       p.kills = s.kills; p.deaths = s.deaths; p.headshots = s.headshots;
       p.onGround = s.onGround; p.ducked = s.ducked; p.reloading = s.reloading; p.zoom = s.zoom; p.spin = s.spin;
-      p.active = s.active;
-      p.weapons = { primary: null, secondary: null, melee: null, [s.active]: s.weapon ? { id: s.weapon, clip: 0, reserve: 0 } : null };
+      p.active = s.active; p.swimming = s.swimming;
+      p.weapons = { primary: null, secondary: null, melee: null, grenade: null, [s.active]: s.weapon ? { id: s.weapon, clip: 0, reserve: 0 } : null };
     }
     if (msg.match) {
       const { teamKills, ...match } = msg.match;
@@ -175,6 +175,14 @@ export class OnlineSession {
         id: d.id, weapon: { id: d.w, clip: 0, reserve: 0 }, pos: d.pos, yaw: d.yaw, expiresAt: d.exp,
         rest: true, vel: [0, 0, 0], noPickup: { pid: 0, until: 0 },
       }));
+    }
+    if (msg.nades) {
+      // Drawn from the snapshot and carried forward between them (stepNades).
+      const old = new Map(g.nades.map((n) => [n.id, n]));
+      g.nades = msg.nades.map((n) => {
+        const o = old.get(n.id);
+        return { id: n.id, pos: [...n.pos], prevPos: o ? o.pos : [...n.pos], vel: [...n.vel], rest: n.rest };
+      });
     }
     this.snaps.push({ time: msg.time, players: states });
     while (this.snaps.length > 2 && this.snaps[1].time < this.viewTime() - 0.5) this.snaps.shift();

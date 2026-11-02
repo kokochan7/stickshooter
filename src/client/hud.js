@@ -1,6 +1,6 @@
 // DOM HUD, buy menu, scoreboard and settings.
 import * as THREE from 'three';
-import { WEAPONS, SHOP_ORDER, GEAR } from '../sim/weapons.js';
+import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT } from '../sim/weapons.js';
 import { buildGun } from './gunModels.js';
 import { DEFAULT_BINDS, BIND_LABELS, keyName } from './input.js';
 
@@ -113,7 +113,7 @@ export function renderGunIcons(renderer) {
   const prevColor = renderer.getClearColor(new THREE.Color());
   const prevAlpha = renderer.getClearAlpha();
   renderer.setClearColor(0x000000, 0);
-  for (const id of [...SHOP_ORDER, 'knife']) {
+  for (const id of [...SHOP_ORDER, 'knife', 'hegrenade']) {
     const gun = buildGun(id);
     const box = new THREE.Box3().setFromObject(gun.group);
     const size = box.getSize(new THREE.Vector3());
@@ -257,9 +257,13 @@ export class Hud {
       this.set('weapon-name', def.name);
       this.set('clip', String(w.clip));
       this.set('reserve', String(w.reserve));
-      $('clip').classList.toggle('low', w.clip <= Math.ceil(def.clip * 0.2));
+      $('clip').classList.toggle('low', !def.grenade && w.clip <= Math.ceil(def.clip * 0.2));
       $('clip').parentElement.classList.toggle('hidden', !!def.melee);
+      $('clip').parentElement.classList.toggle('single', !!def.grenade);
     }
+    // A grenade on your belt shows next to the ammo (key 4).
+    const nade = p.weapons?.grenade;
+    $('nade-chip').classList.toggle('hidden', !nade || nade.clip <= 0 || p.active === 'grenade');
     const rb = $('reload-bar');
     rb.style.opacity = reloadFrac !== null ? '1' : '0';
     if (reloadFrac !== null) rb.firstElementChild.style.width = `${Math.round(reloadFrac * 100)}%`;
@@ -462,7 +466,7 @@ const BUY_PAGES = [
   { label: 'Equipment', title: 'Buy Equipment', gear: true },
 ].map((pg) => ({
   ...pg,
-  items: pg.gear ? Object.keys(GEAR) : SHOP_ORDER.filter((id) => pg.cats.includes(WEAPONS[id].category)).sort((a, b) => WEAPONS[a].price - WEAPONS[b].price),
+  items: pg.gear ? EQUIPMENT : SHOP_ORDER.filter((id) => pg.cats.includes(WEAPONS[id].category)).sort((a, b) => WEAPONS[a].price - WEAPONS[b].price),
 }));
 
 const PEN_NAMES = ['None', 'Light', 'Medium', 'Heavy'];
@@ -541,7 +545,7 @@ export class BuyMenu {
       return { owned, price, cant: !owned && p.money < price };
     }
     const w = WEAPONS[id];
-    const owned = p.weapons[w.slot]?.id === id;
+    const owned = p.weapons[w.slot]?.id === id && (!w.grenade || p.weapons[w.slot].clip > 0);
     return { owned, price: w.price, cant: !owned && p.money < w.price };
   }
 
@@ -602,6 +606,17 @@ export class BuyMenu {
     }
     const w = WEAPONS[id];
     const st = this.itemState(id);
+    if (w.grenade) {
+      const kv = [
+        ['Price', `$${w.price}${st.owned ? ' (you have one)' : ''}`],
+        ['Slot', `Grenade (key 4), carry ${w.clip}`],
+        ['Damage', `Up to ${w.damage}, less with distance`],
+        ['Blast radius', `${Math.round(w.grenade.radius * 0.025)} m`],
+        ['Fuse', '1.5 seconds after the throw'],
+        ['Throw', 'Hold fire to pull the pin, let go to throw. Mouse 2 lobs it.'],
+      ];
+      return `<div class="buy-pic"><img src="${this.icons[id]}" alt=""></div>${statsHtml(kv)}`;
+    }
     const mode = w.accuracy.type === 'sniper' ? 'Bolt action' : w.pellets ? (w.cycle > 0.5 ? 'Pump action' : 'Semi-automatic') : w.auto ? 'Automatic' : 'Semi-automatic';
     const kv = [
       ['Price', `$${w.price}${st.owned ? ' (owned, buy again to refill ammo)' : ''}`],

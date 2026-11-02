@@ -8,6 +8,7 @@ import {
   TAG_SPEED_MUL, TAG_RECOVER_TIME, STAND_EYE, DUCK_EYE, GRAVITY,
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
   DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE, NEVER, WATER_SPEED_MUL,
+  NADE_FUSE, NADE_GRAVITY, NADE_PIN_TIME, NADE_SWITCH_TIME, NADE_BOUNCE, NADE_RADIUS,
 } from './constants.js';
 import { WEAPONS, GEAR } from './weapons.js';
 import { World } from './world.js';
@@ -37,8 +38,9 @@ function makeWeapon(id) {
   return { id, clip: def.clip, reserve: def.reserve };
 }
 
-// Slots in the order the number keys use them: 1 primary, 2 pistol, 3 knife.
-export const SLOTS = ['primary', 'secondary', 'melee'];
+// Slots in the order the number keys use them: 1 primary, 2 pistol, 3 knife,
+// 4 grenade.
+export const SLOTS = ['primary', 'secondary', 'melee', 'grenade'];
 
 // Small seeded RNG so a server and clients could agree on spread later.
 function mulberry32(seed) {
@@ -67,6 +69,9 @@ export class Game {
     // yaw, rest, expiresAt, noPickup: { pid, until } }.
     this.drops = [];
     this.nextDropId = 1;
+    // Grenades in flight: { id, owner, team, pos, prevPos, vel, explodeAt, rest, lastBounce }.
+    this.nades = [];
+    this.nextNadeId = 1;
     // 'live' while playing, 'over' while the winner is shown.
     this.match = { state: 'live', endsAt: 0, winner: null, winnerTeam: null, winnerName: '' };
     this.teamKills = { red: 0, blue: 0 };
@@ -84,14 +89,31 @@ export class Game {
     this.world = new World(map.boxes);
     this._nav = null;
     this.drops = [];
+    this.nades = [];
     this.objective = Obj.objectiveFor(this.mode, map);
     if (this.round) { this.round = Obj.emptyRound(); this.bomb = Obj.emptyBomb(); this.hostages = []; }
   }
 
   // Bots and hostages find their way with this; built on first use.
   get nav() {
-    if (!this._nav) this._nav = new NavGrid(this.world, this.map.bounds);
+    if (!this._nav) this._nav = new NavGrid(this.world, this.map.bounds, this.map.water);
     return this._nav;
+  }
+
+  // Height of the water surface over (x, z), or null if there's no water.
+  waterSurface(x, z) {
+    const water = this.map.water;
+    if (!water?.length) return null;
+    for (const w of water) {
+      if (x > w.min[0] && x < w.max[0] && z > w.min[1] && z < w.max[1]) return w.y;
+    }
+    return null;
+  }
+
+  // Is the point (an eye, a grenade) under water?
+  underwater(x, y, z) {
+    const s = this.waterSurface(x, z);
+    return s !== null && y < s;
   }
 
   // Standing in water (wading is slower and footsteps splash)?
@@ -121,7 +143,7 @@ export class Game {
       stepOffset: 0, stamina: 0, jumpHeld: false,
       health: MAX_HEALTH, armor: 0, helmet: false,
       money: START_MONEY, kills: 0, deaths: 0, headshots: 0,
-      weapons: { primary: null, secondary: null, melee: null }, active: 'secondary', lastActive: 'primary',
+      weapons: { primary: null, secondary: null, melee: null, grenade: null }, active: 'secondary', lastActive: 'primary',
       loadout: { primary: null, secondary: 'usp', armor: null },
       nextAttack: 0, deployEnd: 0, reloading: false, reloadEnd: 0, shellNext: 0,
       shotsFired: 0, decreaseShotsAt: 0, delayFire: false, pistolAcc: 0.9, accuracy: 0.2, lastFire: -10,
@@ -132,6 +154,7 @@ export class Game {
       nextStab: 0, lastMelee: -10, frozenUntil: 0, life: 0,
       task: null, useHeld: false, defuser: false,
       roundKills: 0, multi: 0, lastKillAt: -10, god: false,
+      nadePin: 0, nadeLob: false, swimming: false, waterJump: 0,
     };
     this.players.push(p);
     return p;
@@ -172,6 +195,7 @@ export class Game {
     this.bomb = Obj.emptyBomb();
     this.hostages = [];
     this.drops = [];
+    this.nades = [];
     for (const p of this.players) { p.kills = 0; p.deaths = 0; p.headshots = 0; p.money = START_MONEY; }
   }
 
@@ -283,12 +307,13 @@ export class Game {
     p.multi = 0;
     p.armor = 0; p.helmet = false;
     p.ducked = false; p.duckAmount = 0; p.onGround = true;
-    p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife') };
+    p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife'), grenade: null };
     p.active = 'secondary';
     p.life++;
     p.punch = [0, 0]; p.prevPunch = [0, 0];
     p.zoom = 0; p.spin = 0; p.reloading = false; p.shotsFired = 0;
     p.tagMul = 1;
+    p.nadePin = 0; p.swimming = false; p.waterJump = 0;
     p.task = null; p.defuser = false;
     p.deployEnd = this.time + 0.3; p.nextAttack = this.time + 0.3; p.nextStab = this.time + 0.3;
     if (this.match.state === 'over') p.frozenUntil = this.match.endsAt + 1;
@@ -299,6 +324,7 @@ export class Game {
     if (lo.armor) this.buy(p, lo.armor, true);
     if (lo.primary) this.buy(p, lo.primary, true);
     if (lo.defuser) this.buy(p, 'defuser', true);
+    if (lo.grenade) this.buy(p, lo.grenade, true);
     this.emit({ type: 'spawn', pid: p.id, yaw: p.yaw }); // yaw: cmds later in the tick overwrite p.yaw
   }
 
@@ -339,7 +365,8 @@ export class Game {
     p.money -= def.price;
     p.weapons[def.slot] = makeWeapon(item);
     p.loadout[def.slot] = item;
-    this.switchTo(p, def.slot, true);
+    // Buying a gun puts it in your hands; a grenade goes on your belt (4).
+    if (!def.grenade) this.switchTo(p, def.slot, true);
     if (!silent) this.emit({ type: 'buy', pid: p.id, item });
     return true;
   }
@@ -382,6 +409,7 @@ export class Game {
       if (p.pos[1] < -20) this.kill(p, null, null, false, false);
     }
     this.updateDrops(dt);
+    this.updateNades(dt);
     if (this.objective) Obj.update(this, dt);
   }
 
@@ -401,7 +429,7 @@ export class Game {
     if (def && def.scopedSpeed && p.zoom > 0) speed = def.scopedSpeed;
     if (def && def.spinUp && p.spin > 0) speed *= 0.85;
     if (this.inWater(p)) speed *= WATER_SPEED_MUL;
-    movePlayer(this.world, p, cmd, dt, speed * U);
+    movePlayer(this.world, p, cmd, dt, speed * U, this.waterSurface(p.pos[0], p.pos[2]));
     // Smooth stair steps for the camera.
     p.stepOffset *= Math.max(0, 1 - dt * 14);
   }
@@ -420,7 +448,7 @@ export class Game {
   // never drops. Returns the drop or null.
   dropWeapon(p, slot, thrown, { switchAway = true } = {}) {
     const w = p.weapons[slot];
-    if (!w || WEAPONS[w.id].melee) return null;
+    if (!w || WEAPONS[w.id].melee || WEAPONS[w.id].grenade) return null;
     p.weapons[slot] = null;
     let pos, vel;
     if (thrown) {
@@ -552,6 +580,7 @@ export class Game {
     p.zoom = 0; p.resumeZoomAt = 0;
     p.shotsFired = 0;
     p.spin = 0;
+    p.nadePin = 0; // switching away puts the pin back
     p.accuracy = 0.2;
     p.pistolAcc = def.accuracy.start ?? 0.9;
     this.emit({ type: 'deploy', pid: p.id, weapon: def.id });
@@ -575,6 +604,7 @@ export class Game {
     if (!w) return;
     const def = WEAPONS[w.id];
     if (def.melee) { this.updateMelee(p, cmd, def); return; }
+    if (def.grenade) { this.updateGrenade(p, cmd, def, w); return; }
 
     // Spray counter decays when the trigger is released (CS ItemPostFrame).
     if (!cmd.fire) {
@@ -673,6 +703,139 @@ export class Game {
     if (t < p.deployEnd) return;
     if (cmd.alt && t >= p.nextStab) this.melee(p, def, 'stab');
     else if (cmd.fire && t >= p.nextAttack) this.melee(p, def, 'slash');
+  }
+
+  // HE grenade, CS style: press fire (or Mouse 2) to pull the pin, let go to
+  // throw (Mouse 2 lobs it underhand). Once it's gone your last gun comes back.
+  updateGrenade(p, cmd, def, w) {
+    const t = this.time;
+    p.fireHeld = !!cmd.fire;
+    p.altHeld = !!cmd.alt;
+    p.reloading = false;
+    if (w.clip <= 0) {
+      // Thrown: put the empty hand away once the throw is over.
+      if (t >= p.nextAttack) {
+        p.weapons.grenade = null;
+        const back = p.lastActive !== 'grenade' && p.weapons[p.lastActive] ? p.lastActive : SLOTS.find((s) => p.weapons[s]);
+        this.switchTo(p, back ?? 'melee', true);
+      }
+      return;
+    }
+    if (t < p.deployEnd) return;
+    if (!p.nadePin) {
+      if ((cmd.fire || cmd.alt) && t >= p.nextAttack) {
+        p.nadePin = t;
+        p.nadeLob = !cmd.fire;
+        this.emit({ type: 'pin', pid: p.id });
+      }
+      return;
+    }
+    if (cmd.fire || cmd.alt) return; // cooking: hold as long as you like
+    if (t < p.nadePin + NADE_PIN_TIME) return; // let go early: it leaves once the pin is out
+    this.throwGrenade(p, w, def);
+  }
+
+  throwGrenade(p, w, def) {
+    const t = this.time;
+    const g = def.grenade;
+    // CS 1.6 CHEGrenade::WeaponIdle: the throw aims 10 degrees above where
+    // you look, and the harder you look up the slower it goes.
+    let a = -p.pitch / DEG; // CS pitch: negative is up
+    a = a < 0 ? -10 + a * (80 / 90) : -10 + a * (100 / 90);
+    let speed = Math.min(g.maxSpeed, (90 - a) * 6) * U;
+    if (p.nadeLob) speed *= g.lobMul;
+    const dir = aimDir(p.yaw, -a * DEG);
+    const eye = this.eyePos(p);
+    // Starts 16 units ahead of the eyes, or just short of a wall you're hugging.
+    let lead = 16 * U;
+    const h = this.world.raycast(eye[0], eye[1], eye[2], dir[0], dir[1], dir[2], lead + NADE_RADIUS);
+    if (h) lead = Math.max(0, h.t - NADE_RADIUS * 2);
+    const pos = [eye[0] + dir[0] * lead, eye[1] + dir[1] * lead, eye[2] + dir[2] * lead];
+    this.nades.push({
+      id: this.nextNadeId++, owner: p.id, team: p.team, weapon: def.id,
+      pos, prevPos: [...pos],
+      vel: [dir[0] * speed + p.vel[0], dir[1] * speed + p.vel[1], dir[2] * speed + p.vel[2]],
+      explodeAt: t + NADE_FUSE, rest: false, lastBounce: -1,
+    });
+    w.clip = 0;
+    p.nadePin = 0;
+    p.lastFire = t;
+    p.nextAttack = t + NADE_SWITCH_TIME;
+    this.emit({ type: 'throw', pid: p.id, lob: p.nadeLob });
+  }
+
+  // Grenades fly with low gravity, bounce off walls and floors, roll to a
+  // stop, and go off when the fuse runs out.
+  updateNades(dt) {
+    if (!this.nades.length) return;
+    const g = GRAVITY * NADE_GRAVITY;
+    for (const n of this.nades) {
+      n.prevPos[0] = n.pos[0]; n.prevPos[1] = n.pos[1]; n.prevPos[2] = n.pos[2];
+      if (this.time >= n.explodeAt) { n.done = true; this.explodeNade(n); continue; }
+      if (n.rest) continue;
+      const v = n.vel;
+      v[1] -= g * dt;
+      // Water slows it right down; it sinks to the bottom.
+      if (this.underwater(n.pos[0], n.pos[1], n.pos[2])) {
+        const k = Math.max(0, 1 - dt * 4);
+        v[0] *= k; v[1] *= k; v[2] *= k;
+      }
+      let left = dt;
+      for (let i = 0; i < 3 && left > 1e-6; i++) {
+        const sp = Math.hypot(v[0], v[1], v[2]);
+        if (sp < 1e-4) break;
+        const dir = [v[0] / sp, v[1] / sp, v[2] / sp];
+        const step = sp * left;
+        const h = this.world.raycast(n.pos[0], n.pos[1], n.pos[2], dir[0], dir[1], dir[2], step + NADE_RADIUS);
+        if (!h) { n.pos[0] += v[0] * left; n.pos[1] += v[1] * left; n.pos[2] += v[2] * left; break; }
+        const go = Math.max(0, h.t - NADE_RADIUS);
+        n.pos[0] += dir[0] * go; n.pos[1] += dir[1] * go; n.pos[2] += dir[2] * go;
+        left -= go / sp;
+        const nn = h.normal;
+        const vn = v[0] * nn[0] + v[1] * nn[1] + v[2] * nn[2];
+        if (vn >= 0) break;
+        // Bounce: reflect, lose energy, and drag along the surface.
+        for (let k = 0; k < 3; k++) v[k] = (v[k] - (1 + NADE_BOUNCE) * vn * nn[k]) * 0.8;
+        if (-vn > 1.5 && this.time - n.lastBounce > 0.08) {
+          n.lastBounce = this.time;
+          this.emit({ type: 'nadeBounce', id: n.id, pos: [...n.pos] });
+        }
+        if (nn[1] > 0.7 && Math.hypot(v[0], v[1], v[2]) < 0.6) { v[0] = v[1] = v[2] = 0; n.rest = true; break; }
+      }
+      // Rolling along a floor slows it down.
+      if (!n.rest && this.world.overlaps(n.pos[0] - 0.01, n.pos[1] - NADE_RADIUS - 0.02, n.pos[2] - 0.01, n.pos[0] + 0.01, n.pos[1], n.pos[2] + 0.01)) {
+        const k = Math.max(0, 1 - dt * 3);
+        v[0] *= k; v[2] *= k;
+        if (Math.abs(v[1]) < 0.3) v[1] = Math.max(0, v[1]);
+        if (Math.hypot(v[0], v[2]) < 0.15 && Math.abs(v[1]) < 0.3) { v[0] = v[1] = v[2] = 0; n.rest = true; }
+      }
+      if (n.pos[1] < -20) n.done = true;
+    }
+    this.nades = this.nades.filter((n) => !n.done);
+  }
+
+  // CS 1.6 RadiusDamage: full damage at the blast, falling off linearly to
+  // nothing at the radius, only to players the blast can see. Hurts enemies
+  // and the thrower, not teammates.
+  explodeNade(n) {
+    const def = WEAPONS[n.weapon];
+    const owner = this.getPlayer(n.owner) ?? null;
+    const src = [n.pos[0], n.pos[1] + 0.12, n.pos[2]];
+    this.emit({ type: 'nadeExplode', pid: n.owner, pos: src, water: this.underwater(src[0], src[1], src[2]) });
+    const radius = def.grenade.radius;
+    for (const v of this.players) {
+      if (!v.alive) continue;
+      if (v.id !== n.owner && v.team === n.team && v.team !== 'ffa') continue;
+      const mid = [v.pos[0], v.pos[1] + (v.ducked ? 0.6 : 0.9), v.pos[2]];
+      const head = this.eyePos(v);
+      const dist = Math.hypot(mid[0] - src[0], mid[1] - src[1], mid[2] - src[2]);
+      const dmg = def.damage * (1 - dist / U / radius);
+      if (dmg <= 0) continue;
+      const w = this.world;
+      if (!w.visible(src[0], src[1], src[2], mid[0], mid[1], mid[2]) && !w.visible(src[0], src[1], src[2], head[0], head[1], head[2])) continue;
+      const d = dist > 1e-3 ? [(mid[0] - src[0]) / dist, (mid[1] - src[1]) / dist, (mid[2] - src[2]) / dist] : [0, 1, 0];
+      this.damage(v, owner, dmg, 'chest', mid, def, false, d, src);
+    }
   }
 
   melee(p, def, kind) {
@@ -791,6 +954,7 @@ export class Game {
 
   moveState(p, def) {
     const hspeed = Math.hypot(p.vel[0], p.vel[2]) / U;
+    if (p.swimming) return 'run'; // treading water: shaky, but not a jump
     if (!p.onGround) return 'air';
     if (hspeed > def.runThreshold) return 'run';
     if (p.ducked) return 'duck';
@@ -865,7 +1029,9 @@ export class Game {
     if (Math.floor(this.rand() * (dirChange + 1)) === 0) p.recoilDir = -p.recoilDir;
   }
 
-  damage(victim, attacker, raw, group, point, def, wallbang, dir) {
+  // from: where the damage came from, for the hurt indicator (the attacker,
+  // or a grenade's blast).
+  damage(victim, attacker, raw, group, point, def, wallbang, dir, from = null) {
     // Nobody can be hurt while frozen at the start or end of a match, or in
     // admin god mode.
     if (this.frozen(victim) || victim.god) return;
@@ -879,7 +1045,7 @@ export class Game {
     victim.punch[0] += group === 'head' ? 3 : 1.2;
     this.emit({
       type: 'hit', attacker: attacker?.id, victim: victim.id, damage, group, pos: point,
-      armorHit, wallbang, weapon: def.id, from: attacker ? [...attacker.pos] : null,
+      armorHit, wallbang, weapon: def.id, from: from ? [...from] : attacker ? [...attacker.pos] : null,
     });
     if (victim.health <= 0) {
       victim.health = 0;
@@ -895,6 +1061,8 @@ export class Game {
     victim.respawnAt = this.objective ? NEVER : this.time + RESPAWN_TIME;
     victim.reloading = false;
     victim.zoom = 0;
+    victim.nadePin = 0;
+    victim.swimming = false;
     if (this.objective) {
       if (victim.task?.kind === 'defuse') this.bomb.defuser = null;
       victim.task = null;

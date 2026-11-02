@@ -290,6 +290,40 @@ function splash(v) {
   return lofi(drive(d, 1.4));
 }
 
+// Swimming stroke: an arm pulling through the water. A low gurgle that swells
+// and fades, a splashy top on the recovery, and a few drips. The pack has no
+// swim sounds, so these are synthesized; four variants.
+function swimStroke(v) {
+  const n = Math.floor(SR * 0.62);
+  const d = new Float32Array(n);
+  // The pull: low band-passed noise, slow attack and release.
+  const pull = biquad(biquad(noise(n), 'bp', 380 + v * 45, 0.8), 'lp', 1400);
+  for (let i = 0; i < n; i++) {
+    const t = i / n;
+    pull[i] *= Math.sin(Math.min(1, t / 0.75) * Math.PI) ** 1.5;
+  }
+  mixInto(d, pull, 1.1);
+  // Water rushing past: a softer, brighter swish.
+  mixInto(d, whoosh(0.34, 700 + v * 90, 1900 + v * 120, 0.9), 0.5, 0.06);
+  // The hand coming back in: a small slap and spray.
+  mixInto(d, env(biquad(biquad(noise(Math.floor(SR * 0.16)), 'bp', 1300 + v * 150, 0.7), 'hp', 500), 0.045, 0.006), 0.75, 0.4);
+  // Drips.
+  for (let k = 0; k < 3; k++) {
+    const f = 1500 + ((v * 7 + k * 13) % 9) * 140;
+    mixInto(d, sweep(Math.floor(SR * 0.05), f, f * 1.6, 0.03, 0.012), 0.12, 0.44 + k * 0.05);
+  }
+  return lofi(drive(d, 1.3));
+}
+
+// Falling into water: a heavy plunge.
+function plunge() {
+  const n = Math.floor(SR * 0.9);
+  const d = env(biquad(biquad(noise(n), 'bp', 600, 0.5), 'lp', 2600), 0.18, 0.005);
+  mixInto(d, sweep(Math.floor(SR * 0.35), 160, 50, 0.05, 0.12), 0.8);
+  mixInto(d, env(biquad(noise(Math.floor(SR * 0.5)), 'hp', 1800), 0.12, 0.02), 0.35, 0.05);
+  return lofi(drive(d, 1.6));
+}
+
 // Big low boom with a long gritty tail: the bomb going off.
 function explosion() {
   const n = Math.floor(SR * 2.4);
@@ -447,11 +481,17 @@ export function buildAll() {
   for (const k of ['stepDirt', 'stepMetal', 'stepGrate', 'stepTile']) b[k] = b.step;
   b.land = land();
   b.splash = [0, 1, 2, 3].map(splash);
+  b.swim = [0, 1, 2, 3].map(swimStroke);
+  b.plunge = plunge();
   b.bombBeep = tone(1760, 0.09);
   b.keypad0 = keypad(1180);
   b.keypad1 = keypad(1320);
   b.keypad2 = keypad(1480);
   b.explode = explosion();
+  b.heExplode = b.explode;
+  b.heBounce = knifeWall();
+  b.pinpull = magOut();
+  b.throw = whoosh(0.25, 500, 1800, 1.4);
   b.defused = defused();
   b.rescue = blip(800, 1600, 0.25);
   b.alert = blip(500, 900, 0.35);
@@ -510,6 +550,9 @@ const GROUPS = {
   stepGrate: n4('pl_grate'),
   stepTile: n4('pl_tile'),
   splash: n4('pl_slosh'),
+  pinpull: ['pinpull'],
+  heBounce: ['he_bounce-1'],
+  heExplode: ['hegrenade-2'],
   zoom: ['zoom'],
   keypad0: ['c4_click'],
   keypad1: ['c4_click'],
@@ -632,13 +675,27 @@ export class Audio {
       this.master.connect(comp).connect(this.ctx.destination);
       this.sfx = this.ctx.createGain();
       this.sfx.gain.value = this.sfxOn ? 1 : 0;
-      this.sfx.connect(this.master);
+      // Muffles the game sounds while your head is under water.
+      this.muffle = this.ctx.createBiquadFilter();
+      this.muffle.type = 'lowpass';
+      this.muffle.frequency.value = 22000;
+      this.sfx.connect(this.muffle).connect(this.master);
       this.voice = this.ctx.createGain();
       this.voice.gain.value = this.sfxOn ? 1 : 0;
       this.voice.connect(this.master);
       this.build();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  // Head under water: everything goes dull and low.
+  setUnderwater(on) {
+    if (!this.muffle || this.underwater === on) return;
+    this.underwater = on;
+    const f = this.muffle.frequency, now = this.ctx.currentTime;
+    f.cancelScheduledValues(now);
+    f.setValueAtTime(f.value, now);
+    f.exponentialRampToValueAtTime(on ? 550 : 22000, now + 0.12);
   }
 
   setVolume(v) {

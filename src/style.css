@@ -196,6 +196,12 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 .ammo b { font: 800 40px var(--body); font-variant-numeric: tabular-nums; }
 .ammo b.low { color: var(--red); }
 .ammo span { font: 700 18px var(--body); color: var(--muted); }
+.ammo.single span { display: none; }
+#nade-chip { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px; padding: 4px 10px; border-radius: 10px; background: var(--panel); font: 800 14px var(--body); color: #fff; }
+#nade-chip.hidden { display: none; }
+#nade-chip svg { width: 18px; height: 18px; fill: #8fae5a; }
+#underwater { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse at center, rgba(40,120,170,.28), rgba(10,50,85,.62)); opacity: 0; transition: opacity .12s; }
+#underwater.on { opacity: 1; }
 #reload-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; opacity: 0; }
 #reload-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
 
@@ -324,6 +330,8 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #touch .t-reload { right: calc(134px + env(safe-area-inset-right)); bottom: calc(112px + env(safe-area-inset-bottom)); }
 #touch .t-alt    { right: calc(112px + env(safe-area-inset-right)); bottom: calc(196px + env(safe-area-inset-bottom)); --s: 50px; font-size: 10px; }
 #touch .t-swap   { right: calc(212px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 20px; }
+#touch .t-nade   { right: calc(222px + env(safe-area-inset-right)); bottom: calc(208px + env(safe-area-inset-bottom)); --s: 50px; font-size: 11px; }
+#touch .t-nade.none { opacity: .35; }
 #touch .t-knife  { right: calc(222px + env(safe-area-inset-right)); bottom: calc(130px + env(safe-area-inset-bottom)); --s: 50px; font-size: 10px; }
 #touch .t-drop   { right: calc(36px + env(safe-area-inset-right)); bottom: calc(250px + env(safe-area-inset-bottom)); --s: 44px; }
 #touch .t-use    { right: calc(98px + env(safe-area-inset-right)); bottom: calc(272px + env(safe-area-inset-bottom)); --s: 44px; font-size: 10px; }

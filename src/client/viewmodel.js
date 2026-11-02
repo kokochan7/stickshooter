@@ -26,6 +26,7 @@ const HOLD = {
   pistol: new THREE.Vector3(0.09, -0.12, -0.5),
   heavy: new THREE.Vector3(0.15, -0.2, -0.4),
   knife: new THREE.Vector3(0.19, -0.17, -0.38),
+  grenade: new THREE.Vector3(0.17, -0.17, -0.36),
 };
 
 export class ViewModel {
@@ -87,6 +88,11 @@ export class ViewModel {
     this.meleeKind = 'slash';
     this.meleeDur = 0.3;
     this.slashSide = 1;
+    // Grenade: 'pin' while the pin comes out and you hold it cooked,
+    // 'throw' for the throw itself; t counts up from 0.
+    this.nadeState = null;
+    this.nadeT = 0;
+    this.nadeLob = false;
     // How much the gun kicks and bobs (the screen-shake setting); 1 = full.
     this.motion = 1;
     this._v = Array.from({ length: 6 }, () => new THREE.Vector3());
@@ -111,7 +117,20 @@ export class ViewModel {
     this.gunId = id;
     this.gun = id ? buildGun(id) : null;
     if (this.gun) this.gunHolder.add(this.gun.group);
+    this.nadeState = null;
     this.deploy();
+  }
+
+  // Grenade: pull the pin (and hold it ready), then throw it.
+  pinPull() {
+    this.nadeState = 'pin';
+    this.nadeT = 0;
+  }
+
+  throwNade(lob = false) {
+    this.nadeState = 'throw';
+    this.nadeT = 0;
+    this.nadeLob = lob;
   }
 
   deploy() {
@@ -182,7 +201,7 @@ export class ViewModel {
     const slap = this.slap.update(dt);
 
     const hold = HOLD[this.gun.spec.hold] ?? HOLD.rifle;
-    const mp = this.meleePose(dt);
+    const mp = this.gun.spec.hold === 'grenade' ? this.nadePose(dt) : this.meleePose(dt);
     this.rig.position.set(
       hold.x + sx + bobX + ks * 0.01 + rp.x + mp.x,
       hold.y + sy + bobY - drop * 0.4 + rp.y + slap * 0.01 + mp.y,
@@ -211,6 +230,7 @@ export class ViewModel {
     const fore = this._v[1].copy(this.gun.fore);
     fore.z += pump;
     if (rp.hand) fore.lerp(rp.hand, rp.handW);
+    if (mp.handW) fore.lerp(mp.hand, mp.handW);
     const shoulderR = this._v[2].set(0.24, -0.4, 0.0).sub(this.rig.position).applyEuler(invEuler(this.rig.rotation));
     const shoulderL = this._v[3].set(-0.2, -0.42, -0.06).sub(this.rig.position).applyEuler(invEuler(this.rig.rotation));
     this.limb('R', shoulderR, grip, new THREE.Vector3(0.6, -1, 0.2));
@@ -351,6 +371,45 @@ export class ViewModel {
       mp.pitch += pull * 0.2 - thrust * 0.75;
       mp.yaw -= thrust * 0.2;
     }
+    return mp;
+  }
+
+  // Grenade in hand: held up a little, pin pulled with the left hand, the
+  // arm cocked back while you hold it, then an overhand throw (or an
+  // underhand lob). The grenade leaves the hand partway through the throw.
+  nadePose(dt) {
+    const mp = this._np ??= { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0, hand: new THREE.Vector3(), handW: 0 };
+    mp.x = mp.y = mp.z = mp.yaw = 0;
+    mp.pitch = 0.15; mp.roll = -0.15;
+    mp.handW = 0;
+    this.gun.group.visible = true;
+    if (!this.nadeState) return mp;
+    this.nadeT += dt;
+    const t = this.nadeT;
+    if (this.nadeState === 'pin') {
+      // Left hand to the ring and away, then cock the arm back and up.
+      const reach = smooth(t / 0.14) * (1 - smooth((t - 0.26) / 0.16));
+      mp.hand.set(...this.gun.spec.ring).add(this._v[5].set(-0.06 * smooth((t - 0.16) / 0.12), -0.02 * smooth((t - 0.16) / 0.12), 0));
+      mp.handW = reach;
+      const c = smooth((t - 0.18) / 0.25);
+      mp.x += 0.05 * c; mp.y += 0.05 * c; mp.z += 0.03 * c;
+      mp.pitch += -0.45 * c; mp.roll += -0.2 * c;
+      // A little tremble while it's held cooked.
+      mp.y += Math.sin(t * 9) * 0.003 * c;
+      return mp;
+    }
+    // Throw: whip forward from the cocked pose, let go, follow through.
+    const u = Math.min(1, t / 0.45);
+    if (u >= 1) { this.gun.group.visible = false; mp.y -= 0.3; return mp; }
+    const swing = Math.sin(Math.min(1, u / 0.6) * Math.PI);
+    const cock = 1 - smooth(u / 0.25);
+    const lob = this.nadeLob ? -1 : 1;
+    mp.x += 0.05 * cock - 0.06 * smooth(u / 0.5);
+    mp.y += 0.05 * cock + swing * 0.05 * lob - smooth((u - 0.4) / 0.6) * 0.3;
+    mp.z += 0.03 * cock - swing * 0.22;
+    mp.pitch += -0.45 * cock + swing * 0.9 * lob;
+    mp.yaw += swing * 0.2;
+    this.gun.group.visible = u < 0.3;
     return mp;
   }
 

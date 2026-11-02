@@ -175,6 +175,8 @@ export class GameView {
     this.shadowMat = new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
     this.views = new Map();
     this.dropViews = new Map(); // drop id -> gun model lying on the ground
+    this.nadeViews = new Map(); // grenade id -> model in flight
+    this.isUnderwater = false;
     this.hostageViews = new Map(); // hostage id -> { man, shadow }
     this.bombMesh = buildBomb();
     this.bombMesh.visible = false;
@@ -189,6 +191,7 @@ export class GameView {
   // ground, water, sky colors and the painted objective zones.
   setMap(map, world) {
     this.map = map;
+    if (this.isUnderwater) this.setUnderwater(false);
     this.world = world;
     this.effects.world = world;
     if (this.mapGroup) {
@@ -234,7 +237,9 @@ export class GameView {
         for (let i = 0; i < u.length / 2; i++) { u[i * 2] = p[i * 3] / 6; u[i * 2 + 1] = p[i * 3 + 2] / 6; }
         return g;
       });
-      this.waterMat = new THREE.MeshLambertMaterial({ color: 0x3f93c4, map: this.waterTex, transparent: true, opacity: 0.72, depthWrite: false });
+      // Deep water: darker and less see-through. Both sides, so the surface
+      // shows from below when you dive.
+      this.waterMat = new THREE.MeshLambertMaterial({ color: 0x2f7fb3, map: this.waterTex, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
       const water = new THREE.Mesh(mergeGeometries(geos), this.waterMat);
       water.renderOrder = 1;
       grp.add(water);
@@ -378,6 +383,40 @@ export class GameView {
     for (const [id, g] of this.dropViews) {
       if (!seen.has(id)) { this.scene.remove(g); this.dropViews.delete(id); }
     }
+  }
+
+  // Grenades in flight, spinning. alpha blends the last two sim positions.
+  syncNades(nades, alpha, time) {
+    const seen = new Set();
+    for (const n of nades) {
+      seen.add(n.id);
+      let g = this.nadeViews.get(n.id);
+      if (!g) {
+        g = buildGun('hegrenade').group;
+        g.scale.setScalar(1.3);
+        this.scene.add(g);
+        this.nadeViews.set(n.id, g);
+      }
+      const pp = n.prevPos ?? n.pos;
+      g.position.set(pp[0] + (n.pos[0] - pp[0]) * alpha, pp[1] + (n.pos[1] - pp[1]) * alpha - 0.05, pp[2] + (n.pos[2] - pp[2]) * alpha);
+      if (!n.rest) g.rotation.set(time * 11 + n.id, time * 3, time * 7);
+    }
+    for (const [id, g] of this.nadeViews) {
+      if (!seen.has(id)) { this.scene.remove(g); this.nadeViews.delete(id); }
+    }
+  }
+
+  // Eyes under water: close blue fog. Out again: the map's fog.
+  setUnderwater(on) {
+    if (on === this.isUnderwater) return;
+    this.isUnderwater = on;
+    const f = this.scene.fog;
+    if (on) {
+      f.color.setHex(0x1d5f86); f.near = 0.5; f.far = 16;
+    } else {
+      f.color.setHex(this.map.sky.bottom); f.near = 70; f.far = 220;
+    }
+    this.sky.visible = !on;
   }
 
   groundBelow(x, y, z) {

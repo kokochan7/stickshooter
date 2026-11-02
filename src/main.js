@@ -14,7 +14,7 @@ import { WEAPONS } from './sim/weapons.js';
 import { runAdmin, MAX_BOTS } from './sim/admin.js';
 import {
   TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT,
-  FOOTSTEP_RANGE, ROUND_WIN_LIMIT,
+  FOOTSTEP_RANGE, ROUND_WIN_LIMIT, GRAVITY, NADE_GRAVITY,
 } from './sim/constants.js';
 import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
@@ -61,6 +61,10 @@ const touch = TOUCH ? new TouchControls(input, settings, {
   scores: (show) => { if (scoresForced === null) showScoreboard(show); },
   pause: () => pauseGame(),
   knife: () => { input.pending.slot = me?.active === 'melee' ? (me.weapons.primary ? 'primary' : 'secondary') : 'melee'; },
+  nade: () => {
+    if (me?.active === 'grenade') input.pending.slot = me.weapons.primary ? 'primary' : 'secondary';
+    else if (me?.weapons.grenade) input.pending.slot = 'grenade';
+  },
   cycle: () => {
     // primary -> pistol -> knife -> primary, skipping empty slots.
     const order = ['primary', 'secondary', 'melee'];
@@ -89,6 +93,7 @@ let alertMsg = null; // { html, until }: "BOMB PLANTED" and the like
 let nextBeep = 0; // when the planted bomb beeps next (game time)
 let spectating = null; // id of the teammate we watch while dead in a round
 const timers = [];
+const underwaterEl = $('underwater');
 const stepState = new Map();
 
 // ---------- Setup ----------
@@ -254,7 +259,7 @@ setInterval(refreshRoomCounts, 5000);
 function renderControls() {
   const b = settings.binds;
   const teamHint = settings.mode === 'teams' ? ` &nbsp;·&nbsp; ${keyName(b.switchTeam)} — switch team` : '';
-  $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.melee)}/${keyName(b.lastWeapon)} — weapons &nbsp;·&nbsp; ${keyName(b.drop)} — drop / pick up${teamHint}`;
+  $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.melee)}/${keyName(b.grenade)}/${keyName(b.lastWeapon)} — weapons &nbsp;·&nbsp; ${keyName(b.drop)} — drop / pick up${teamHint}`;
 }
 renderControls();
 
@@ -823,6 +828,32 @@ function handleEvent(e) {
       if (e.hit === 'wall' && e.pos) view.effects.impact(e.pos, e.normal, e.material);
       break;
     }
+    // ----- HE grenade -----
+    case 'pin':
+      if (p === me) { view.viewModel.pinPull(); audio.play('pinpull', { volume: 0.7, alt: 'magOut' }); }
+      else if (p) audio.play('pinpull', { pos: p.pos, volume: 0.5, alt: 'magOut', range: FOOTSTEP_RANGE });
+      break;
+    case 'throw':
+      if (p === me) { view.viewModel.throwNade(e.lob); audio.play('throw', { volume: 0.4 }); }
+      else if (p) {
+        const v = view.views.get(p.id);
+        if (v) v.man.kick = 1;
+        audio.play('throw', { pos: p.pos, volume: 0.4, range: FOOTSTEP_RANGE });
+      }
+      break;
+    case 'nadeBounce':
+      audio.play('heBounce', { pos: e.pos, volume: 0.6, jitter: 0.08 });
+      break;
+    case 'nadeExplode': {
+      audio.play('heExplode', { pos: e.pos, volume: 1, jitter: 0.03, alt: 'explode' });
+      view.effects.explosion(e.pos, e.water);
+      if (me?.alive) {
+        const d = Math.hypot(me.pos[0] - e.pos[0], me.pos[1] + 1 - e.pos[1], me.pos[2] - e.pos[2]);
+        shakeP += Math.max(0, 0.09 - d * 0.006) * (Math.random() < 0.5 ? 1 : -1);
+        shakeY += Math.max(0, 0.05 - d * 0.004) * (Math.random() - 0.5);
+      }
+      break;
+    }
     case 'pickup':
       if (p === me) audio.play('magIn', { volume: 0.6 });
       break;
@@ -950,12 +981,43 @@ function norm(v) {
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 
+// Swimming: a stroke every SWIM_STROKE_TIME while you swim, slower and
+// softer while you tread water. Jumping or falling in makes a splash.
+const SWIM_STROKE_TIME = 0.75;
+function swimSounds(p, s, dt, moved) {
+  const swimming = !!p.swimming && p.alive;
+  if (swimming && !s.swim) {
+    // Just went in: how hard you hit the water decides the splash.
+    const fall = Math.max(0, -(p.vel[1] ?? 0));
+    if (fall > 2 || moved > 0.02) {
+      const strength = Math.min(1.6, 0.5 + fall / 6);
+      const at = [p.pos[0], game.waterSurface(p.pos[0], p.pos[2]) ?? p.pos[1], p.pos[2]];
+      view.effects.splash(at, strength);
+      if (p === me) audio.play('plunge', { volume: 0.35 + 0.25 * Math.min(1, fall / 6) });
+      else audio.play('plunge', { pos: p.pos, volume: 0.6, range: FOOTSTEP_RANGE * 1.5 });
+    }
+    s.stroke = 0.15;
+  }
+  s.swim = swimming;
+  if (!swimming || moved > 1) return;
+  const speed = Math.hypot(p.vel[0], p.vel[1], p.vel[2]);
+  const moving = speed > 0.9;
+  s.stroke -= dt * (moving ? 1 : 0.45);
+  if (s.stroke > 0) return;
+  s.stroke = SWIM_STROKE_TIME;
+  const vol = moving ? 1 : 0.45;
+  if (p === me) audio.play('swim', { volume: 0.32 * vol, jitter: 0.06 });
+  else audio.play('swim', { pos: p.pos, volume: 0.6 * vol, jitter: 0.06, range: FOOTSTEP_RANGE });
+}
+
 function footsteps(p, dt, x, z) {
   let s = stepState.get(p.id);
-  if (!s) { s = { timer: 0, foot: 0, x, z, air: false }; stepState.set(p.id, s); }
+  if (!s) { s = { timer: 0, foot: 0, x, z, air: false, swim: false, stroke: 0 }; stepState.set(p.id, s); }
   const moved = Math.hypot(x - s.x, z - s.z);
   s.x = x; s.z = z;
+  swimSounds(p, s, dt, moved);
   if (!p.alive) { s.air = false; return; }
+  if (p.swimming) { s.air = false; return; }
   const speed = Math.hypot(p.vel[0], p.vel[2]) / U;
   // CS-style: a step every FOOTSTEP_TIME while running; walking (shift) and
   // crouching are silent. The first step after starting to run is immediate.
@@ -1004,16 +1066,18 @@ function updateView(dt, alpha) {
     const pitch = p === me ? input.pitch : p.pitch;
     v.man.update({
       x, y, z, yaw, pitch, vx: p.vel[0], vz: p.vel[2],
-      duck: lerp(p.prevDuck, p.duckAmount, alpha), onGround: p.onGround, reloading: p.reloading, spin: p.spin,
+      duck: lerp(p.prevDuck, p.duckAmount, alpha), onGround: p.onGround || !!p.swimming, reloading: p.reloading, spin: p.spin,
     }, dt);
     v.shadow.position.set(x, view.groundBelow(x, y, z) + 0.01, z);
   }
   view.syncDrops(game.drops, game.time);
+  view.syncNades(game.nades, net ? 1 : alpha, game.time);
   view.syncObjective(game, alpha, dt, me?.alive ? me.id : null);
   bombBeeps();
 
   // Camera.
   const cam = view.camera;
+  let underwater = false;
   let fov = settings.fov;
   let showVm = false;
   let punchP = 0, punchY = 0;
@@ -1039,6 +1103,7 @@ function updateView(dt, alpha) {
     }
     showVm = me.zoom === 0;
     audio.setListener(px, py, pz, input.yaw);
+    underwater = game.underwater(px, py, pz);
   } else if (me && !me.alive && mode !== 'menu' && spectateTarget()) {
     // Objective rounds: watch a teammate over the shoulder until next round.
     const t = spectateTarget();
@@ -1071,6 +1136,10 @@ function updateView(dt, alpha) {
   }
   view.setFov(fov);
   input.sensScale = fov / settings.fov;
+  view.setUnderwater(underwater);
+  audio.setUnderwater(underwater);
+  if (underwaterEl.classList.contains('on') !== underwater) underwaterEl.classList.toggle('on', underwater);
+  touch?.setHasNade(!!me?.alive && !!me.weapons.grenade);
 
   // Viewmodel.
   const [mdx, mdy] = input.takeFrameDelta();
@@ -1080,7 +1149,7 @@ function updateView(dt, alpha) {
     view.viewModel.setTeam(me.team);
   }
   view.viewModel.update(dt, {
-    mouseDX: mdx, mouseDY: mdy, speed: me ? Math.hypot(me.vel[0], me.vel[2]) : 0, onGround: me?.onGround ?? true,
+    mouseDX: mdx, mouseDY: mdy, speed: me ? Math.hypot(me.vel[0], me.vel[2]) : 0, onGround: (me?.onGround || me?.swimming) ?? true,
     reloading: me?.reloading ?? false, spin: me?.spin ?? 0, visible: showVm,
   });
   view.effects.update(dt);
@@ -1288,11 +1357,28 @@ function netFrame(dt) {
   }
   net.interpolate();
   game.time = net.serverTime();
+  stepNades(dt);
   for (const e of net.drainEvents()) handleEvent(e);
   for (let i = timers.length - 1; i >= 0; i--) if (game.time >= timers[i].t) { timers[i].fn(); timers.splice(i, 1); }
   if (net?.ready) {
     hud.ping(net.rtt);
     hud.room(game.mode, game.players.filter((p) => !p.isBot).length);
+  }
+}
+
+// Online: grenades arrive with each snapshot (32 Hz); in between, fly them
+// on so they move smoothly. The next snapshot corrects any drift.
+function stepNades(dt) {
+  const g = GRAVITY * NADE_GRAVITY;
+  for (const n of game.nades) {
+    if (n.rest) continue;
+    n.vel[1] -= g * dt;
+    const sp = Math.hypot(n.vel[0], n.vel[1], n.vel[2]);
+    if (sp < 1e-4) continue;
+    const step = sp * dt;
+    const h = game.world.raycast(n.pos[0], n.pos[1], n.pos[2], n.vel[0] / sp, n.vel[1] / sp, n.vel[2] / sp, step + 0.06);
+    if (h) continue; // about to bounce: wait for the server's version
+    n.pos[0] += n.vel[0] * dt; n.pos[1] += n.vel[1] * dt; n.pos[2] += n.vel[2] * dt;
   }
 }
 

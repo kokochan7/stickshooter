@@ -203,6 +203,56 @@ export class Effects {
     }
   }
 
+  // HE grenade going off: a hot flash, a ball of fire, sparks and debris
+  // thrown out, then grey smoke rolling up. Under water it's a burst of
+  // bubbles and spray instead of fire.
+  explosion(pos, water = false) {
+    const [x, y, z] = pos;
+    const R = Math.random;
+    if (water) {
+      for (let i = 0; i < 40; i++) {
+        const a = R() * Math.PI * 2, s = 1 + R() * 4;
+        this.spawnParticle(x + (R() - 0.5) * 0.8, y + R() * 0.5, z + (R() - 0.5) * 0.8,
+          Math.cos(a) * s * 0.5, 2 + R() * 7, Math.sin(a) * s * 0.5, [0.85, 0.93, 1], 0.6 + R() * 0.6, 0.08 + R() * 0.1, 1.2, 0.3);
+      }
+      return;
+    }
+    // Flash.
+    this.spawnParticle(x, y + 0.3, z, 0, 0, 0, [1, 0.97, 0.85], 0.12, 2.6, 0, 1.5);
+    // Fireball.
+    for (let i = 0; i < 26; i++) {
+      const a = R() * Math.PI * 2, e = R() * 1.2, s = 2 + R() * 5;
+      const hot = R();
+      this.spawnParticle(x, y + 0.2, z, Math.cos(a) * Math.cos(e) * s, Math.sin(e) * s + 1, Math.sin(a) * Math.cos(e) * s,
+        [1, 0.55 + hot * 0.4, 0.15 + hot * 0.25], 0.25 + R() * 0.25, 0.35 + R() * 0.4, -0.2, 0.8);
+    }
+    // Sparks and debris.
+    for (let i = 0; i < 30; i++) {
+      const a = R() * Math.PI * 2, s = 5 + R() * 9;
+      const spark = i % 2 === 0;
+      this.spawnParticle(x, y + 0.1, z, Math.cos(a) * s, 2 + R() * 7, Math.sin(a) * s,
+        spark ? [1, 0.8, 0.35] : [0.3, 0.27, 0.24], 0.5 + R() * 0.6, spark ? 0.03 : 0.045, 1.6);
+    }
+    // Smoke.
+    for (let i = 0; i < 22; i++) {
+      const a = R() * Math.PI * 2, s = 0.5 + R() * 2;
+      const g = 0.35 + R() * 0.25;
+      this.spawnParticle(x + Math.cos(a) * R() * 1.2, y + 0.3 + R() * 1.2, z + Math.sin(a) * R() * 1.2,
+        Math.cos(a) * s, 0.6 + R() * 1.4, Math.sin(a) * s, [g, g, g * 0.97], 1.4 + R() * 1.2, 0.5 + R() * 0.4, -0.04, 1.6);
+    }
+  }
+
+  // Jumping or falling into water: a ring of spray.
+  splash(pos, strength = 1) {
+    const R = Math.random;
+    const n = Math.round(10 + 14 * strength);
+    for (let i = 0; i < n; i++) {
+      const a = R() * Math.PI * 2, s = (0.8 + R() * 1.8) * strength;
+      this.spawnParticle(pos[0] + Math.cos(a) * 0.3, pos[1], pos[2] + Math.sin(a) * 0.3,
+        Math.cos(a) * s, (2 + R() * 3) * Math.min(1.5, strength), Math.sin(a) * s, [0.85, 0.93, 1], 0.45 + R() * 0.35, 0.06 + R() * 0.06, 1.3, 0.1);
+    }
+  }
+
   addHole(pos, normal, material) {
     const i = this.hNext;
     this.hNext = (this.hNext + 1) % MAX_HOLES;
