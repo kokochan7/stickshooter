@@ -16,13 +16,12 @@ const DEG = Math.PI / 180;
 // hurtFlinch: degrees of aim knocked off when the bot is hit. lead: how much
 // of the target's movement the bot predicts.
 // armor: chance a bot buys Kevlar + helmet when it can afford them (Kenny's
-// numbers: easy 30%, medium 50%, hard always). bhop: chance a bot bunny hops
-// when it would help (a long run, a fight to close, a spot to get out of).
-// strafe: air strafes while hopping, so the hops gain speed.
+// numbers: easy 30%, medium 50%, hard always). escape: chance a bot breaks
+// off to cover when it's hurt badly or outnumbered.
 export const DIFFICULTY = {
-  easy: { reaction: 0.8, aimError: 16, errorDecay: 0.9, wobble: 3.2, hurtFlinch: 8, lead: 0, head: 0.04, turn: 200, spray: 0.1, burst: 0.6, armor: 0.3, bhop: 0.2, strafe: false },
-  normal: { reaction: 0.55, aimError: 12, errorDecay: 1.5, wobble: 2.0, hurtFlinch: 6, lead: 0.3, head: 0.1, turn: 300, spray: 0.3, burst: 0.8, armor: 0.5, bhop: 0.5, strafe: true },
-  hard: { reaction: 0.35, aimError: 8, errorDecay: 2.4, wobble: 1.1, hurtFlinch: 4, lead: 0.6, head: 0.22, turn: 460, spray: 0.55, burst: 1.1, armor: 1, bhop: 0.85, strafe: true },
+  easy: { reaction: 0.8, aimError: 16, errorDecay: 0.9, wobble: 3.2, hurtFlinch: 8, lead: 0, head: 0.04, turn: 200, spray: 0.1, burst: 0.6, armor: 0.3, escape: 0.2 },
+  normal: { reaction: 0.55, aimError: 12, errorDecay: 1.5, wobble: 2.0, hurtFlinch: 6, lead: 0.3, head: 0.1, turn: 300, spray: 0.3, burst: 0.8, armor: 0.5, escape: 0.5 },
+  hard: { reaction: 0.35, aimError: 8, errorDecay: 2.4, wobble: 1.1, hurtFlinch: 4, lead: 0.6, head: 0.22, turn: 460, spray: 0.55, burst: 1.1, armor: 1, escape: 0.85 },
 };
 
 // Bots in the same game know about each other (as a team would on comms), so
@@ -155,8 +154,6 @@ export class BotBrain {
     this.engageRoll = 0;
     this.pushing = false;
     this.rotateRoll = Math.random();
-    this.hop = false;
-    this.engageHop = false;
     this.escapeUntil = 0;
     this.escapeCheckAt = 0;
     this.enemiesSeen = 0;
@@ -180,7 +177,6 @@ export class BotBrain {
       this.yaw = p.yaw; this.pitch = 0;
       if (!this.role || this.roleTeam !== p.team) this.pickRole();
       this.mood = (Math.random() - 0.5) * 0.3;
-      this.hopTravel = Math.random() < this.skill.bhop;
       this.buyLoadout();
     }
     const t = g.time;
@@ -196,7 +192,6 @@ export class BotBrain {
 
     let moveDir = null; // world-space [x, z]
     let wantFire = false;
-    this.hop = false;
     let fightDist = Infinity;
 
     // Out of ammo: switch to a gun that still has some, or the knife.
@@ -267,7 +262,6 @@ export class BotBrain {
       if (t >= this.decideAt || this.engagedWith !== tgt.id) {
         if (this.engagedWith !== tgt.id) {
           this.engagedWith = tgt.id; this.engageRoll = Math.random(); this.pushing = false;
-          this.engageHop = Math.random() < this.skill.bhop;
         }
         this.decideAt = t + 0.4;
         if (!this.pushing && this.seesOpening(tgt, dist, def)) { this.pushing = true; this.cover = null; }
@@ -279,13 +273,13 @@ export class BotBrain {
       }
 
       // A sticky spot: hurt badly, or more than one of them on us. Some bots
-      // (more of them the harder they are) break off and bunny hop to cover,
-      // or just away, instead of trading shots they'll lose.
+      // (more of them the harder they are) break off to cover,
+      // or just back away, instead of trading shots they'll lose.
       const sticky = !def?.melee && dist > 5 && (p.health < 30 || (this.enemiesSeen >= 2 && p.health < 50));
       if (this.escapeUntil && t >= this.escapeUntil) this.escapeUntil = 0;
       if (sticky && !this.escapeUntil && t >= this.escapeCheckAt) {
         this.escapeCheckAt = t + 2;
-        if (Math.random() < this.skill.bhop) {
+        if (Math.random() < this.skill.escape) {
           this.pushing = false;
           if (!this.cover) { this.cover = this.findCover(tgt, def); this.coverSearchAt = t + 1; }
           this.escapeUntil = t + (this.cover ? 2.5 : 1.6);
@@ -300,9 +294,9 @@ export class BotBrain {
         moveDir = cm.moveDir;
         cmd.duck = cm.duck;
         if (!cm.fireOk) wantFire = false;
-        if (this.escapeUntil && this.cover?.phase === 'move' && moveDir) { this.hop = true; cmd.duck = false; }
+        if (this.escapeUntil && this.cover?.phase === 'move' && moveDir) cmd.duck = false;
       } else if (this.escapeUntil) {
-        // Nowhere to hide: hop away at an angle, out of their aim.
+        // Nowhere to hide: back away at an angle, out of their aim.
         if (t >= this.strafeChangeAt) {
           this.strafeDir = Math.random() < 0.5 ? -1 : 1;
           this.strafeChangeAt = t + 0.6 + Math.random() * 0.6;
@@ -312,15 +306,6 @@ export class BotBrain {
         const n = Math.hypot(moveDir[0], moveDir[1]) || 1;
         moveDir = [moveDir[0] / n, moveDir[1] / n];
         wantFire = false;
-        this.hop = true;
-      } else if ((def?.melee || close) && this.pushing && this.engageHop && dist > (def?.melee ? 4 : 11) && dist < 30) {
-        // Closing the gap with a knife, shotgun or SMG: hop in, weaving,
-        // and shoot once we're there.
-        const f = forwardVec(this.yaw), r = rightVec(this.yaw);
-        const weave = Math.sin(t * 2.2 + this.wobblePhase[0]) * 0.3;
-        moveDir = [f[0] + r[0] * weave, f[2] + r[2] * weave];
-        wantFire = false;
-        this.hop = true;
       } else if (def?.melee) {
         // Knife: run straight at them, weaving a little.
         const f = forwardVec(this.yaw), r = rightVec(this.yaw);
@@ -413,12 +398,6 @@ export class BotBrain {
         else if (d > 0.01) moveDir = this.spreadOut([dx / d, dz / d], 2.2, 0.6);
         // Reached the detour point: next repath goes straight to the goal.
         if (this.via && Math.hypot(this.via[0] - p.pos[0], this.via[1] - p.pos[2]) < 2) this.via = 'done';
-        // A long clear run somewhere we need to be fast: bunny hop it.
-        if (moveDir && !drop && obj?.hop !== false && !obj?.escort) {
-          const hunting = goal === this.lastSeenPos && this.role === 'rush';
-          const want = obj?.hop || ((obj?.urgent || hunting || (roaming && this.role === 'rush')) && this.hopTravel);
-          if (want && this.straightRun(8)) this.hop = true;
-        }
       }
       // Look where we walk, or towards the last thing we saw.
       let lookYaw = this.yaw;
@@ -460,12 +439,6 @@ export class BotBrain {
     }
 
     // --- Movement to cmd ---
-    // Bunny hop: hold jump (it hops again on landing), and in the air
-    // strafe the way a player does to keep and build speed.
-    if (this.hop && moveDir && !p.swimming && !cmd.duck) {
-      cmd.jump = true;
-      if (!p.onGround && this.skill.strafe) moveDir = this.airStrafe(moveDir);
-    }
     if (moveDir) {
       const f = forwardVec(this.yaw), r = rightVec(this.yaw);
       cmd.fwd = Math.max(-1, Math.min(1, moveDir[0] * f[0] + moveDir[1] * f[2]));
@@ -525,7 +498,7 @@ export class BotBrain {
           return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: plan.name === 'rush' || late };
         }
         // Dropped bomb: the two of us nearest go and get it, the rest carry on.
-        if (b.state === 'dropped' && this.nearestTo(b.pos) < 2) return { goal: b.pos, urgent: true, hop: true };
+        if (b.state === 'dropped' && this.nearestTo(b.pos) < 2) return { goal: b.pos, urgent: true };
         if (b.state === 'planted') return this.postPlant(b);
         const site = g.map.sites[g.plan];
         const other = sites.find((k) => k !== g.plan);
@@ -605,11 +578,11 @@ export class BotBrain {
       }
       if (mine.length) {
         // Lead them home, waiting for anyone falling behind.
-        if (free.length && mine.length < 2 && near) return { goal: free[0].pos, urgent: true, hop: false };
+        if (free.length && mine.length < 2 && near) return { goal: free[0].pos, urgent: true };
         const lag = mine.some((h) => Math.hypot(h.pos[0] - p.pos[0], h.pos[2] - p.pos[2]) > 7);
         if (lag) return { hold: true };
         this.pickSpot('rescue', g.map.rescue[0], 0.3, 30);
-        return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true, hop: false };
+        return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
       }
       if (plan.name === 'slow' && waiting) {
         this.hostageGoal = null;
@@ -621,8 +594,8 @@ export class BotBrain {
         const dist = (h) => Math.hypot(h.pos[0] - p.pos[0], h.pos[2] - p.pos[2]) + (taken.has(h.id) ? 25 : 0);
         free.sort((a, b2) => dist(a) - dist(b2));
         this.hostageGoal = free[0].id;
-        if (plan.name === 'split') return { goal: free[0].pos, detour: idx % 2 ? plan.flip : -plan.flip, hop: false };
-        return { goal: free[0].pos, urgent: true, hop: false };
+        if (plan.name === 'split') return { goal: free[0].pos, detour: idx % 2 ? plan.flip : -plan.flip };
+        return { goal: free[0].pos, urgent: true };
       }
       this.hostageGoal = null;
       // Nothing to do for the hostages: push toward them anyway.
@@ -632,7 +605,7 @@ export class BotBrain {
     // Red: guard the hostages, one or two of us on each, moving around them
     // now and then. A rusher with enough teammates goes hunting instead.
     const follow = hs.find((x) => x.state === 'follow');
-    if (follow) return { goal: follow.pos, urgent: true, hop: false };
+    if (follow) return { goal: follow.pos, urgent: true };
     if (plan.name === 'forward' && idx % 2 && n >= 2) return { goal: this.spotGoal('fwd', this.midRect(14), 0, 10) };
     if (plan.name === 'guard' && this.role === 'rush' && n >= 3) return null;
     const h = hs[idx % Math.max(1, hs.length)];
@@ -860,12 +833,12 @@ export class BotBrain {
   // Red after the plant: take a post that can see the bomb, ideally with a
   // wall or a crate beside it, and hold it, watching the bomb. Anchors and
   // lurkers watch from further back. When someone starts defusing, everyone
-  // in earshot runs (and hops) back to stop them.
+  // in earshot runs back to stop them.
   postPlant(b) {
     const g = this.game, p = this.p;
     const defuser = b.defuser != null ? g.getPlayer(b.defuser) : null;
     if (defuser?.alive && Math.hypot(b.pos[0] - p.pos[0], b.pos[2] - p.pos[2]) < 45) {
-      return { goal: b.pos, urgent: true, hop: true };
+      return { goal: b.pos, urgent: true };
     }
     const key = 'post' + b.site + ':' + b.pos[0].toFixed(1);
     if (this.objSpotKey !== key || !this.objSpot) this.pickGuardSpot(b, key);
@@ -911,50 +884,6 @@ export class BotBrain {
       this.pickSpot(key, { min: [bx - r, bz - r], max: [bx + r, bz + r] });
     }
     this.guardDuck = Math.random() < this.style.crouch;
-  }
-
-  // Is the path ahead a clear, fairly straight run of at least `len` metres
-  // (so a hop won't fly us into a corner)?
-  straightRun(len) {
-    const p = this.p, path = this.path, nav = this.nav;
-    if (!path || this.pathIdx >= path.length) return false;
-    let px = p.pos[0], pz = p.pos[2], run = 0, end = null;
-    const pts = [];
-    for (let i = this.pathIdx; i < path.length; i++) {
-      const [x, z] = path[i];
-      run += Math.hypot(x - px, z - pz);
-      px = x; pz = z;
-      pts.push(path[i]);
-      if (run >= len) { end = path[i]; break; }
-    }
-    if (!end) return false;
-    const ax = p.pos[0], az = p.pos[2];
-    const L = Math.hypot(end[0] - ax, end[1] - az);
-    if (L < len * 0.8) return false;
-    for (const [x, z] of pts) {
-      if (Math.abs(((end[0] - ax) * (z - az) - (end[1] - az) * (x - ax)) / L) > 1) return false;
-    }
-    // Flat ground only: a hop can't climb stairs (no step up in the air).
-    const y0 = nav.floorAt(ax, az);
-    for (let k = 1, n = Math.ceil(L); k <= n; k++) {
-      if (Math.abs(nav.floorAt(ax + ((end[0] - ax) * k) / n, az + ((end[1] - az) * k) / n) - y0) > 0.25) return false;
-    }
-    return nav.walkable(ax, az, end[0], end[1]);
-  }
-
-  // Air strafing: a wish direction close to square-on to our velocity, on
-  // the side we want to turn to, gains speed with every tick in the air (as
-  // CS air acceleration works). Far off course, just steer for dir.
-  airStrafe(dir) {
-    const v = this.p.vel;
-    const sp = Math.hypot(v[0], v[2]);
-    if (sp < 2) return dir;
-    const vx = v[0] / sp, vz = v[2] / sp;
-    if (vx * dir[0] + vz * dir[1] < 0.7) return dir;
-    const side = vx * dir[1] - vz * dir[0] >= 0 ? 1 : -1;
-    const th = Math.acos(Math.min(1, 0.3 / sp)) * side;
-    const c = Math.cos(th), s = Math.sin(th);
-    return [vx * c - vz * s, vx * s + vz * c];
   }
 
   // A random reachable spot in a rect (shrunk by `inset` of its size), kept

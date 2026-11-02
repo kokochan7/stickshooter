@@ -114,7 +114,7 @@ test('team strategies change from round to round', async () => {
 // ---------- Buying, the bomb and bunny hops ----------
 
 import { MAPS } from '../src/maps/index.js';
-import { ROUND_FREEZE, ROUND_TIME, U } from '../src/sim/constants.js';
+import { ROUND_FREEZE, ROUND_TIME } from '../src/sim/constants.js';
 
 function bot(g, team, difficulty = 'normal') {
   const p = g.addPlayer({ name: team + g.players.length, team, isBot: true });
@@ -190,7 +190,7 @@ test('Red bots carry the bomb in, plant it, and hold posts that can see it', () 
   for (const br of brains) {
     const obj = br.objective(emptyCmd());
     assert.deepEqual(obj.goal, b.pos);
-    assert.ok(obj.urgent && obj.hop);
+    assert.ok(obj.urgent);
   }
 });
 
@@ -203,31 +203,4 @@ test('only the nearest two go back for a dropped bomb', () => {
   g.bomb.state = 'dropped'; g.bomb.carrier = null; g.bomb.pos = [...carrier.pos];
   const going = brains.filter((b) => { const o = b.objective(emptyCmd()); return o?.goal === g.bomb.pos; });
   assert.equal(going.length, 2);
-});
-
-test('a hard bot bunny hops a long run and gains speed air strafing', () => {
-  const g = new Game(MAPS.canal, { seed: 4, mode: 'teams' });
-  const b = bot(g, 'red', 'hard');
-  g.restartMatch();
-  runBots(g, [b], ROUND_FREEZE + 0.5);
-  // Drop the bomb down the open street: fetching it is worth hurrying for.
-  const p = b.p;
-  g.bomb.state = 'dropped'; g.bomb.carrier = null;
-  const run = g.activeDef(p).speed * U;
-  let hops = 0, top = 0, wasGround = true;
-  let seed = 9;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  let far;
-  do far = g.nav.randomOpenPoint(rnd);
-  while (Math.hypot(far[0] - p.pos[0], far[1] - p.pos[2]) < 40 || !g.nav.isMain(...g.nav.cellOf(far[0], far[1])));
-  g.bomb.pos = [far[0], g.nav.floorAt(far[0], far[1]), far[1]];
-  runBots(g, [b], 25, (g) => {
-    if (wasGround && !p.onGround) hops++;
-    wasGround = p.onGround;
-    top = Math.max(top, Math.hypot(p.vel[0], p.vel[2]));
-    return g.bomb.state === 'carried';
-  });
-  assert.equal(g.bomb.state, 'carried', 'got the bomb');
-  assert.ok(hops >= 3, `${hops} hops`);
-  assert.ok(top > run * 1.15, `top speed ${top.toFixed(2)} vs run ${run.toFixed(2)}`);
 });
