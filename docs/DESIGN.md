@@ -54,11 +54,9 @@ The first build (PR #1) is a complete single-player loop:
   go back for a dropped bomb; after the plant each Red bot holds a post near a
   wall that can see the bomb, doesn't chase far from it, and everyone within
   45 m rushes back when a defuse starts.
-- Bots bunny hop (holding jump, air strafing to gain speed on normal/hard) on
-  long flat straight runs when it's urgent, to close in with a knife, shotgun
-  or SMG, and to break off to cover when hurt or outnumbered. They hold fire
-  while airborne (CS air spread). Chance per situation: easy 20%, normal 50%,
-  hard 85%.
+- Bots don't bunny hop (Kenny asked to remove it). Hurt or outnumbered, some
+  break off to cover (easy 20%, normal 50%, hard 85%), and they hold fire
+  while airborne (CS air spread).
 - HUD: health, armor, ammo, dynamic crosshair, kill feed, hit markers,
   scoreboard (`Tab`, split by team in Teams mode). First person only.
 - Modes: Free for all (team `ffa`, white stickmen) and Teams (Red vs Blue,
