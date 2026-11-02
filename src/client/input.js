@@ -8,7 +8,7 @@ export const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
   jump: 'Space', duck: 'ControlLeft', duckAlt: 'KeyC', walk: 'ShiftLeft',
   reload: 'KeyR', primary: 'Digit1', secondary: 'Digit2', melee: 'Digit3', grenade: 'Digit4', lastWeapon: 'KeyQ',
-  drop: 'KeyG', buy: 'KeyB', scores: 'Tab', switchTeam: 'KeyM', use: 'KeyE',
+  drop: 'KeyG', buy: 'KeyB', buyAmmo: 'KeyN', scores: 'Tab', switchTeam: 'KeyM', use: 'KeyE',
 };
 
 // Rebindable actions in the order the Controls tab lists them.
@@ -16,7 +16,7 @@ export const BIND_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
   jump: 'Jump', duck: 'Crouch', duckAlt: 'Crouch (alt)', walk: 'Walk',
   reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', melee: 'Knife', grenade: 'HE grenade', lastWeapon: 'Last weapon',
-  drop: 'Drop / pick up gun', buy: 'Buy menu', scores: 'Scoreboard', switchTeam: 'Switch team',
+  drop: 'Drop / pick up gun', buy: 'Buy menu', buyAmmo: 'Buy ammo', scores: 'Scoreboard', switchTeam: 'Switch team',
   use: 'Use (plant, defuse, hostages)',
 };
 

@@ -229,6 +229,12 @@ export const SHOP_ORDER = [
   'famas', 'p90', 'ak47', 'm4a1', 'awp', 'minigun',
 ];
 
+// Ammo packs per bullet type, CS 1.6 prices: [rounds per pack, price].
+export const AMMO = {
+  '9mm': [30, 20], '45acp': [12, 25], '50ae': [7, 40], '57mm': [50, 50],
+  '556': [30, 60], '762': [30, 80], '338': [10, 125], buckshot: [8, 65],
+};
+
 export const GEAR = {
   kevlar: { name: 'Kevlar Vest', price: 650 },
   kevlarHelmet: { name: 'Kevlar + Helmet', price: 1000 },

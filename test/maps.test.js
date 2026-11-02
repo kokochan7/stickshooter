@@ -267,6 +267,22 @@ test('round survivors keep their gear; the dead start over with a USP and a knif
   assert.equal(red.armor, 0);
 });
 
+test('buying closes 10 seconds after the round goes live', () => {
+  const { g, red } = bombGame();
+  red.money = 16000;
+  assert.ok(g.canBuy(red), 'open in the freeze');
+  run(g, ROUND_FREEZE + 9.5);
+  assert.ok(g.buy(red, 'ak47'));
+  run(g, 1);
+  assert.ok(!g.buy(red, 'm4a1'), 'closed');
+  assert.ok(!g.buy(red, 'kevlar'));
+  assert.ok(!g.buy(red, 'ammo'));
+  // A buy sent over the network is refused too.
+  red.weapons.primary.reserve = 0;
+  run(g, TICK_DT, (p) => (p === red ? sanitizeCmd(hold(p, { actions: [{ type: 'buy', item: 'ammo' }] })) : null));
+  assert.equal(red.weapons.primary.reserve, 0);
+});
+
 test('the carrier dying drops the bomb, a teammate picks it up; wipes and time end rounds', () => {
   const g = new Game(MAPS.canal, { seed: 3, mode: 'teams' });
   const r1 = g.addPlayer({ name: 'R1', team: 'red' });
