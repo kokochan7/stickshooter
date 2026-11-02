@@ -129,3 +129,59 @@ test('bots pick up a better gun lying nearby', () => {
   for (let i = 0; i < 128 * 5 && bot.weapons.primary.id !== 'minigun'; i++) g.tick(new Map([[bot.id, brain.think(TICK_DT)]]));
   assert.equal(bot.weapons.primary.id, 'minigun');
 });
+
+test('N buys ammo packs at CS 1.6 prices, only as far as the money and the reserve go', () => {
+  const { g, a } = duel();
+  a.money = 16000;
+  assert.ok(g.buy(a, 'ak47'));
+  const ak = a.weapons.primary;
+  assert.ok(!g.buy(a, 'ammo'), 'a full reserve buys nothing');
+  ak.reserve = 25;
+  let money = a.money;
+  assert.ok(g.buy(a, 'ammo'));
+  assert.equal(ak.reserve, 90, 'filled, never past the max');
+  assert.equal(money - a.money, 3 * 80, 'three 7.62 packs at $80');
+  // Not enough money: as many packs as you can afford.
+  ak.reserve = 0;
+  a.money = 170;
+  assert.ok(g.buy(a, 'ammo'));
+  assert.equal(ak.reserve, 60);
+  assert.equal(a.money, 10);
+  // Holding the knife buys for the primary; holding the pistol buys for it.
+  a.money = 16000;
+  ak.reserve = 0;
+  g.switchTo(a, 'melee', true);
+  g.buy(a, 'ammo');
+  assert.equal(ak.reserve, 90);
+  g.switchTo(a, 'secondary', true);
+  a.weapons.secondary.reserve = 0;
+  money = a.money;
+  g.buy(a, 'ammo');
+  assert.equal(a.weapons.secondary.reserve, 100);
+  assert.equal(money - a.money, 9 * 25, '.45 ACP packs of 12 at $25');
+  // Buying the gun you hold again now pays for its ammo instead of refilling free.
+  ak.reserve = 30;
+  money = a.money;
+  g.buy(a, 'ak47');
+  assert.equal(ak.reserve, 90);
+  assert.equal(money - a.money, 2 * 80);
+});
+
+test('buying closes 10 seconds after you spawn (or after the start freeze)', () => {
+  const g = new Game(YARD, { seed: 3, mode: 'ffa' });
+  const a = g.addPlayer({ name: 'A' });
+  g.restartMatch();
+  a.money = 16000;
+  run(g, START_DELAY + 9.5);
+  assert.ok(g.buy(a, 'mp5'), 'still open 9.5 s after the freeze');
+  run(g, 1);
+  assert.ok(!g.canBuy(a));
+  assert.ok(!g.buy(a, 'ak47'));
+  assert.ok(!g.buy(a, 'ammo'));
+  // Bots and other silent buys skip the clock.
+  assert.ok(g.buy(a, 'ak47', true));
+  // A new life opens it again.
+  a.alive = false;
+  g.spawn(a);
+  assert.ok(g.canBuy(a));
+});

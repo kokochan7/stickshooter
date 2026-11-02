@@ -9,9 +9,9 @@ import {
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
   DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE, NEVER, WATER_SPEED_MUL,
   NADE_FUSE, NADE_GRAVITY, NADE_PIN_TIME, NADE_SWITCH_TIME, NADE_BOUNCE, NADE_RADIUS,
-  PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL,
+  PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL, BUY_TIME,
 } from './constants.js';
-import { WEAPONS, GEAR } from './weapons.js';
+import { WEAPONS, GEAR, AMMO } from './weapons.js';
 import { World } from './world.js';
 import { movePlayer, aimDir, forwardVec, rightVec, playerBox, hullTouches } from './movement.js';
 import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
@@ -165,6 +165,7 @@ export class Game {
       nextStab: 0, lastMelee: -10, frozenUntil: 0, life: 0,
       task: null, useHeld: false, defuser: false,
       roundKills: 0, multi: 0, lastKillAt: -10, god: false,
+      spawnedAt: 0,
       nadePin: 0, nadeLob: false, swimming: false, waterJump: 0,
     };
     this.players.push(p);
@@ -360,6 +361,7 @@ export class Game {
       if (!p.weapons[p.active]) p.active = ['primary', 'secondary', 'melee'].find((s) => p.weapons[s]);
     }
     p.life++;
+    p.spawnedAt = this.time;
     p.punch = [0, 0]; p.prevPunch = [0, 0];
     p.zoom = 0; p.spin = 0; p.reloading = false; p.shotsFired = 0;
     p.tagMul = 1;
@@ -370,8 +372,44 @@ export class Game {
     this.emit({ type: 'spawn', pid: p.id, yaw: p.yaw }); // yaw: cmds later in the tick overwrite p.yaw
   }
 
+  // When buying closes for this player (game time).
+  buyDeadline(p) {
+    if (this.objective) return this.round.freezeEnd + BUY_TIME;
+    return Math.max(p.frozenUntil, p.spawnedAt) + BUY_TIME;
+  }
+
+  canBuy(p) {
+    return p.alive && this.time <= this.buyDeadline(p);
+  }
+
+  // The gun N buys ammo for: the one in your hands, or your primary (then
+  // pistol) when you hold the knife or a grenade.
+  ammoSlot(p) {
+    if (p.active === 'primary' || p.active === 'secondary') return p.weapons[p.active] ? p.active : null;
+    return p.weapons.primary ? 'primary' : p.weapons.secondary ? 'secondary' : null;
+  }
+
+  // Ammo packs (CS 1.6 prices) until the reserve is full or the money runs out.
+  buyAmmo(p, slot = this.ammoSlot(p), silent = false) {
+    const w = slot && p.weapons[slot];
+    const def = w && WEAPONS[w.id];
+    const pack = def && AMMO[def.bullet];
+    if (!pack) return false;
+    const [size, price] = pack;
+    const need = Math.ceil((def.reserve - w.reserve) / size);
+    const n = Math.min(need, Math.floor(p.money / price));
+    if (n <= 0) return false;
+    w.reserve = Math.min(def.reserve, w.reserve + n * size);
+    p.money -= n * price;
+    if (!silent) this.emit({ type: 'buy', pid: p.id, item: 'ammo' });
+    return true;
+  }
+
+  // silent: bots and tests, which skip the buy time and the buy event.
   buy(p, item, silent = false) {
     if (!p.alive) return false;
+    if (!silent && !this.canBuy(p)) return false;
+    if (item === 'ammo') return this.buyAmmo(p, undefined, silent);
     if (item === 'defuser') {
       // Defuse kit: Blue only, in bomb rounds.
       if (p.defuser || p.team !== 'blue' || this.objective !== 'bomb' || p.money < GEAR.defuser.price) return false;
@@ -396,11 +434,9 @@ export class Game {
     const def = WEAPONS[item];
     if (!def) return false;
     const cur = p.weapons[def.slot];
-    if (cur && cur.id === item) {
-      // Already have it: buying again refills ammo for free-ish.
-      cur.reserve = def.reserve;
-      return false;
-    }
+    // Already have it: buying it again buys its ammo.
+    if (cur && cur.id === item && !def.grenade) return this.buyAmmo(p, def.slot, silent);
+    if (cur && cur.id === item) return false;
     if (p.money < def.price) return false;
     p.money -= def.price;
     p.weapons[def.slot] = makeWeapon(item);

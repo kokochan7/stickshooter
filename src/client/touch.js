@@ -33,11 +33,12 @@ const BUTTONS = [
   ['use', 'USE', 'use', ''],
   ['buy', 'BUY', 'buy', 'top'],
   ['scores', 'TAB', 'scores', 'top'],
+  ['ammo', 'AMMO', 'ammo', 'top'],
   ['pause', 'II', 'pause', 'top'],
 ];
 
 export class TouchControls {
-  // input: Input; actions: { buy, drop, scores(show), pause, knife, nade, cycle }
+  // input: Input; actions: { buy, ammo, drop, scores(show), pause, knife, nade, cycle }
   constructor(input, settings, actions) {
     this.input = input;
     this.settings = settings;
@@ -182,6 +183,7 @@ export class TouchControls {
       case 'nade': this.actions.nade(); break;
       case 'drop': this.actions.drop(); break;
       case 'buy': this.actions.buy(); break;
+      case 'ammo': this.actions.ammo(); break;
       case 'scores': this.actions.scores(true); break;
       case 'pause': this.actions.pause(); break;
     }

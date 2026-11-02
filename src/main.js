@@ -15,6 +15,7 @@ import { runAdmin, MAX_BOTS } from './sim/admin.js';
 import {
   TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT,
   FOOTSTEP_RANGE, ROUND_WIN_LIMIT, GRAVITY, NADE_GRAVITY,
+  BUY_TIME,
 } from './sim/constants.js';
 import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
@@ -57,6 +58,7 @@ const TOUCH = isTouchDevice();
 document.body.classList.toggle('touch', TOUCH);
 const touch = TOUCH ? new TouchControls(input, settings, {
   buy: () => setBuyMenu(!buyMenu.open),
+  ammo: () => buyAmmo(),
   drop: () => dropOrPickup(),
   scores: (show) => { if (scoresForced === null) showScoreboard(show); },
   pause: () => pauseGame(),
@@ -498,8 +500,20 @@ input.on('cursorClick', (c) => {
   if (el && el !== vcursor) el.click();
 });
 
+function buyTimeOver() {
+  alertMsg = { html: `<span class="alert">BUY TIME IS OVER (${BUY_TIME} SECONDS)</span>`, until: performance.now() + 1800 };
+}
+
+// N: ammo packs for the gun in your hands (CS 1.6 prices).
+function buyAmmo() {
+  if (!me?.alive) return;
+  if (!game.canBuy(me)) return buyTimeOver();
+  pendingActions.push({ type: 'buy', item: 'ammo' });
+}
+
 function setBuyMenu(open) {
   if (!me || !me.alive) open = false;
+  if (open && !game.canBuy(me)) { buyTimeOver(); open = false; }
   buyMenu.kitAllowed = game.objective === 'bomb' && me?.team === 'blue';
   buyMenu.show(open, me);
   input.menuKeys = open;
@@ -516,6 +530,7 @@ input.on('key', (code) => {
   if (consoleOpen) { if (code === 'Escape') setConsole(false); return; }
   const b = settings.binds;
   if (code === b.buy) setBuyMenu(!buyMenu.open);
+  else if (code === b.buyAmmo) buyAmmo();
   else if (code === 'Escape' && buyMenu.open) setBuyMenu(false);
   else if (code === 'Escape') pauseGame();
   else if (buyMenu.open && /^(Digit|Numpad)\d$/.test(code)) buyMenu.key(+code.slice(-1));
@@ -1048,6 +1063,8 @@ function footsteps(p, dt, x, z) {
 }
 
 function updateView(dt, alpha) {
+  // The buy menu closes when the buy time runs out.
+  if (buyMenu.open && me && !game.canBuy(me)) { setBuyMenu(false); buyTimeOver(); }
   // Characters.
   for (const p of game.players) {
     const v = view.viewFor(p);
@@ -1297,7 +1314,7 @@ function centerMessage() {
   if (me.alive && game.frozen(me)) {
     const n = Math.max(1, Math.ceil(me.frozenUntil - t));
     if (n !== lastCount) { lastCount = n; audio.play('beep', { volume: 0.5 }); }
-    const what = game.objective ? `Round ${r.n} · ${me.team === 'red' ? 'Red' : 'Blue'} team · buy now (${keyName(settings.binds.buy)})` : 'Get ready';
+    const what = game.objective ? `Round ${r.n} · ${me.team === 'red' ? 'Red' : 'Blue'} team · buy now (${keyName(settings.binds.buy)}, ammo ${keyName(settings.binds.buyAmmo)})` : 'Get ready';
     return `<span class="count">${n}</span><small>${what}</small>`;
   }
   if (lastCount !== null) {

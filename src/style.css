@@ -304,6 +304,7 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #touch .t-pause  { left: calc(12px + env(safe-area-inset-left)); }
 #touch .t-buy    { left: calc(64px + env(safe-area-inset-left)); }
 #touch .t-scores { left: calc(116px + env(safe-area-inset-left)); }
+#touch .t-ammo   { left: calc(168px + env(safe-area-inset-left)); font-size: 10px; }
 #touch .t-rotate {
   display: none; position: absolute; inset: 0; align-items: center; justify-content: center; text-align: center;
   background: rgba(10,12,16,.92); font: 700 18px var(--body); padding: 24px; z-index: 2;
