@@ -155,25 +155,12 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 .team-blue { color: #4f95ff; }
 @keyframes kfin { from { transform: translateX(20px); opacity: 0; } }
 
-#topbar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: baseline; padding: 8px 16px; border-radius: 12px; background: var(--panel); font-weight: 800; font-size: 20px; }
-#team-score { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; padding: 4px 12px; border-radius: 10px; background: var(--panel); font-weight: 800; }
-#team-score .ts { font-size: 22px; min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
-#team-score .ts.red { color: #ff5a5f; }
-#team-score .ts.blue { color: #4f95ff; }
-#team-score .ts-you { font-size: 11px; letter-spacing: 1.5px; }
-#topbar .sep { font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-right: 8px; }
-#perf { position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column; gap: 2px; font: 700 13px ui-monospace, monospace; text-shadow: 0 1px 2px #000; }
 #fps { color: #b8ffbf; }
 #room-info { color: #fff; }
 #net.good { color: #b8ffbf; }
 #net.ok { color: #ffe58a; }
 #net.bad { color: #ff8a8a; }
 
-.hud-bl { position: absolute; left: 20px; bottom: 18px; }
-.hud-br { position: absolute; right: 20px; bottom: 18px; text-align: right; }
-.money { font: 800 22px var(--body); color: #8dff9c; text-shadow: 0 2px 4px rgba(0,0,0,.5); margin-bottom: 6px; }
-.money span { opacity: .8; margin-right: 2px; }
-.money { position: relative; }
 /* "+$750" after a kill, floating up from the money. */
 #money-pop { position: absolute; left: 100%; bottom: 0; margin-left: 10px; font-style: normal; font-size: 20px; color: #b8ffbf; white-space: nowrap; opacity: 0; }
 #money-pop.show { animation: moneyPop 1.4s ease-out; }
@@ -184,26 +171,10 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #multikill.m4, #multikill.m5 { color: #ff8a3d; }
 #multikill.m6 { color: #ff4d4d; }
 @keyframes multiKill { 0% { opacity: 0; transform: translateX(-50%) scale(1.6); } 10% { opacity: 1; transform: translateX(-50%) scale(.96); } 18% { transform: translateX(-50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1); } }
-.vitals { display: flex; gap: 10px; }
-.vital { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 14px; background: var(--panel); }
-.vital svg { width: 22px; height: 22px; fill: #fff; }
-.vital.armor svg { fill: #8ec5ff; }
-.vital b { font: 800 30px var(--body); min-width: 48px; font-variant-numeric: tabular-nums; }
-.vital.low b { color: var(--red); }
-#helmet { font-style: normal; font-weight: 800; font-size: 11px; padding: 2px 5px; border-radius: 5px; background: #8ec5ff; color: #0b1a2a; }
-#weapon-name { font: 400 20px var(--title); letter-spacing: 1px; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,.5); margin-bottom: 2px; }
-.ammo { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 16px; border-radius: 14px; background: var(--panel); }
-.ammo b { font: 800 40px var(--body); font-variant-numeric: tabular-nums; }
-.ammo b.low { color: var(--red); }
-.ammo span { font: 700 18px var(--body); color: var(--muted); }
-.ammo.single span { display: none; }
-#nade-chip { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px; padding: 4px 10px; border-radius: 10px; background: var(--panel); font: 800 14px var(--body); color: #fff; }
 #nade-chip.hidden { display: none; }
 #nade-chip svg { width: 18px; height: 18px; fill: #8fae5a; }
 #underwater { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse at center, rgba(40,120,170,.28), rgba(10,50,85,.62)); opacity: 0; transition: opacity .12s; }
 #underwater.on { opacity: 1; }
-#reload-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; opacity: 0; }
-#reload-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
 
 #center-msg { position: absolute; left: 50%; top: 28%; transform: translateX(-50%); text-align: center; font-weight: 800; font-size: 20px; text-shadow: 0 2px 8px rgba(0,0,0,.7); white-space: pre-line; }
 #center-msg small { display: block; font-size: 14px; color: var(--muted); font-weight: 600; margin-top: 6px; }
@@ -291,12 +262,7 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 .buy-tip { margin: auto 0 0; font-size: 12px; color: rgba(255, 217, 138, .55); font-weight: 600; }
 
 /* ---------- Match: goal line, countdown, winner, pickup prompt ---------- */
-#top { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
-#top #topbar, #top #team-score { position: static; transform: none; }
-#goal { font: 800 11px var(--body); letter-spacing: 1.5px; color: rgba(255,255,255,.75); text-shadow: 0 1px 2px #000; }
 #goal:empty { display: none; }
-#center-msg .count { display: block; font: 400 110px/1 var(--title); color: #fff; text-shadow: 0 6px 0 #1b1f27, 0 10px 30px rgba(0,0,0,.5); animation: countPop .5s ease-out; }
-#center-msg .count.go { color: var(--accent); }
 @keyframes countPop { from { transform: scale(1.5); opacity: 0; } }
 #prompt { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: var(--panel); font-weight: 700; font-size: 16px; }
 #prompt kbd { font-size: 13px; padding: 3px 8px; background: var(--accent); color: var(--accent-ink); }
@@ -348,10 +314,6 @@ body.touch #vcursor { display: none; }
 .pause-hint { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
 .pause-hint kbd { font: 700 11px var(--body); padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.1); }
 body.touch .pause-hint { display: none; }
-/* Touch: keep the HUD out from under the buttons. Ammo goes top right and the
-   FPS readout drops below the pause / buy / scores buttons. */
-body.touch .hud-br { bottom: auto; top: 18px; }
-body.touch #perf { top: 140px; }
 
 /* ---------- Map picker (MAP button under PRACTICE opens it) ---------- */
 #maps .menu-card { width: min(560px, 100%); }
@@ -376,12 +338,7 @@ body.touch #perf { top: 140px; }
 .map-note b { color: var(--text); }
 
 /* ---------- Objective rounds ---------- */
-#round-timer { font: 400 30px/1 var(--title); letter-spacing: 1px; color: #fff; text-shadow: 0 3px 0 #1b1f27; padding: 2px 14px; border-radius: 10px; background: var(--panel); font-variant-numeric: tabular-nums; }
-#round-timer.low { color: #ff5a5f; }
-#round-timer.bomb { color: #ff5a5f; animation: bombPulse 1s ease-in-out infinite; }
 @keyframes bombPulse { 50% { opacity: .55; } }
-#bomb-tag { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 3px 10px; border-radius: 8px; background: rgba(224,70,74,.85); font: 800 13px var(--body); letter-spacing: 1.5px; }
-#bomb-tag svg { width: 18px; height: 18px; fill: #fff; }
 #bomb-tag.hidden { display: none; }
 #task-bar { position: absolute; left: 50%; top: 66%; transform: translateX(-50%); width: 340px; text-align: center; font: 800 14px var(--body); letter-spacing: 1px; text-shadow: 0 1px 2px #000; }
 #task-bar div { margin-top: 6px; height: 10px; border-radius: 5px; background: rgba(0,0,0,.5); overflow: hidden; border: 1px solid rgba(255,255,255,.25); }
@@ -404,3 +361,96 @@ body.touch #perf { top: 140px; }
 .console-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px 10px; }
 .console-row span { color: var(--accent); font-weight: 700; }
 #console-input { flex: 1; background: transparent; border: 0; outline: 0; color: #fff; font: inherit; padding: 4px 0; border-radius: 0; }
+
+/* ---------- In-match HUD: cyan, CS-style layout ---------- */
+/* Score box top middle, money top left, weapon list on the right, health and
+   armor bottom left, ammo bottom right, on a soft dark strip. */
+#hud { --hud: #3fe6ee; --hud-dim: rgba(63, 230, 238, .38); --hud-bg: rgba(8, 18, 24, .55); --hud-ink: #04161a; }
+#hud-frame { text-shadow: 0 1px 2px rgba(0,0,0,.55); }
+
+#top { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; }
+#scorebox { display: flex; align-items: stretch; height: 52px; border-radius: 8px; overflow: hidden; background: var(--hud-bg); border: 1px solid rgba(63,230,238,.25); }
+.sbx-side { width: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.sbx-side b { font: 400 28px/1 var(--title); color: #fff; font-variant-numeric: tabular-nums; }
+.sbx-side small { font: 800 9px var(--body); letter-spacing: 1px; color: rgba(255,255,255,.7); margin-top: 2px; }
+#scorebox.teams .sbx-side.l { background: rgba(255, 90, 95, .32); }
+#scorebox.teams .sbx-side.r { background: rgba(79, 149, 255, .32); }
+#scorebox.ffa .sbx-side { background: rgba(63, 230, 238, .14); }
+.sbx-mid { min-width: 92px; padding: 3px 10px 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+#round-timer { font: 400 22px/1 var(--title); letter-spacing: 1px; color: #fff; font-variant-numeric: tabular-nums; }
+#round-timer.low { color: #ff5a5f; }
+#round-timer.bomb { color: #ff5a5f; animation: bombPulse 1s ease-in-out infinite; }
+#top-rank { font: 400 22px/1 var(--title); color: var(--hud); }
+#top-rank:empty { display: none; }
+#top-rank small { font-size: 13px; color: rgba(255,255,255,.6); margin-left: 1px; }
+.sbx-row { display: flex; gap: 6px; }
+.sbx-row span { min-width: 30px; padding: 1px 5px; border-radius: 4px; text-align: center; font: 800 15px/1.2 var(--body); font-variant-numeric: tabular-nums; background: rgba(0,0,0,.35); }
+#scorebox.teams .sbx-row span:first-child { color: #ff7a7e; }
+#scorebox.teams .sbx-row span:last-child { color: #7ab0ff; }
+#scorebox.teams:not(:has(#round-timer:not(.hidden))) .sbx-row span { font-size: 22px; padding: 3px 8px; }
+#scorebox.ffa .sbx-row span:first-child { color: rgba(255,255,255,.6); font-size: 11px; letter-spacing: 1px; background: none; min-width: 0; padding-right: 0; }
+#scorebox.ffa .sbx-row span:last-child { background: none; color: #fff; min-width: 0; padding-left: 0; }
+#goal { font: 800 11px var(--body); letter-spacing: 1.5px; color: rgba(255,255,255,.75); text-shadow: 0 1px 2px #000; }
+#goal:empty { display: none; }
+
+.hud-tl { position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+#perf { display: flex; flex-direction: column; gap: 2px; font: 700 13px ui-monospace, monospace; }
+#perf:has(#fps:empty):has(#room-info.hidden):has(#net.hidden) { display: none; }
+.money { position: relative; font: 400 26px/1 var(--title); letter-spacing: .5px; color: var(--hud); }
+.money span { margin-right: 3px; }
+#bomb-tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 6px; background: rgba(224,70,74,.85); font: 800 13px var(--body); letter-spacing: 1.5px; }
+#bomb-tag svg { width: 18px; height: 18px; fill: #fff; }
+
+/* Weapon list. Glyphs are the white gun silhouettes, used as masks so they
+   take the HUD color. */
+#slots { position: absolute; right: 14px; top: 50%; transform: translateY(-38%); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.slot { position: relative; display: flex; align-items: center; justify-content: flex-end; min-width: 120px; height: 46px; padding: 4px 14px 4px 10px; border-radius: 6px; background: linear-gradient(90deg, transparent, rgba(8,18,24,.4)); color: var(--hud-dim); }
+.slot sup { position: absolute; right: 3px; top: 1px; font: 800 10px var(--body); color: rgba(255,255,255,.55); }
+.slot .g { display: block; height: 30px; width: 100px; background: currentColor; -webkit-mask: var(--g) right center / contain no-repeat; mask: var(--g) right center / contain no-repeat; }
+.slot.s-secondary .g { width: 70px; height: 32px; }
+.slot.s-melee .g, .slot.s-grenade .g { width: 72px; height: 22px; }
+.slot.s-grenade .g { width: 40px; height: 26px; }
+.slot em { font: 800 13px var(--body); font-style: normal; letter-spacing: 1px; text-transform: uppercase; }
+.slot .cnt { margin-left: 4px; font: 800 12px var(--body); color: #fff; }
+.slot svg.c4 { width: 46px; height: 24px; fill: currentColor; }
+.slot svg.c4 .cut { fill: var(--hud-ink); }
+.slot.s-bomb { color: rgba(255, 110, 100, .85); }
+.slot.on { color: var(--hud); background: linear-gradient(90deg, transparent, rgba(63,230,238,.16)); filter: drop-shadow(0 0 6px rgba(63,230,238,.45)); }
+
+/* Bottom strip with health / armor on the left and ammo on the right. */
+#hud-strip { position: absolute; left: 0; right: 0; bottom: 0; height: 9vh; min-height: 48px; background: linear-gradient(180deg, transparent, rgba(4,10,14,.45)); }
+.hud-bl { position: absolute; left: 18px; bottom: 12px; display: flex; gap: 26px; align-items: center; }
+.vital { display: flex; align-items: center; gap: 8px; color: var(--hud); }
+.vital svg { width: 24px; height: 24px; fill: currentColor; }
+.vital b { font: 400 36px/1 var(--title); min-width: 58px; font-variant-numeric: tabular-nums; }
+.vital .bar { width: 84px; height: 7px; border-radius: 4px; background: rgba(63,230,238,.18); overflow: hidden; }
+.vital .bar i { display: block; height: 100%; width: 100%; background: currentColor; border-radius: inherit; transition: width .2s; }
+.vital.low { color: var(--red); }
+.vital.low b { animation: pulse 1s ease-in-out infinite; }
+#helmet { font-style: normal; font-weight: 800; font-size: 11px; padding: 2px 5px; border-radius: 4px; background: var(--hud); color: var(--hud-ink); text-shadow: none; }
+.hud-br { position: absolute; right: 18px; bottom: 12px; text-align: right; }
+#weapon-name { font: 800 12px var(--body); letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,.7); margin-bottom: 2px; }
+.ammo { display: inline-flex; align-items: baseline; gap: 6px; color: var(--hud); }
+.ammo b { font: 400 40px/1 var(--title); font-variant-numeric: tabular-nums; }
+.ammo b.low { color: var(--red); }
+.ammo span { font: 400 22px/1 var(--title); color: var(--hud-dim); }
+.ammo svg.rounds { width: 30px; height: 24px; fill: currentColor; margin-left: 4px; align-self: center; }
+.ammo.single span, .ammo.single svg.rounds { display: none; }
+#nade-chip { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px; padding: 4px 10px; border-radius: 8px; background: var(--hud-bg); font: 800 14px var(--body); color: var(--hud); }
+#reload-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: rgba(63,230,238,.15); overflow: hidden; opacity: 0; }
+#reload-bar i { display: block; height: 100%; width: 0; background: var(--hud); }
+
+/* Start countdown: a light number high up, so the view stays clear. */
+#center-msg .count { display: block; font: 400 72px/1 var(--title); color: rgba(255,255,255,.92); text-shadow: 0 2px 0 rgba(0,0,0,.35); animation: countPop .5s ease-out; }
+#center-msg .count.go { color: var(--hud); }
+#center-msg:has(.count) { top: 16%; }
+#center-msg:has(.count) small { color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+
+/* Touch: the buttons own the corners. Money and FPS go below the pause /
+   buy / scores buttons, ammo goes top right, and the weapon list is left to
+   the touch buttons (swap, knife, grenade). */
+body.touch .hud-tl { top: 140px; }
+body.touch .hud-br { bottom: auto; top: 18px; }
+body.touch #slots { display: none; }
+body:not(.touch) #nade-chip { display: none; }
+body:not(.touch) #bomb-tag { display: none; }
