@@ -7,6 +7,8 @@
 //                                               map is used if the room is empty, otherwise you join the room's map
 //   { t: 'cmds', seq, vt, cmds: [cmd, ...] }   seq = seq of the LAST cmd in the batch,
 //                                               vt = server time the client is viewing others at
+//                                               (each cmd also carries its own vt, which lag
+//                                               compensation uses for the shots in that cmd)
 //   { t: 'ping', c }
 //   { t: 'admin', key, line, login }           admin console command; key = the ADMIN_KEY secret
 // server -> client
@@ -22,7 +24,7 @@
 //   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -57,6 +59,10 @@ const OWN = [
   'stamina', 'jumpHeld', 'tagMul', 'health', 'armor', 'helmet', 'money', 'kills', 'deaths', 'headshots',
   'weapons', 'active', 'lastActive', 'nextAttack', 'deployEnd', 'reloading', 'reloadEnd',
   'shotsFired', 'pistolAcc', 'accuracy', 'lastFire', 'punch', 'zoom', 'spin', 'landSpeed',
+  // The rest of the gun state, so the browser can replay the cmds the server
+  // hasn't seen yet and keep predicting its own shots and recoil.
+  'shotSeed', 'recoilDir', 'delayFire', 'decreaseShotsAt', 'fireHeld', 'altHeld', 'reloadHeld',
+  'shellNext', 'resumeZoom', 'resumeZoomAt',
   'nextStab', 'frozenUntil', 'life', 'task', 'defuser', 'useHeld',
   'nadePin', 'swimming', 'waterJump', 'wjDir',
 ];
@@ -106,6 +112,7 @@ export function sanitizeCmd(c) {
     jump: !!c.jump, duck: !!c.duck, walk: !!c.walk, fire: !!c.fire, alt: !!c.alt,
     reload: !!c.reload, slot, lastWeapon: !!c.lastWeapon, use: !!c.use,
     yaw: num(c.yaw, -1e6, 1e6), pitch: num(c.pitch, -Math.PI / 2, Math.PI / 2), actions,
+    vt: Number.isFinite(c.vt) ? c.vt : null,
   };
 }
 

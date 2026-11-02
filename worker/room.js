@@ -120,7 +120,9 @@ export class GameRoom extends DurableObject {
       });
       // A client that falls far behind skips ahead instead of lagging forever.
       while (c.queue.length > MAX_QUEUE) c.ack = c.queue.shift().seq;
-      if (Number.isFinite(msg.vt)) c.viewTime = msg.vt;
+      // Each cmd carries its own view time (used when it's run, below); the
+      // batch's is only a fallback.
+      if (Number.isFinite(msg.vt) && !cmds.some((x) => Number.isFinite(x?.vt))) c.viewTime = msg.vt;
     } else if (msg.t === 'admin' && c.player) {
       this.admin(ws, c, msg);
     } else if (msg.t === 'ping') {
@@ -240,6 +242,10 @@ export class GameRoom extends DurableObject {
       if (next) {
         c.ack = next.seq;
         c.last = next.cmd;
+        // Shots in this cmd are lag compensated to what the shooter was
+        // looking at when they made it, not when the batch arrived (the cmd
+        // may have waited in the queue a few ticks).
+        if (next.cmd.vt !== null) c.viewTime = next.cmd.vt;
         cmds.set(c.player.id, next.cmd);
       } else {
         // Nothing arrived in time: keep holding the same keys, but don't
@@ -290,14 +296,27 @@ export class GameRoom extends DurableObject {
     const c = [...this.clients.values()].find((x) => x.player === shooter);
     if (!c || !this.history.length) return null;
     const t = Math.max(this.game.time - MAX_LAG_COMP, Math.min(this.game.time, c.viewTime));
-    let snap = this.history[0];
-    for (const h of this.history) if (Math.abs(h.time - t) < Math.abs(snap.time - t)) snap = h;
+    // The two recorded ticks either side of t, blended the same way the
+    // shooter's browser blends snapshots, so the hitboxes sit exactly where
+    // the stickmen were drawn.
+    const hist = this.history;
+    let i = hist.length - 1;
+    while (i > 0 && hist[i - 1].time >= t) i--;
+    const b = hist[i], a = hist[Math.max(0, i - 1)];
+    const f = b.time > a.time ? Math.max(0, Math.min(1, (t - a.time) / (b.time - a.time))) : 1;
+    const before = new Map(a.players.map((s) => [s.p, s]));
     const saved = [];
-    for (const s of snap.players) {
-      const p = s.p;
+    for (const sb of b.players) {
+      const p = sb.p;
       if (p === shooter || !p.alive) continue;
+      let sa = before.get(p) ?? sb;
+      // A respawn between the two ticks: don't blend across the map.
+      if (Math.hypot(sa.pos[0] - sb.pos[0], sa.pos[2] - sb.pos[2]) > 1) sa = sb;
       saved.push({ p, pos: p.pos, yaw: p.yaw, ducked: p.ducked, duckAmount: p.duckAmount });
-      p.pos = s.pos; p.yaw = s.yaw; p.ducked = s.ducked; p.duckAmount = s.duckAmount;
+      p.pos = [sa.pos[0] + (sb.pos[0] - sa.pos[0]) * f, sa.pos[1] + (sb.pos[1] - sa.pos[1]) * f, sa.pos[2] + (sb.pos[2] - sa.pos[2]) * f];
+      p.yaw = f < 0.5 ? sa.yaw : sb.yaw;
+      p.ducked = f < 0.5 ? sa.ducked : sb.ducked;
+      p.duckAmount = sa.duckAmount + (sb.duckAmount - sa.duckAmount) * f;
     }
     return () => {
       for (const s of saved) {
