@@ -72,6 +72,10 @@ export class BotBrain {
     this.scanEvery = 0.085 + Math.random() * 0.05;
     this.bias = Math.random() * 1000;
     this.mood = 0;
+    // How this bot moves: how sharply it turns while running (rad/s), and
+    // how often it looks off to the side.
+    this.turnRate = 5 + Math.random() * 4;
+    this.glanceEvery = 1.2 + Math.random() * 2.5;
     brainsOf(game).set(player.id, this);
     this.reset();
   }
@@ -171,6 +175,16 @@ export class BotBrain {
     this.engageRoll = 0;
     this.pushing = false;
     this.rotateRoll = Math.random();
+    this.travelDir = null; // smoothed running direction
+    this.startAt = 0; // don't leave the spawn before this
+    this.paceUntil = 0; // next time we decide whether to walk or pause
+    this.walking = false;
+    this.pauseUntil = 0;
+    this.pauseYaw = 0;
+    this.glanceNext = 0;
+    this.glanceUntil = 0;
+    this.glanceOff = 0;
+    this.pathSeed = (Math.random() * 1e9) | 0; // this life's own idea of the best routes
     this.escapeUntil = 0;
     this.escapeCheckAt = 0;
     this.enemiesSeen = 0;
@@ -194,6 +208,9 @@ export class BotBrain {
       this.yaw = p.yaw; this.pitch = 0;
       if (!this.role || this.roleTeam !== p.team) this.pickRole();
       this.mood = (Math.random() - 0.5) * 0.3;
+      // Leave the spawn in our own time, not on the same tick as everyone.
+      this.startAt = Math.max(g.time, p.frozenUntil ?? 0) + Math.random() * (this.role === 'rush' ? 0.4 : 1.2);
+      this.glanceNext = g.time + Math.random() * this.glanceEvery;
       this.buyLoadout();
     }
     const t = g.time;
@@ -403,6 +420,7 @@ export class BotBrain {
           if (roaming) this.roamGoal = null;
         }
       }
+      let travel = false;
       if (!moveDir && !obj?.hold && this.path && this.pathIdx < this.path.length) {
         const wp = this.path[this.pathIdx];
         const dx = wp[0] - p.pos[0], dz = wp[1] - p.pos[2];
@@ -411,14 +429,52 @@ export class BotBrain {
         // is clear from where we actually stand; otherwise we'd cut the
         // corner into whatever the path was steering around.
         const next = this.path[this.pathIdx + 1];
-        if (d < 0.6 && (!next || d < 0.15 || this.nav.walkable(p.pos[0], p.pos[2], next[0], next[1]))) this.pathIdx++;
-        else if (d > 0.01) moveDir = this.spreadOut([dx / d, dz / d], 2.2, 0.6);
+        const nextClear = next && d < 2 && this.nav.walkable(p.pos[0], p.pos[2], next[0], next[1]);
+        if (d < 0.6 && (!next || d < 0.15 || nextClear)) this.pathIdx++;
+        else if (d > 0.01) {
+          let dir = [dx / d, dz / d];
+          // Round the corner: start bending towards the next waypoint as we
+          // get close, instead of walking to the point and pivoting.
+          if (nextClear) {
+            const nx = next[0] - p.pos[0], nz = next[1] - p.pos[2], nd = Math.hypot(nx, nz) || 1;
+            const k = 1 - d / 2;
+            const bx = dir[0] * (1 - k) + (nx / nd) * k, bz = dir[1] * (1 - k) + (nz / nd) * k;
+            const bl = Math.hypot(bx, bz);
+            if (bl > 0.1) dir = [bx / bl, bz / bl];
+          }
+          moveDir = this.spreadOut(dir, 2.2, 0.6);
+          travel = true;
+        }
         // Reached the detour point: next repath goes straight to the goal.
         if (this.via && Math.hypot(this.via[0] - p.pos[0], this.via[1] - p.pos[2]) < 2) this.via = 'done';
       }
+      // Pace: everyone moves at their own rhythm. Careful roles and slow
+      // plans walk quietly (shift) now and then, or stop for a moment to
+      // check an angle; nobody does that when the objective is urgent or
+      // they're chasing someone down.
+      const hurry = obj?.urgent || drop || goal === this.lastSeenPos || (g.objective === 'bomb' && g.bomb.state === 'planted') || obj?.escort;
+      if (travel) {
+        if (t < this.startAt) { moveDir = null; travel = false; }
+        else {
+          if (t >= this.paceUntil) {
+            const aggr = this.aggression();
+            const walkChance = hurry ? 0 : { anchor: 0.35, lurk: 0.5, flank: 0.25, support: 0.2, rush: 0.05 }[this.role] * (1.4 - aggr);
+            this.walking = Math.random() < walkChance;
+            this.paceUntil = t + 1.5 + Math.random() * 4;
+            if (!hurry && Math.random() < 0.25 * (1.2 - aggr)) {
+              this.pauseUntil = t + 0.3 + Math.random() * 1.1;
+              this.pauseYaw = this.yaw + (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 1.2);
+            }
+          }
+          if (t < this.pauseUntil && !hurry) { moveDir = null; travel = false; }
+          else cmd.walk = this.walking && !hurry;
+        }
+      }
       // Look where we walk, or towards the last thing we saw.
       let lookYaw = this.yaw;
-      if (t < this.holdUntil) {
+      if (t < this.pauseUntil && !moveDir) {
+        lookYaw = this.pauseYaw;
+      } else if (t < this.holdUntil) {
         // Holding: sweep slowly across the angle we picked.
         lookYaw = this.holdYaw + Math.sin(t * 0.7 + this.wobblePhase[0]) * 0.5;
       } else if (goal && t - this.lastSeenTime < 2) {
@@ -429,8 +485,18 @@ export class BotBrain {
         if (obj.duck && !p.reloading) cmd.duck = true;
       } else if (moveDir) {
         lookYaw = Math.atan2(-moveDir[0], -moveDir[1]);
+        // Glance off to the side now and then while moving.
+        if (t >= this.glanceNext) {
+          this.glanceOff = (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.9);
+          this.glanceUntil = t + 0.35 + Math.random() * 0.7;
+          this.glanceNext = this.glanceUntil + this.glanceEvery * (0.5 + Math.random());
+        }
+        if (t < this.glanceUntil) lookYaw += this.glanceOff;
+        lookYaw += Math.sin(t * 1.3 + this.wobblePhase[1]) * 0.08;
       }
       this.turnTowards(lookYaw, 0, dt, 0.5);
+      if (travel) moveDir = this.steer(moveDir, dt);
+      else this.travelDir = null;
       if (w && !p.reloading && w.clip < WEAPONS[w.id].clip * 0.5 && w.reserve > 0) cmd.reload = true;
       this.burstLeft = 0;
       if (def?.zoomLevels && p.zoom > 0) cmd.alt = this.pressAlt();
@@ -1069,7 +1135,7 @@ export class BotBrain {
       pull = [p.pos[0], p.pos[2]]; pullW = 1;
     }
     let best = null, bestScore = -Infinity;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 14; i++) {
       const [x, z] = nav.randomOpenPoint(Math.random);
       const [ci, cj] = nav.cellOf(x, z);
       if (!nav.isMain(ci, cj)) continue;
@@ -1077,6 +1143,7 @@ export class BotBrain {
       let apart = 40;
       for (const h of heads) apart = Math.min(apart, Math.hypot(x - h[0], z - h[1]));
       let score = Math.min(apart, 25) * (this.role === 'lurk' ? 2 : 1);
+      if (apart < 5) score -= 20; // never the same spot as a teammate
       if (this.role === 'rush') score += Math.min(self, 40) * 0.6;
       else if (this.role === 'anchor') score -= Math.max(0, self - 20) * 0.8;
       if (pull) score -= Math.max(0, Math.hypot(x - pull[0], z - pull[1]) - 8) * pullW;
@@ -1098,12 +1165,30 @@ export class BotBrain {
       this.via = detour ? this.pickVia(gx, gz, detour === true ? 0 : detour) : null;
     }
     if (Array.isArray(this.via)) {
-      const a = nav.findPath(p.pos[0], p.pos[2], this.via[0], this.via[1]);
-      const b = a && nav.findPath(this.via[0], this.via[1], gx, gz);
+      const a = nav.findPath(p.pos[0], p.pos[2], this.via[0], this.via[1], this.pathNoise());
+      const b = a && nav.findPath(this.via[0], this.via[1], gx, gz, this.pathNoise());
       if (a && b) return a.concat(b);
       this.via = null;
     }
-    return nav.findPath(p.pos[0], p.pos[2], gx, gz);
+    return nav.findPath(p.pos[0], p.pos[2], gx, gz, this.pathNoise());
+  }
+
+  pathNoise() {
+    return { seed: this.pathSeed, amt: 0.5 };
+  }
+
+  // Turn the running direction towards dir at our own turn rate, so bots
+  // run in curves rather than snapping between headings.
+  steer(dir, dt) {
+    if (!this.travelDir) { this.travelDir = dir; return dir; }
+    const a = Math.atan2(this.travelDir[1], this.travelDir[0]);
+    const diff = wrapAngle(Math.atan2(dir[1], dir[0]) - a);
+    // A U-turn (or a blocked corner) isn't worth easing into.
+    if (Math.abs(diff) > 2.4) { this.travelDir = dir; return dir; }
+    const step = this.turnRate * dt;
+    const na = a + Math.max(-step, Math.min(step, diff));
+    this.travelDir = [Math.cos(na), Math.sin(na)];
+    return this.travelDir;
   }
 
   // A point off to one side of the straight line to (gx, gz), not too far

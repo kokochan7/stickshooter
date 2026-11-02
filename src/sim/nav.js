@@ -177,7 +177,10 @@ export class NavGrid {
   }
 
   // A* from world point a to b. Returns a list of [x, z] waypoints or null.
-  findPath(ax, az, bx, bz) {
+  // noise (optional): { seed, amt } adds up to amt extra cost per step in
+  // patches about 3 m across, different for every seed, so each bot has its
+  // own idea of the best way and two bots rarely walk the same line.
+  findPath(ax, az, bx, bz, noise = null) {
     // Standing in a blocked cell (hugging a wall): step out into the main
     // area, not onto whatever roof or ledge happens to be nearest.
     const c0 = this.cellOf(ax, az);
@@ -222,7 +225,7 @@ export class NavGrid {
         if (seen[n] === closedMark) continue;
         if (!step(cur, n)) continue;
         if (di && dj && (!step(cur, cj * W + ci + di) || !step(cur, (cj + dj) * W + ci))) continue;
-        const g = gc + (di && dj ? 1.4142 : 1) * (swim[n] ? SWIM_COST : 1);
+        const g = gc + (di && dj ? 1.4142 : 1) * ((swim[n] ? SWIM_COST : 1) + (noise ? noise.amt * patchNoise(ni, nj, noise.seed) : 0));
         if (seen[n] !== stamp || g < gScore[n]) {
           seen[n] = stamp;
           gScore[n] = g;
@@ -251,6 +254,14 @@ export class NavGrid {
     }
     return out;
   }
+}
+
+// 0..1, constant over 6-cell (3 m) patches, from a seed.
+function patchNoise(i, j, seed) {
+  let h = (Math.floor(i / 6) * 374761393 + Math.floor(j / 6) * 668265263 + seed * 1442695041) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
 // Binary min-heap on typed arrays (grows as needed); duplicates are allowed
