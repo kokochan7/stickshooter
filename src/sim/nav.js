@@ -25,6 +25,7 @@ export class NavGrid {
     this.blocked = new Uint8Array(this.w * this.h);
     this.floor = new Float32Array(this.w * this.h);
     this.swim = new Uint8Array(this.w * this.h); // 1 = deep water you swim through
+    this.surf = new Float32Array(this.w * this.h); // water surface over swum cells
     // A* gives up after this many steps. Big maps need room for a path from
     // one end to the other (a few times the cells on the way).
     this.maxIter = Math.max(20000, this.w * this.h);
@@ -54,7 +55,7 @@ export class NavGrid {
         }
         if (floor === null) { this.blocked[k] = 1; this.floor[k] = -100; continue; }
         this.floor[k] = floor;
-        if (surf !== null && floor < surf - 1) this.swim[k] = 1;
+        if (surf !== null && floor < surf - 1) { this.swim[k] = 1; this.surf[k] = surf; }
         const r = CLEARANCE;
         // Anything between knee and head height above the floor blocks
         // walking. A swimmer's head is above the water, so in deep water
@@ -105,7 +106,10 @@ export class NavGrid {
   // Can you walk from cell a to its neighbor b (by index)?
   canStep(a, b) {
     const up = this.floor[b] - this.floor[a];
-    return up <= MAX_STEP || (this.swim[a] === 1 && up <= CLIMB_OUT);
+    if (up <= MAX_STEP) return true;
+    // A swimmer floats with their feet about 1.5 m under the surface and
+    // climbs out from there, however deep the water is.
+    return this.swim[a] === 1 && this.floor[b] - (this.surf[a] - 1.5) <= CLIMB_OUT;
   }
 
   isSwim(x, z) {

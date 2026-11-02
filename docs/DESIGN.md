@@ -75,7 +75,7 @@ The player stickman is white with no headband or vest. Skins come later
   New maps are written with `src/maps/builder.js` (walls with doors,
   buildings, stairs, crates, pines, palms, water, footbridges and high
   bridges you can swim under). Water is a hole in the ground with a riverbed
-  2.2 m down (it was 0.4 m and wadeable until the swimming update); see
+  4.4 m down (Kenny doubled it from 2.2 m; it started at 0.4 m and wadeable); see
   section 4 for swimming.
 - Teams on a `bomb`/`hostage` map turns on `src/sim/objective.js`: rounds
   (4 s buy freeze, 1:55 bomb / 2:30 hostage, 5 s round end, first to 8),
