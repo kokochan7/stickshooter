@@ -59,7 +59,7 @@ export function loadSettings() {
     s.touchSens = clamp(+s.touchSens || DEFAULT_SETTINGS.touchSens, 0.3, 3);
     s.binds = { ...DEFAULT_BINDS, ...(saved.binds ?? {}) };
     delete s.binds.thirdPerson; // third person was removed
-    s.bots = clamp(Math.round(+s.bots) || 0, 0, 32);
+    s.bots = clamp(Math.round(+s.bots) || 0, 0, MAX_BOTS);
     if (s.mode !== 'teams') s.mode = 'ffa';
     if (typeof s.map !== 'string') s.map = DEFAULT_SETTINGS.map; // unknown ids fall back in getMap
     return s;
@@ -475,29 +475,40 @@ export class Hud {
     const head = title
       ? `<div class="sb-head">${title}</div>`
       : `<div class="sb-bar"><span>${teams ? 'TEAMS' : 'FREE FOR ALL'}</span><span>${players.length} PLAYER${players.length === 1 ? '' : 'S'}</span></div>`;
-    let cols, longest;
+    // Split a ranking into k columns, top of the ranking first.
+    const chunk = (list, k) => {
+      const per = Math.ceil(list.length / k) || 1;
+      return Array.from({ length: k }, (_, i) => [list.slice(i * per, (i + 1) * per), i * per]);
+    };
+    let cols, longest, count;
     if (teams) {
       const lists = ['red', 'blue'].map((t) => players.filter((p) => p.team === t).sort(rank));
-      longest = Math.max(...lists.map((l) => l.length));
+      // A team over 22 gets two columns of its own (up to 64 a side).
+      const subs = lists.map((l) => chunk(l, l.length > 22 ? 2 : 1));
+      longest = Math.max(...subs.flat().map(([l]) => l.length));
+      count = subs.flat().length;
       cols = ['red', 'blue'].map((t, i) => {
         const alive = lists[i].filter((p) => p.alive).length;
-        return `<div class="sb-col sb-team ${t}"><div class="sb-title"><span>${t === 'red' ? 'RED' : 'BLUE'}<small>${alive}/${lists[i].length} ALIVE</small></span><b>${kills[t]}</b></div>${table(lists[i], 0)}</div>`;
+        return `<div class="sb-col sb-team ${t}" style="flex-grow:${subs[i].length}"><div class="sb-title"><span>${t === 'red' ? 'RED' : 'BLUE'}<small>${alive}/${lists[i].length} ALIVE</small></span><b>${kills[t]}</b></div><div class="sb-sub">${subs[i].map(([l, from]) => table(l, from)).join('')}</div></div>`;
       });
     } else {
       const list = [...players].sort(rank);
-      const split = list.length > 12;
-      const half = Math.ceil(list.length / 2);
-      longest = split ? half : list.length;
-      cols = split
-        ? [list.slice(0, half), list.slice(half)].map((l, i) => `<div class="sb-col">${table(l, i * half)}</div>`)
-        : [`<div class="sb-col">${table(list, 0)}</div>`];
+      const n = list.length;
+      const parts = chunk(list, n <= 12 ? 1 : n <= 44 ? 2 : n <= 72 ? 3 : 4);
+      longest = parts[0][0].length;
+      count = parts.length;
+      cols = parts.map(([l, from]) => `<div class="sb-col">${table(l, from)}</div>`);
     }
-    const density = longest > 16 ? 'tight' : longest > 10 ? 'compact' : '';
-    sb.className = `panel ${cols.length > 1 ? 'wide' : ''} ${density}`;
+    const density = longest > 24 ? 'micro' : longest > 16 ? 'tight' : longest > 10 ? 'compact' : '';
+    sb.className = `panel cols-${Math.min(count, 4)} ${density}`;
     sb.style.setProperty('--sb-fit', '1');
     sb.innerHTML = `${head}<div class="sb-cols">${cols.join('')}</div>`;
-    const room = (sb.parentElement?.clientHeight || 0) - 24;
-    if (room > 0 && sb.offsetHeight > room) sb.style.setProperty('--sb-fit', String(room / sb.offsetHeight));
+    // Last resort (huge rooms on small or narrow screens): scale to fit.
+    const frame = sb.parentElement;
+    if (frame) {
+      const fit = Math.min(1, (frame.clientHeight - 24) / sb.offsetHeight, (frame.clientWidth - 24) / sb.offsetWidth);
+      if (fit > 0 && fit < 1) sb.style.setProperty('--sb-fit', String(fit));
+    }
   }
 }
 

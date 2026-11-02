@@ -157,3 +157,10 @@ export const NADE_BOUNCE = 0.45; // restitution off walls and floors
 export const NADE_RADIUS = 0.06; // meters (for collision)
 // Other players' footsteps fade out completely at this distance (meters).
 export const FOOTSTEP_RANGE = 32;
+
+// Bot names: art supplies. Past the list they get numbered ("Inkblot 2").
+export const BOT_NAMES = [
+  'Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil', 'Eraser', 'Crayon', 'Marker', 'Quill',
+  'Pastel', 'Chalk', 'Easel', 'Canvas', 'Palette', 'Stencil', 'Sharpie', 'Gouache', 'Sepia', 'Smear', 'Blotter', 'Nib',
+  'Squiggle', 'Hatch', 'Stipple', 'Outline', 'Shade', 'Tracer', 'Highlighter', 'Brush',
+];
