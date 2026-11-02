@@ -505,11 +505,13 @@ rebought on respawn with the rest of the loadout; it can't be dropped. CS 1.6
 
 - Hold fire to pull the pin (0.35 s before it can leave your hand), let go to
   throw. Mouse 2 lobs it underhand at half speed.
-- Throw: 10 degrees above your aim, speed `(90 - pitch) * 6` u/s capped at
-  750 (looking up throws slower), plus your own velocity. Gravity x0.55.
+- Throw: 10 degrees above your aim, speed `(90 - pitch) * 8` u/s capped at
+  1000 (looking up throws slower), plus your own velocity. Gravity x0.5.
+  (CS is `* 6`, capped at 750, gravity x0.55; Kenny asked for a longer throw.)
 - It bounces off walls and floors (restitution 0.45, then x0.8), rolls to a
   stop, and goes off 1.5 s after the throw. In water it slows right down.
-- Damage 100 at the blast, falling off linearly to 0 at 350 u (8.75 m),
+- Damage 100 at the blast, falling off linearly to 0 at 525 u (13 m; CS is
+  350 u, Kenny asked for a bigger blast),
   only to players the blast can see (body or head). It counts as a chest hit,
   so kevlar halves it. It hurts enemies and the thrower, never teammates.
 - Your last gun comes back 0.5 s after the throw. Bots don't use grenades yet.

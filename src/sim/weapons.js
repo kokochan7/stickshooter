@@ -204,14 +204,15 @@ W.knife = {
 
 // CS 1.6 HE grenade. Bought from the Equipment page, carried in its own slot
 // (key 4), one at a time. Damage is 100 at the blast, falling off linearly
-// to nothing at 350 units (8.75 m); kevlar halves it like any chest hit. It
+// to nothing at 525 units (13 m, 1.5x CS's 350 at Kenny's request); kevlar
+// halves it like any chest hit. Thrown harder than CS too (1000 u/s max). It
 // doesn't go through walls: you have to be in line of sight of the blast.
 W.hegrenade = {
   name: 'HE Grenade', slot: 'grenade', category: 'Grenades', price: 300,
   damage: 100, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
   cycle: 0.5, auto: false, clip: 1, reserve: 0, deploy: 0.6, speed: 250,
   accuracy: { type: 'none' }, kick: { punch: [0, 0] },
-  grenade: { radius: 350, maxSpeed: 750, lobMul: 0.5 },
+  grenade: { radius: 525, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
 };
 
 for (const [id, w] of Object.entries(W)) {

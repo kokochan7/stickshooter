@@ -90,7 +90,7 @@ test('a lob goes about half as far as a full throw', () => {
   assert.ok(lob < full * 0.75 && lob > 1, `lob ${lob.toFixed(1)} m vs throw ${full.toFixed(1)} m`);
 });
 
-test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past 350 units', () => {
+test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past the 13 m radius', () => {
   const { g, a, b } = setup();
   put(b, 0, 10);
   blast(g, a, 0, 10.5);
@@ -107,14 +107,14 @@ test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past 350 units', (
 
   const m = setup();
   put(m.b, 0, 10);
-  blast(m.g, m.a, 0, 10 + 5); // 5 m away: about 100 * (1 - 200/350)
+  blast(m.g, m.a, 0, 10 + 5); // 5 m away
   const mid = 100 - m.b.health;
-  const want = 100 * (1 - Math.hypot(5, 0.78) / U / 350);
+  const want = 100 * (1 - Math.hypot(5, 0.78) / U / WEAPONS.hegrenade.grenade.radius);
   assert.ok(Math.abs(mid - want) < 2, `at 5 m: ${mid} (want ~${want.toFixed(0)})`);
 
   const f = setup();
   put(f.b, 0, 10);
-  blast(f.g, f.a, 0, 10 + 9);
+  blast(f.g, f.a, 0, 10 + 14);
   assert.equal(f.b.health, 100, 'out of range');
 });
 
@@ -181,6 +181,6 @@ test('the grenade costs and does what CS 1.6 says', () => {
   const he = WEAPONS.hegrenade;
   assert.equal(he.price, 300);
   assert.equal(he.damage, 100);
-  assert.equal(he.grenade.radius, 350);
+  assert.equal(he.grenade.radius, 525);
   assert.equal(he.slot, 'grenade');
 });
