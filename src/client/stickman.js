@@ -165,7 +165,8 @@ export class Stickman {
     if (this.gunId === id) return;
     if (this.gun) this.aim.remove(this.gun.group);
     this.gunId = id;
-    this.gun = id ? buildGun(id) : null;
+    // Third-person guns use the lighter build (no tiny details).
+    this.gun = id ? buildGun(id, true) : null;
     if (this.gun) this.aim.add(this.gun.group);
   }
 
