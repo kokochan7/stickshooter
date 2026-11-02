@@ -143,10 +143,10 @@ export const BUOYANCY = 9; // m/s^2 pulling you up to the surface
 export const SWIM_PITCH_DEADZONE = 22; // degrees of look up/down that still swims level
 export const WATER_JUMP_TIME = 0.6;
 // HE grenade (CS 1.6 wpn_hegrenade / ggrenade.cpp): 1.5 s fuse, 100 damage
-// falling off to 0 at 350 units, gravity 0.55, bounces off walls. Hold fire
+// falling off to 0 at the radius in weapons.js, low gravity, bounces off walls. Hold fire
 // to pull the pin, let go to throw; Mouse 2 lobs it underhand.
 export const NADE_FUSE = 1.5;
-export const NADE_GRAVITY = 0.55;
+export const NADE_GRAVITY = 0.5;
 export const NADE_PIN_TIME = 0.35; // pulling the pin before it can leave your hand
 export const NADE_SWITCH_TIME = 0.5; // after a throw, the hand comes back with your gun
 export const NADE_BOUNCE = 0.45; // restitution off walls and floors
