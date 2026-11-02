@@ -27,9 +27,41 @@ export function hullHeight(p) {
   return p.ducked ? DUCK_HEIGHT : STAND_HEIGHT;
 }
 
+// Other players are solid too (CS 1.6 hulls): the boxes of everyone near
+// the mover, set for the length of one movePlayer call.
+let solids = null;
+
 function hullOverlaps(world, x, y, z, h) {
   const r = PLAYER_RADIUS;
-  return world.overlaps(x - r, y, z - r, x + r, y + h, z + r);
+  if (world.overlaps(x - r, y, z - r, x + r, y + h, z + r)) return true;
+  if (solids) for (const b of solids) if (boxHit(b, x - r, y, z - r, x + r, y + h, z + r)) return true;
+  return false;
+}
+
+const EPS = 1e-4;
+function boxHit(b, minX, minY, minZ, maxX, maxY, maxZ) {
+  return minX < b.max[0] - EPS && maxX > b.min[0] + EPS &&
+    minY < b.max[1] - EPS && maxY > b.min[1] + EPS &&
+    minZ < b.max[2] - EPS && maxZ > b.min[2] + EPS;
+}
+
+// World boxes plus player boxes overlapping the AABB.
+function overlapping(world, minX, minY, minZ, maxX, maxY, maxZ, out) {
+  world.overlapping(minX, minY, minZ, maxX, maxY, maxZ, out);
+  if (solids) for (const b of solids) if (boxHit(b, minX, minY, minZ, maxX, maxY, maxZ)) out.push(b);
+  return out;
+}
+
+// The solid box of a player standing at pos (feet), ducked or not.
+export function playerBox(pos, ducked) {
+  const r = PLAYER_RADIUS, h = ducked ? DUCK_HEIGHT : STAND_HEIGHT;
+  return { min: [pos[0] - r, pos[1], pos[2] - r], max: [pos[0] + r, pos[1] + h, pos[2] + r] };
+}
+
+// Does p's hull overlap box b right now?
+export function hullTouches(p, b) {
+  const r = PLAYER_RADIUS;
+  return boxHit(b, p.pos[0] - r, p.pos[1], p.pos[2] - r, p.pos[0] + r, p.pos[1] + hullHeight(p), p.pos[2] + r);
 }
 
 // Move along one axis and push out of anything we hit.
@@ -38,7 +70,7 @@ function moveAxis(world, p, axis, delta, h, scratch) {
   const pos = p.pos;
   pos[axis] += delta;
   const r = PLAYER_RADIUS;
-  const hits = world.overlapping(pos[0] - r, pos[1], pos[2] - r, pos[0] + r, pos[1] + h, pos[2] + r, scratch);
+  const hits = overlapping(world, pos[0] - r, pos[1], pos[2] - r, pos[0] + r, pos[1] + h, pos[2] + r, scratch);
   if (hits.length === 0) return false;
   for (const b of hits) {
     if (axis === 1) {
@@ -95,7 +127,13 @@ function capBhopSpeed(vel, maxSpeed) {
 // maxSpeed: meters/second, from the held weapon.
 // waterY: height of the water surface over this spot, or null if there's no
 // water here. Deep enough water and you swim instead of walking.
-export function movePlayer(world, p, cmd, dt, maxSpeed, waterY = null) {
+// others: boxes of other players (playerBox) that block this move, or null.
+export function movePlayer(world, p, cmd, dt, maxSpeed, waterY = null, others = null) {
+  solids = others && others.length ? others : null;
+  try { moveInner(world, p, cmd, dt, maxSpeed, waterY); } finally { solids = null; }
+}
+
+function moveInner(world, p, cmd, dt, maxSpeed, waterY) {
   const vel = p.vel;
   if (p.waterJump > 0) p.waterJump = Math.max(0, p.waterJump - dt);
   const swim = waterY !== null && waterY - p.pos[1] > SWIM_DEPTH && !(p.waterJump > 0);
@@ -212,7 +250,7 @@ export function movePlayer(world, p, cmd, dt, maxSpeed, waterY = null) {
   if (vel[1] <= 0.001) {
     const r = PLAYER_RADIUS;
     let ground = null;
-    for (const b of world.overlapping(p.pos[0] - r, p.pos[1] - 0.03, p.pos[2] - r, p.pos[0] + r, p.pos[1] + 0.01, p.pos[2] + r, scratch)) {
+    for (const b of overlapping(world, p.pos[0] - r, p.pos[1] - 0.03, p.pos[2] - r, p.pos[0] + r, p.pos[1] + 0.01, p.pos[2] + r, scratch)) {
       if (!ground || b.max[1] > ground.max[1]) ground = b;
     }
     if (ground) {
@@ -231,7 +269,7 @@ export function movePlayer(world, p, cmd, dt, maxSpeed, waterY = null) {
     } else if (wasOnGround && !p.justJumped) {
       // Walking off a stair edge: stick to the ground if it is just below.
       let top = -Infinity;
-      for (const b of world.overlapping(p.pos[0] - r, p.pos[1] - STEP_HEIGHT - 0.01, p.pos[2] - r, p.pos[0] + r, p.pos[1], p.pos[2] + r, scratch)) {
+      for (const b of overlapping(world, p.pos[0] - r, p.pos[1] - STEP_HEIGHT - 0.01, p.pos[2] - r, p.pos[0] + r, p.pos[1], p.pos[2] + r, scratch)) {
         if (b.max[1] <= p.pos[1] + 1e-4) top = Math.max(top, b.max[1]);
       }
       if (top > -Infinity) {

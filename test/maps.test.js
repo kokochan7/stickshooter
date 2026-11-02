@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game, emptyCmd } from '../src/sim/game.js';
 import { BotBrain } from '../src/sim/bot.js';
-import { World } from '../src/sim/world.js';
+import { World, zoneFloor } from '../src/sim/world.js';
 import { NavGrid } from '../src/sim/nav.js';
 import { MAP_LIST, MAPS, getMap } from '../src/maps/index.js';
 import { subtractRects } from '../src/maps/builder.js';
@@ -426,6 +426,21 @@ test('big teams never spawn two players on one spot, and stay on solid ground', 
       for (const a of g.players) assert.ok(a.pos[1] > -0.2, `${map.id}: ${a.name} fell`);
       if (g.objective) { for (const p of g.players) if (p.team === 'red') p.alive = false; run(g, 10); }
       else break;
+    }
+  }
+});
+
+test('bomb site and rescue paint lies on the floor, not on crates or roofs', () => {
+  for (const map of MAP_LIST) {
+    const world = new World(map.boxes);
+    const zones = [...Object.entries(map.sites ?? {}), ...(map.rescue ?? []).map((r) => ['rescue', r])];
+    for (const [name, r] of zones) {
+      const z = zoneFloor(world, r);
+      assert.equal(z.y, 0, `${map.id} ${name} is painted at ground level`);
+      const area = z.cells.reduce((s, c) => s + (c[2] - c[0]) * (c[3] - c[1]), 0);
+      const total = (r.max[0] - r.min[0]) * (r.max[1] - r.min[1]);
+      assert.ok(area > total * 0.8, `${map.id} ${name} covers most of the zone`);
+      assert.ok(z.label.r >= 2.5, `${map.id} ${name} letter sits on open floor (r ${z.label.r})`);
     }
   }
 });
