@@ -5,7 +5,7 @@ import { BotBrain } from '../src/sim/bot.js';
 import { World, zoneFloor } from '../src/sim/world.js';
 import { NavGrid } from '../src/sim/nav.js';
 import { MAP_LIST, MAPS, getMap } from '../src/maps/index.js';
-import { subtractRects } from '../src/maps/builder.js';
+import { subtractRects, WATER_DEPTH } from '../src/maps/builder.js';
 import { siteAt, applyObjectiveInfo } from '../src/sim/objective.js';
 import {
   TICK_DT, PLAYER_RADIUS, STAND_HEIGHT, ROUND_FREEZE, ROUND_END_TIME, ROUND_WIN_LIMIT, BOMB_TIMER,
@@ -167,7 +167,7 @@ for (const map of MAP_LIST) {
         run(g, 4, (p) => hold(p, { fwd: 1, duck: true }));
         assert.ok(a.alive, `still alive (${a.pos.map((v) => v.toFixed(2))})`);
         assert.ok(a.pos[0] > min[0] && a.pos[0] < max[0] && a.pos[2] > min[1] && a.pos[2] < max[1], `inside the map (${a.pos.map((v) => v.toFixed(2))})`);
-        assert.ok(a.pos[1] > -3, `above the riverbed (${a.pos[1].toFixed(2)})`);
+        assert.ok(a.pos[1] > -WATER_DEPTH - 0.05, `above the riverbed (${a.pos[1].toFixed(2)})`);
       });
     }
   }

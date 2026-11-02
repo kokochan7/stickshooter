@@ -4,7 +4,7 @@
 // and a see-through surface drawn on top. It's deep (WATER_DEPTH): you swim
 // in it (movement.js) and climb out by swimming into a bank.
 
-export const WATER_DEPTH = 2.2; // riverbed below ground level
+export const WATER_DEPTH = 4.4; // riverbed below ground level (doubled from 2.2 at Kenny's request)
 export const WATER_LEVEL = -0.1; // water surface
 
 export function mapBuilder(palette = {}) {
