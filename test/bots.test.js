@@ -174,7 +174,7 @@ test('Red bots carry the bomb in, plant it, and hold posts that can see it', () 
   const brains = [bot(g, 'red'), bot(g, 'red'), bot(g, 'red')];
   g.restartMatch();
   assert.ok(runBots(g, brains, ROUND_FREEZE + ROUND_TIME.bomb, (g) => g.bomb.state === 'planted'), `bomb is ${g.bomb.state}`);
-  runBots(g, brains, 15);
+  runBots(g, brains, 25); // on a CS-sized map the flank can be a long walk away when the bomb goes down
   const b = g.bomb;
   let watching = 0;
   for (const br of brains) {

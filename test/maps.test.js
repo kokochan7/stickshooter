@@ -63,10 +63,12 @@ for (const map of MAP_LIST) {
     const mid = (r) => [(r.min[0] + r.max[0]) / 2, (r.min[1] + r.max[1]) / 2];
     assert.ok(walk(red, blue) > (map.type === 'dm' ? 55 : 90), `${map.id}: spawns only ${walk(red, blue).toFixed(0)} m apart`);
     if (map.type === 'dm') {
-      // Both teams reach the middle in the same time.
-      const c = [(map.bounds.min[0] + map.bounds.max[0]) / 2, (map.bounds.min[1] + map.bounds.max[1]) / 2];
-      const r = walk(red, c), b = walk(blue, c);
-      assert.ok(Math.abs(r - b) < 0.1 * Math.max(r, b), `${map.id}: red ${r.toFixed(0)} m vs blue ${b.toFixed(0)} m to the middle`);
+      // The map is point-symmetric: each team walks the same distance to
+      // any spot as the other team does to its twin.
+      for (const [x, z] of [[8, 0], [0, 12], [-15, 6], [20, -20]]) {
+        const r = walk(red, [x, z]), b = walk(blue, [-x, -z]);
+        assert.ok(Math.abs(r - b) < 0.05 * Math.max(r, b), `${map.id}: red ${r.toFixed(0)} m vs blue ${b.toFixed(0)} m`);
+      }
     } else if (map.type === 'bomb') {
       // Both teams walk to every site; Blue (defending) gets there first,
       // but not by much more than CS's usual head start.
@@ -105,14 +107,19 @@ for (const map of MAP_LIST) {
   });
 }
 
+// canal.js is laid out at 1/K of its final size (scaleMap); these tests use
+// its layout coordinates.
+const K = 1.5;
+const C = (x, y, z) => [x * K, y, z * K];
+
 test('deep water: you swim, float with your eyes above the surface, dive and climb out', () => {
   const g = new Game(MAPS.canal, { seed: 1 });
   const a = g.addPlayer({ name: 'A' });
   g.spawn(a);
-  // The canal runs east-west across the map: z -16..-10, surface at -0.1.
-  const surf = g.waterSurface(-29, -13);
+  // The canal runs east-west across the map: z -16..-10 (times K), surface at -0.1.
+  const surf = g.waterSurface(-29 * K, -13 * K);
   assert.equal(surf, -0.1);
-  place(a, -29, 0.5, -13); a.yaw = -Math.PI / 2;
+  place(a, ...C(-29, 0.5, -13)); a.yaw = -Math.PI / 2;
   run(g, 3, (p) => hold(p));
   assert.ok(a.swimming, 'swimming');
   const eye = g.eyePos(a)[1];
@@ -123,17 +130,17 @@ test('deep water: you swim, float with your eyes above the surface, dive and cli
   run(g, 3, (p) => hold(p));
   assert.ok(g.eyePos(a)[1] > surf, 'floated back up');
   // Swimming is slower than running.
-  place(a, -16, -1.55, -15); a.yaw = -Math.PI / 2; // east, clear of boats and bridges
+  place(a, ...C(-16, -1.55, -15)); a.yaw = -Math.PI / 2; // east, clear of boats and bridges
   run(g, 1.5, (p) => hold(p, { fwd: 1 }));
   const swim = Math.hypot(a.vel[0], a.vel[2]);
-  place(a, -29, 0, -21); a.yaw = -Math.PI / 2;
+  place(a, ...C(-29, 0, -21)); a.yaw = -Math.PI / 2;
   run(g, 1.5, (p) => hold(p, { fwd: 1 }));
   const dry = Math.hypot(a.vel[0], a.vel[2]);
   assert.ok(swim < dry * 0.85 && swim > dry * 0.5, `swim ${swim.toFixed(2)} vs run ${dry.toFixed(2)}`);
   // Swim into the south bank and climb out onto the quay.
-  place(a, -29, -1.55, -11.5); a.yaw = Math.PI; // facing +z
+  place(a, ...C(-29, -1.55, -11.5)); a.yaw = Math.PI; // facing +z
   run(g, 2, (p) => hold(p, { fwd: 1 }));
-  assert.ok(a.pos[2] > -9.8 && Math.abs(a.pos[1]) < 0.01 && a.onGround, `climbed out onto the quay (${a.pos})`);
+  assert.ok(a.pos[2] > -9.8 * K && Math.abs(a.pos[1]) < 0.01 && a.onGround, `climbed out onto the quay (${a.pos})`);
   assert.ok(!a.swimming);
 });
 
@@ -169,18 +176,18 @@ for (const map of MAP_LIST) {
 test('the nav grid uses bridges over deep water and only swims when it must', () => {
   const g = new Game(MAPS.canal);
   const nav = g.nav;
-  assert.ok(Math.abs(nav.floorAt(0, -13) - 1.8) < 0.01, 'the high bridge deck is a floor');
-  assert.ok(Math.abs(nav.floorAt(-22, -13) - 0.15) < 0.01, 'the footbridge deck is a floor');
-  assert.ok(nav.isSwim(-28, -13) && !nav.isSwim(-22, -13), 'open water is swum, the footbridge is not');
+  assert.ok(Math.abs(nav.floorAt(0, -13 * K) - 1.8) < 0.01, 'the high bridge deck is a floor');
+  assert.ok(Math.abs(nav.floorAt(-22 * K, -13 * K) - 0.15) < 0.01, 'the footbridge deck is a floor');
+  assert.ok(nav.isSwim(-28 * K, -13 * K) && !nav.isSwim(-22 * K, -13 * K), 'open water is swum, the footbridge is not');
   // Across the canal: over a bridge, not through the water.
-  const path = nav.findPath(-21, -20, -21, -6);
+  const path = nav.findPath(-21 * K, -20 * K, -21 * K, -6 * K);
   assert.ok(path, 'a way across');
   for (let i = 1; i < path.length; i++) {
-    const [x0, z0] = i === 1 ? [-21, -20] : path[i - 2], [x1, z1] = path[i - 1];
+    const [x0, z0] = i === 1 ? [-21 * K, -20 * K] : path[i - 2], [x1, z1] = path[i - 1];
     for (let t = 0; t <= 1; t += 0.05) assert.ok(!nav.isSwim(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t), 'stays dry');
   }
   // Someone in the water can always get out.
-  assert.ok(nav.findPath(-28, -13, 28, -20), 'a swimmer finds a way out');
+  assert.ok(nav.findPath(-28 * K, -13 * K, 28 * K, -20 * K), 'a swimmer finds a way out');
 });
 
 // ---------- Bomb defusal ----------
@@ -320,7 +327,7 @@ test('the carrier dying drops the bomb, a teammate picks it up; wipes and time e
   g.restartMatch();
   run(g, ROUND_FREEZE + 0.1);
   const carrier = g.getPlayer(g.bomb.carrier), other = carrier === r1 ? r2 : r1;
-  place(carrier, 0, 0, -20);
+  place(carrier, ...C(0, 0, -30)); // the mid lane, north of the canal
   g.kill(carrier, b1, null, false, false);
   assert.equal(g.bomb.state, 'dropped');
   assert.ok(Math.abs(g.bomb.pos[1]) < 0.01, 'on the floor');

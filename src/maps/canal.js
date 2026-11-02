@@ -9,7 +9,7 @@
 // but far enough that both teams have to walk:
 //   Site B - a walled courtyard with a well, west
 //   Site A - a plaza with a fountain, east
-import { mapBuilder, spawnGrid, toSpawn } from './builder.js';
+import { mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xd3c6a9, bed: 0x7d7a5e,
@@ -97,11 +97,12 @@ m.crates(-17, 58); m.crate(17, 60); m.barrel(-21, 51); m.barrel(20.5, 52.5); m.c
 const ground = m.finishGround(-W, -L, W, L);
 
 const center = [0, 0];
-export const CANAL = {
+// Laid out in meters at the original size, then spread out to CS 1.6 scale.
+export const CANAL = scaleMap({
   id: 'canal',
   name: 'Canal',
   type: 'bomb',
-  size: 'Large',
+  size: 'Huge',
   boxes: m.boxes,
   water: m.waterRects,
   groundBoxes: ground,
@@ -124,4 +125,4 @@ export const CANAL = {
   groundColor: m.C.ground,
   ground: 'dirt', // footstep surface for open ground
   bedColor: m.C.bed,
-};
+}, 1.5);

@@ -6,7 +6,7 @@
 //           (thin wooden walls: most guns shoot through).
 //   South - Blue spawns by the cabins, where the rescue zone is, and has to
 //           cross the whole valley to the lodge and back.
-import { mapBuilder, spawnGrid, toSpawn, WATER_DEPTH } from './builder.js';
+import { mapBuilder, scaleMap, spawnGrid, toSpawn, WATER_DEPTH } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xeef2f6, bed: 0x6f8592,
@@ -76,11 +76,12 @@ m.pine(-32, 50); m.pine(32, 49); m.crates(-22, 51); m.crate(22, 51.5);
 const ground = m.finishGround(-X, -Z, X, Z);
 
 const center = [0, 0];
-export const FROST = {
+// Laid out in meters at the original size, then spread out to CS 1.6 scale.
+export const FROST = scaleMap({
   id: 'frost',
   name: 'Frost',
   type: 'hostage',
-  size: 'Large',
+  size: 'Huge',
   boxes: m.boxes,
   water: m.waterRects,
   groundBoxes: ground,
@@ -101,4 +102,4 @@ export const FROST = {
   groundColor: m.C.ground,
   ground: 'snow', // footstep surface for open ground
   bedColor: m.C.bed,
-};
+}, 1.5);

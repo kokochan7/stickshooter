@@ -119,10 +119,10 @@ test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past the 13 m radi
 });
 
 test('walls stop the blast, teammates are safe, and you can blow yourself up', () => {
-  // Yard: a wall along X = -12.2..-12, z 3..11, 3 m tall.
+  // Yard: a wall along Z at x = -15.86..-15.6, z 3.9..14.3, 3 m tall.
   const w = setup();
-  put(w.b, -13, 7);
-  blast(w.g, w.a, -11, 7);
+  put(w.b, -17, 9);
+  blast(w.g, w.a, -14.4, 9);
   assert.equal(w.b.health, 100, 'behind the wall');
 
   const t = setup('teams');
@@ -156,13 +156,13 @@ test('a grenade kill is credited to the thrower with the grenade', () => {
 
 test('grenades bounce off walls and come to rest', () => {
   const { g, a } = setup();
-  // Thrown straight at the yard's west wall (x = -12) from 3 m away.
-  g.nades.push({ id: 1, owner: a.id, team: a.team, weapon: 'hegrenade', pos: [-9, 1.2, 7], prevPos: [-9, 1.2, 7], vel: [-12, 0, 0], explodeAt: g.time + 5, rest: false, lastBounce: -1 });
+  // Thrown straight at the yard's lane wall (x = -15.6) from 3 m away.
+  g.nades.push({ id: 1, owner: a.id, team: a.team, weapon: 'hegrenade', pos: [-12.6, 1.2, 9], prevPos: [-12.6, 1.2, 9], vel: [-12, 0, 0], explodeAt: g.time + 5, rest: false, lastBounce: -1 });
   const evs = [];
   for (let i = 0; i < 1.5 / TICK_DT; i++) { g.tick(new Map()); evs.push(...g.drainEvents()); }
   const n = g.nades[0];
   assert.ok(evs.some((e) => e.type === 'nadeBounce'), 'bounced');
-  assert.ok(n.pos[0] > -12, `stayed on this side (${n.pos})`);
+  assert.ok(n.pos[0] > -15.6, `stayed on this side (${n.pos})`);
   run(g, 3);
   assert.ok(n.rest, 'stopped');
   assert.ok(Math.abs(n.pos[1] - 0.06) < 0.05, `on the floor (${n.pos[1]})`);
