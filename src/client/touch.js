@@ -38,7 +38,7 @@ const BUTTONS = [
 ];
 
 export class TouchControls {
-  // input: Input; actions: { buy, ammo, drop, scores(show), pause, knife, nade, cycle }
+  // input: Input; actions: { buy, ammo, drop, scores(show), pause, knife, nade, cycle, spectate(id) }
   constructor(input, settings, actions) {
     this.input = input;
     this.settings = settings;
@@ -171,6 +171,8 @@ export class TouchControls {
 
   press(id) {
     const inp = this.input, p = inp.pending, t = inp.touch;
+    // Spectating (dead in a round) can take FIRE, SCOPE and JUMP.
+    if ((id === 'fire' || id === 'alt' || id === 'jump') && this.actions.spectate?.(id)) { this.held.add(id); return; }
     switch (id) {
       case 'fire': t.fire = true; p.fire = true; break;
       case 'use': t.use = true; break;

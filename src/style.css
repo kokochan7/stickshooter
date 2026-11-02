@@ -266,6 +266,12 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 @keyframes countPop { from { transform: scale(1.5); opacity: 0; } }
 #prompt { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: var(--panel); font-weight: 700; font-size: 16px; }
 #prompt kbd { font-size: 13px; padding: 3px 8px; background: var(--accent); color: var(--accent-ink); }
+/* Spectating: a bar near the bottom so the view stays clear. */
+#prompt.spec { top: auto; bottom: 15%; text-align: center; font-size: 17px; line-height: 1.5; }
+#prompt.spec small { color: var(--muted); font-size: 13px; }
+#prompt.spec .spec-help { font-size: 12px; font-weight: 600; opacity: .8; }
+#prompt.spec .spec-help kbd { font-size: 11px; padding: 1px 6px; }
+#prompt .team-red { color: #ff5a5f; } #prompt .team-blue { color: #4f95ff; }
 
 /* ---------- Touch controls (phones / tablets) ---------- */
 #touch { position: fixed; inset: 0; z-index: 8; touch-action: none; -webkit-touch-callout: none; }
