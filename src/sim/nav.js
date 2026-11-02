@@ -1,24 +1,30 @@
 // Navigation grid + A* for bots (and hostages).
 //
 // Each cell gets a floor height: the lowest surface under it with standing
-// room above (so the ground under a high bridge, the inside of a building
-// rather than its roof, the top of a platform or a stair). A cell is blocked
+// room above (the inside of a building rather than its roof, the top of a
+// platform or a stair). Over deep water it's a bridge deck if there is one,
+// not the riverbed. A cell is blocked
 // if something sits between knee and head height above its floor, and you
 // can only move to a neighbor whose floor is at most a stair step higher
-// (dropping down is fine).
+// (dropping down is fine). Cells over deep water are swum: you can climb out
+// of them onto a bank, but they cost a lot more than walking, so paths cross
+// on bridges where there are any.
 
 const CELL = 0.5;
 const CLEARANCE = 0.45;
 const HEADROOM = 1.75;
 const MAX_STEP = 0.46; // a little over STEP_HEIGHT, so 0.45 m ledges count
+const CLIMB_OUT = 2.3; // how high a swimmer can climb out (movement.js water jump)
+const SWIM_COST = 6; // a swum cell costs this many walked ones
 
 export class NavGrid {
-  constructor(world, bounds) {
+  constructor(world, bounds, water = []) {
     this.min = bounds.min;
     this.w = Math.ceil((bounds.max[0] - bounds.min[0]) / CELL);
     this.h = Math.ceil((bounds.max[1] - bounds.min[1]) / CELL);
     this.blocked = new Uint8Array(this.w * this.h);
     this.floor = new Float32Array(this.w * this.h);
+    this.swim = new Uint8Array(this.w * this.h); // 1 = deep water you swim through
     const column = [];
     for (let j = 0; j < this.h; j++) {
       for (let i = 0; i < this.w; i++) {
@@ -30,16 +36,30 @@ export class NavGrid {
           if (x > b.min[0] && x < b.max[0] && z > b.min[2] && z < b.max[2]) column.push(b);
         }
         column.sort((a, b) => a.max[1] - b.max[1]);
+        // Over deep water the riverbed is only a floor if nothing better is
+        // there: a footbridge or a high bridge's deck you'd walk on instead.
+        let surf = null;
+        for (const wr of water ?? []) {
+          if (x > wr.min[0] && x < wr.max[0] && z > wr.min[1] && z < wr.max[1]) surf = wr.y;
+        }
         let floor = null;
         for (const c of column) {
           const top = c.max[1];
-          if (!column.some((o) => o.max[1] > top + 1e-3 && o.min[1] < top + HEADROOM)) { floor = top; break; }
+          if (column.some((o) => o.max[1] > top + 1e-3 && o.min[1] < top + HEADROOM)) continue;
+          if (floor === null) floor = top;
+          if (surf === null || top > surf - 1) { floor = top; break; }
         }
         if (floor === null) { this.blocked[k] = 1; this.floor[k] = -100; continue; }
         this.floor[k] = floor;
+        if (surf !== null && floor < surf - 1) this.swim[k] = 1;
         const r = CLEARANCE;
-        // Anything between knee and head height above the floor blocks walking.
-        if (world.overlaps(x - r, floor + 0.47, z - r, x + r, floor + 1.7, z + r)) this.blocked[k] = 1;
+        // Anything between knee and head height above the floor blocks
+        // walking. A swimmer's head is above the water, so in deep water
+        // only what sticks out of it (a boat, a rock) is in the way; the
+        // bank itself is something you climb onto.
+        if (this.swim[k]) {
+          if (world.overlaps(x - r, surf + 0.15, z - r, x + r, surf + 1.0, z + r)) this.blocked[k] = 1;
+        } else if (world.overlaps(x - r, floor + 0.47, z - r, x + r, floor + 1.7, z + r)) this.blocked[k] = 1;
       }
     }
     // Connected areas (moving both ways). Crate tops, the fountain rim and
@@ -81,7 +101,13 @@ export class NavGrid {
 
   // Can you walk from cell a to its neighbor b (by index)?
   canStep(a, b) {
-    return this.floor[b] - this.floor[a] <= MAX_STEP;
+    const up = this.floor[b] - this.floor[a];
+    return up <= MAX_STEP || (this.swim[a] === 1 && up <= CLIMB_OUT);
+  }
+
+  isSwim(x, z) {
+    const [i, j] = this.cellOf(x, z);
+    return this.swim[j * this.w + i] === 1;
   }
 
   floorAt(x, z) {
@@ -123,7 +149,8 @@ export class NavGrid {
     return null;
   }
 
-  // Straight walk between two points without touching a blocked cell?
+  // Straight walk between two points without touching a blocked cell (or
+  // wading into deep water)?
   walkable(ax, az, bx, bz) {
     const d = Math.hypot(bx - ax, bz - az);
     const steps = Math.ceil(d / (CELL * 0.5));
@@ -134,6 +161,9 @@ export class NavGrid {
       if (this.isBlocked(i, j)) return false;
       const k = j * this.w + i;
       if (prev >= 0 && k !== prev && !this.canStep(prev, k)) return false;
+      // A straight line never jumps into the water: A* decides when a swim
+      // is worth it.
+      if (prev >= 0 && k !== prev && this.swim[k] && !this.swim[prev]) return false;
       prev = k;
     }
     return true;
@@ -172,7 +202,7 @@ export class NavGrid {
         if (!this.canStep(cur, n)) continue;
         if (di && dj && (!this.canStep(cur, cj * W + ci + di) || !this.canStep(cur, (cj + dj) * W + ci))) continue;
         if (closed[n]) continue;
-        const g = gScore[cur] + (di && dj ? 1.4142 : 1);
+        const g = gScore[cur] + (di && dj ? 1.4142 : 1) * (this.swim[n] ? SWIM_COST : 1);
         if (g < gScore[n]) {
           gScore[n] = g;
           came[n] = cur;

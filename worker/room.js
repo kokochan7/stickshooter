@@ -13,7 +13,7 @@ import { TICK_DT, TICK_RATE } from '../src/sim/constants.js';
 import { MAPS, getMap, DEFAULT_MAP } from '../src/maps/index.js';
 import {
   PROTOCOL_VERSION, SNAP_EVERY, MAX_LAG_COMP, MAX_HUMANS, BOT_FILL,
-  packOwn, packOther, packDrops, sanitizeCmd, cleanName, cleanMap, roomMode,
+  packOwn, packOther, packDrops, packNades, sanitizeCmd, cleanName, cleanMap, roomMode,
 } from '../src/net/protocol.js';
 
 const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil', 'Eraser', 'Crayon', 'Marker', 'Quill'];
@@ -261,13 +261,14 @@ export class GameRoom extends DurableObject {
     const players = g.players.map(packOther);
     const match = g.matchInfo();
     const drops = packDrops(g.drops);
+    const nades = packNades(g.nades);
     const obj = g.objectiveInfo();
     const events = this.pendingEvents;
     this.pendingEvents = [];
     for (const [ws, c] of this.clients) {
       if (!c.player) continue;
       try {
-        ws.send(JSON.stringify({ t: 'snap', time: g.time, ack: c.ack, me: packOwn(c.player), players, events, match, drops, obj }));
+        ws.send(JSON.stringify({ t: 'snap', time: g.time, ack: c.ack, me: packOwn(c.player), players, events, match, drops, nades, obj }));
       } catch { /* closed; webSocketClose cleans up */ }
     }
   }

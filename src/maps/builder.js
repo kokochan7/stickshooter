@@ -1,10 +1,10 @@
 // Helpers for writing maps out of axis-aligned boxes. Everything stays a box
 // so collision, bullets and rendering keep their cheap paths (one merged
 // mesh per map). Water is a hole cut in the ground with a riverbed under it
-// and a see-through surface drawn on top; it's shallow (WATER_DEPTH) so you
-// can wade in and step back out anywhere.
+// and a see-through surface drawn on top. It's deep (WATER_DEPTH): you swim
+// in it (movement.js) and climb out by swimming into a bank.
 
-export const WATER_DEPTH = 0.4; // riverbed below ground level (under STEP_HEIGHT)
+export const WATER_DEPTH = 2.2; // riverbed below ground level
 export const WATER_LEVEL = -0.1; // water surface
 
 export function mapBuilder(palette = {}) {
@@ -88,8 +88,8 @@ export function mapBuilder(palette = {}) {
       }
     },
 
-    // Shallow water: cuts the ground and records the surface for drawing,
-    // splashing footsteps and wading speed.
+    // Deep water: cuts the ground and records the surface for drawing,
+    // swimming and splashes.
     water(x0, z0, x1, z1) {
       holes.push([Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1)]);
       waterRects.push({ min: [Math.min(x0, x1), Math.min(z0, z1)], max: [Math.max(x0, x1), Math.max(z0, z1)], y: WATER_LEVEL });
@@ -166,9 +166,9 @@ export function mapBuilder(palette = {}) {
     finishGround(x0, z0, x1, z1) {
       const render = holes.length > 0;
       for (const r of subtractRects([x0, z0, x1, z1], holes)) {
-        b.box(r[0], -1, r[1], r[2], 0, r[3], 'concrete', 'ground', { render, kind: 'ground' });
+        b.box(r[0], -WATER_DEPTH - 0.3, r[1], r[2], 0, r[3], 'concrete', 'ground', { render, kind: 'ground' });
       }
-      for (const h of holes) b.box(h[0], -1.2, h[1], h[2], -WATER_DEPTH, h[3], 'concrete', 'bed', { render: false, kind: 'bed' });
+      for (const h of holes) b.box(h[0], -WATER_DEPTH - 0.8, h[1], h[2], -WATER_DEPTH, h[3], 'concrete', 'bed', { render: false, kind: 'bed' });
       return render;
     },
   };

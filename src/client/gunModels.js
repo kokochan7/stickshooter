@@ -247,6 +247,25 @@ SPECS.knife = () => ({
   muzzle: [0, 0, -0.24], fore: [-0.16, -0.32, 0.12], hold: 'knife', eject: [0, 0, 0],
 });
 
+// HE grenade: olive body with a darker band, the fuse on top, the spoon
+// running down the side and the pin's ring. Held in the right hand.
+function vCyl(r, h, x, y, z, color, segs = 10) {
+  return place(colorize(new THREE.CylinderGeometry(r, r, h, segs), color), x, y, z);
+}
+SPECS.hegrenade = () => ({
+  parts: [
+    vCyl(0.031, 0.07, 0, 0.035, 0, OLIVE),
+    vCyl(0.033, 0.012, 0, 0.035, 0, GREEN),
+    vCyl(0.024, 0.012, 0, -0.004, 0, OLIVE),
+    vCyl(0.016, 0.022, 0, 0.08, 0, METAL, 8),
+    vCyl(0.011, 0.01, 0, 0.095, 0, SILVER, 8),
+    B(0.014, 0.08, 0.008, 0, 0.05, 0.034, METAL, -0.12),
+    place(colorize(new THREE.TorusGeometry(0.014, 0.0028, 4, 12), SILVER), 0.027, 0.088, 0, 0, Math.PI / 2, 0),
+  ],
+  muzzle: [0, 0.05, -0.05], fore: [-0.16, -0.32, 0.12], gripPoint: [0.012, 0.03, 0.03], hold: 'grenade', eject: [0, 0, 0],
+  ring: [0.027, 0.088, 0],
+});
+
 let sharedMaterial = null;
 export function gunMaterial() {
   sharedMaterial ??= new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });

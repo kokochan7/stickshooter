@@ -3,8 +3,12 @@
 import {
   GRAVITY, JUMP_SPEED, ACCELERATE, AIR_ACCELERATE, AIR_WISH_CAP, FRICTION, STOP_SPEED,
   DUCK_SPEED_MUL, WALK_SPEED_MUL, STEP_HEIGHT, PLAYER_RADIUS, STAND_HEIGHT, DUCK_HEIGHT,
-  DUCK_TIME, LAND_SPEED_MUL, JUMP_STAMINA_TIME, BHOP_MAX_SPEED_MUL,
+  DUCK_TIME, LAND_SPEED_MUL, JUMP_STAMINA_TIME, BHOP_MAX_SPEED_MUL, STAND_EYE,
+  SWIM_DEPTH, SWIM_SPEED_MUL, SWIM_FRICTION, SWIM_ACCELERATE, FLOAT_EYE, BUOYANCY,
+  SWIM_PITCH_DEADZONE, WATER_JUMP_TIME,
 } from './constants.js';
+
+const DEG = Math.PI / 180;
 
 export function forwardVec(yaw) {
   return [-Math.sin(yaw), 0, -Math.cos(yaw)];
@@ -89,8 +93,16 @@ function capBhopSpeed(vel, maxSpeed) {
 
 // cmd: { fwd, side, jump, duck, walk, yaw, pitch }
 // maxSpeed: meters/second, from the held weapon.
-export function movePlayer(world, p, cmd, dt, maxSpeed) {
+// waterY: height of the water surface over this spot, or null if there's no
+// water here. Deep enough water and you swim instead of walking.
+export function movePlayer(world, p, cmd, dt, maxSpeed, waterY = null) {
   const vel = p.vel;
+  if (p.waterJump > 0) p.waterJump = Math.max(0, p.waterJump - dt);
+  const swim = waterY !== null && waterY - p.pos[1] > SWIM_DEPTH && !(p.waterJump > 0);
+  p.swimming = swim;
+  if (swim) { swimMove(world, p, cmd, dt, maxSpeed, waterY); return; }
+  // Climbing out of the water: keep pushing onto the bank (PM_WaterJump).
+  if (p.waterJump > 0 && p.wjDir) { vel[0] = p.wjDir[0]; vel[2] = p.wjDir[1]; }
 
   // --- Duck ---
   const wantDuck = !!cmd.duck;
@@ -239,4 +251,82 @@ export function movePlayer(world, p, cmd, dt, maxSpeed) {
   }
   if (hit.hitY && vel[1] > 0) vel[1] = 0;
   p.justJumped = false;
+  if (p.onGround) p.waterJump = 0;
+}
+
+// Swimming, after GoldSrc's PM_WaterMove: no gravity or ground friction, a
+// steady water drag, and you move where you look (with a deadzone, so aiming
+// a little up or down still swims level). Jump swims up, crouch dives, and
+// the water lifts you back to the surface, where you float with your eyes
+// just above it. Swimming into a bank you can reach climbs out (PM_CheckWaterJump).
+function swimMove(world, p, cmd, dt, maxSpeed, waterY) {
+  const vel = p.vel;
+  p.onGround = false;
+  p.justJumped = false;
+  p.jumpHeld = !!cmd.jump;
+  // No crouching in the water: crouch means dive. Stand up when there's room.
+  if (p.ducked && !hullOverlaps(world, p.pos[0], p.pos[1], p.pos[2], STAND_HEIGHT)) p.ducked = false;
+  if (!p.ducked) p.duckAmount = Math.max(0, p.duckAmount - dt / DUCK_TIME);
+
+  let pitch = cmd.pitch ?? 0;
+  const dz = SWIM_PITCH_DEADZONE * DEG;
+  pitch = Math.abs(pitch) < dz ? 0 : pitch - Math.sign(pitch) * dz;
+  const cp = Math.cos(pitch);
+  const f = [-Math.sin(cmd.yaw) * cp, Math.sin(pitch), -Math.cos(cmd.yaw) * cp];
+  const r = rightVec(cmd.yaw);
+  const wish = [f[0] * cmd.fwd + r[0] * cmd.side, f[1] * cmd.fwd, f[2] * cmd.fwd + r[2] * cmd.side];
+  if (cmd.jump) wish[1] += 1;
+  else if (cmd.duck) wish[1] -= 1;
+  const wl = Math.hypot(wish[0], wish[1], wish[2]);
+  if (wl > 1e-6) { wish[0] /= wl; wish[1] /= wl; wish[2] /= wl; }
+  const wishspeed = wl > 1e-6 ? maxSpeed * SWIM_SPEED_MUL : 0;
+
+  // Water drag on all three axes.
+  const speed = Math.hypot(vel[0], vel[1], vel[2]);
+  if (speed > 1e-4) {
+    const k = Math.max(0, speed - dt * speed * SWIM_FRICTION) / speed;
+    vel[0] *= k; vel[1] *= k; vel[2] *= k;
+  }
+  // Accelerate toward the wish direction (3D).
+  if (wishspeed > 0) {
+    const current = vel[0] * wish[0] + vel[1] * wish[1] + vel[2] * wish[2];
+    const add = wishspeed - current;
+    if (add > 0) {
+      const a = Math.min(add, SWIM_ACCELERATE * dt * wishspeed);
+      vel[0] += a * wish[0]; vel[1] += a * wish[1]; vel[2] += a * wish[2];
+    }
+  }
+  // Float: buoyancy below the surface, gravity if you bob above it. You
+  // can't swim higher than floating height (only a water jump gets you out).
+  const floatY = waterY + FLOAT_EYE - STAND_EYE;
+  const diving = cmd.duck || wish[1] < -0.2;
+  if (p.pos[1] < floatY - 0.02) { if (!diving) vel[1] += BUOYANCY * dt; }
+  else if (p.pos[1] > floatY + 0.02) vel[1] -= GRAVITY * dt;
+  if (p.pos[1] >= floatY - 0.05 && vel[1] > 0) vel[1] *= Math.max(0, 1 - dt * 12);
+
+  const hit = slideMove(world, p, vel[0] * dt, vel[1] * dt, vel[2] * dt);
+  if (hit.hitX) vel[0] = 0;
+  if (hit.hitZ) vel[2] = 0;
+  if (hit.hitY) vel[1] = 0;
+  if (p.pos[1] > floatY + 0.3 && vel[1] > 0) vel[1] = 0;
+
+  // Climb out onto a bank or a ledge: swimming forward near the surface into
+  // something solid, with room to stand on top of it.
+  if (cmd.fwd > 0 && p.pos[1] > floatY - 0.6) {
+    const fx = -Math.sin(cmd.yaw), fz = -Math.cos(cmd.yaw);
+    const ax = p.pos[0] + fx * 0.3, az = p.pos[2] + fz * 0.3;
+    const rr = PLAYER_RADIUS;
+    const y0 = p.pos[1];
+    let top = -Infinity;
+    for (const b of world.overlapping(ax - rr, y0 + 0.4, az - rr, ax + rr, y0 + 2.3, az + rr, scratch)) top = Math.max(top, b.max[1]);
+    if (top > -Infinity && top - y0 < 2.3 &&
+        !hullOverlaps(world, ax, top + 0.01, az, STAND_HEIGHT) &&
+        !hullOverlaps(world, p.pos[0], top + 0.01, p.pos[2], STAND_HEIGHT)) {
+      vel[1] = Math.sqrt(2 * GRAVITY * (top - y0 + 0.3));
+      vel[0] = fx * 2.5; vel[2] = fz * 2.5;
+      p.wjDir = [vel[0], vel[2]];
+      p.waterJump = WATER_JUMP_TIME;
+      p.swimming = false;
+    }
+  }
 }

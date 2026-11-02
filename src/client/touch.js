@@ -5,7 +5,8 @@
 //   left half   floating move stick: it appears where your thumb lands
 //   right half  drag anywhere to look
 //   FIRE        hold to shoot; you can keep dragging on it to aim while firing
-//   buttons     jump, crouch, reload, scope/stab, weapon switch, drop, buy,
+//   buttons     jump, crouch, reload, scope/stab, weapon switch, knife,
+//               grenade (then hold FIRE and let go to throw), drop, buy,
 //               scores and pause
 // The stick has no analog speed in the sim, so a short push walks (quiet) and
 // a full push runs.
@@ -27,6 +28,7 @@ const BUTTONS = [
   ['alt', 'SCOPE', 'alt', ''],
   ['swap', '⇄', 'lastWeapon', ''],
   ['knife', 'KNIFE', 'melee', ''],
+  ['nade', 'NADE', 'grenade', ''],
   ['drop', 'G', 'drop', ''],
   ['use', 'USE', 'use', ''],
   ['buy', 'BUY', 'buy', 'top'],
@@ -35,7 +37,7 @@ const BUTTONS = [
 ];
 
 export class TouchControls {
-  // input: Input; actions: { buy, drop, scores(show), pause, knife, cycle }
+  // input: Input; actions: { buy, drop, scores(show), pause, knife, nade, cycle }
   constructor(input, settings, actions) {
     this.input = input;
     this.settings = settings;
@@ -177,6 +179,7 @@ export class TouchControls {
       case 'reload': p.reload = true; break;
       case 'swap': this.actions.cycle(); break;
       case 'knife': this.actions.knife(); break;
+      case 'nade': this.actions.nade(); break;
       case 'drop': this.actions.drop(); break;
       case 'buy': this.actions.buy(); break;
       case 'scores': this.actions.scores(true); break;
@@ -184,6 +187,13 @@ export class TouchControls {
     }
     this.held.add(id);
     if (id === 'duck') this.el.querySelector('.t-duck').classList.toggle('lit', t.duck);
+  }
+
+  // Dim the NADE button when you have no grenade.
+  setHasNade(has) {
+    if (this._hasNade === has) return;
+    this._hasNade = has;
+    this.el.querySelector('.t-nade').classList.toggle('none', !has);
   }
 
   release(id) {

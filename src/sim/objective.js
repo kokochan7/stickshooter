@@ -56,6 +56,7 @@ export function startRound(g) {
   r.winner = null;
   r.reason = null;
   g.drops = [];
+  g.nades = [];
   for (const p of g.players) {
     g.spawn(p);
     p.frozenUntil = r.freezeEnd;
@@ -345,7 +346,7 @@ function updateHostage(g, h, dt) {
     }
   }
   if (h.state === 'follow' || !h.onGround || Math.hypot(h.vel[0], h.vel[2]) > 0.01) {
-    movePlayer(g.world, h, cmd, dt, HOSTAGE_SPEED * U);
+    movePlayer(g.world, h, cmd, dt, HOSTAGE_SPEED * U, g.waterSurface(h.pos[0], h.pos[2]));
   }
   if (h.state === 'follow' && inRescueZone(g.map, h.pos)) {
     h.state = 'rescued';

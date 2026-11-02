@@ -20,7 +20,9 @@ export const AIR_ACCELERATE = 10;
 export const AIR_WISH_CAP = 30 * U;
 export const FRICTION = 4;
 export const STOP_SPEED = 100 * U;
-export const DUCK_SPEED_MUL = 0.333;
+// CS 1.6 crouch-walks at a third of run speed; ours is faster (Kenny found
+// a third too slow). Still under FOOTSTEP_MIN_SPEED, so crouching stays silent.
+export const DUCK_SPEED_MUL = 0.55;
 export const WALK_SPEED_MUL = 0.52;
 export const STEP_HEIGHT = 18 * U;
 export const DUCK_TIME = 0.2;
@@ -128,5 +130,26 @@ export const HOSTAGE_SPEED = 230; // CS units/s
 export const HOSTAGE_RESCUE_REWARD = 1000;
 // Wading through water slows you down.
 export const WATER_SPEED_MUL = 0.78;
+// Swimming (deep water, see movement.js). You swim once the water is above
+// your waist; the surface holds you with your eyes just above it. Jump swims
+// up, crouch dives, and looking well up or down swims that way. Swimming
+// forward into a bank climbs out of the water (a "water jump").
+export const SWIM_DEPTH = 1.0; // water this far above your feet: swimming
+export const SWIM_SPEED_MUL = 0.9; // x run speed (x WATER_SPEED_MUL on top)
+export const SWIM_FRICTION = 2.5;
+export const SWIM_ACCELERATE = 6;
+export const FLOAT_EYE = 0.12; // eyes this far above the surface when floating
+export const BUOYANCY = 9; // m/s^2 pulling you up to the surface
+export const SWIM_PITCH_DEADZONE = 22; // degrees of look up/down that still swims level
+export const WATER_JUMP_TIME = 0.6;
+// HE grenade (CS 1.6 wpn_hegrenade / ggrenade.cpp): 1.5 s fuse, 100 damage
+// falling off to 0 at 350 units, gravity 0.55, bounces off walls. Hold fire
+// to pull the pin, let go to throw; Mouse 2 lobs it underhand.
+export const NADE_FUSE = 1.5;
+export const NADE_GRAVITY = 0.55;
+export const NADE_PIN_TIME = 0.35; // pulling the pin before it can leave your hand
+export const NADE_SWITCH_TIME = 0.5; // after a throw, the hand comes back with your gun
+export const NADE_BOUNCE = 0.45; // restitution off walls and floors
+export const NADE_RADIUS = 0.06; // meters (for collision)
 // Other players' footsteps fade out completely at this distance (meters).
 export const FOOTSTEP_RANGE = 32;

@@ -202,6 +202,18 @@ W.knife = {
   },
 };
 
+// CS 1.6 HE grenade. Bought from the Equipment page, carried in its own slot
+// (key 4), one at a time. Damage is 100 at the blast, falling off linearly
+// to nothing at 350 units (8.75 m); kevlar halves it like any chest hit. It
+// doesn't go through walls: you have to be in line of sight of the blast.
+W.hegrenade = {
+  name: 'HE Grenade', slot: 'grenade', category: 'Grenades', price: 300,
+  damage: 100, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
+  cycle: 0.5, auto: false, clip: 1, reserve: 0, deploy: 0.6, speed: 250,
+  accuracy: { type: 'none' }, kick: { punch: [0, 0] },
+  grenade: { radius: 350, maxSpeed: 750, lobMul: 0.5 },
+};
+
 for (const [id, w] of Object.entries(W)) {
   w.id = id;
   w.runThreshold ??= 140;
@@ -222,6 +234,9 @@ export const GEAR = {
   defuser: { name: 'Defuse Kit', price: 200 },
 };
 
+// The buy menu's Equipment page, in CS 1.6 order (armor, grenades, kit).
+export const EQUIPMENT = ['kevlar', 'kevlarHelmet', 'hegrenade', 'defuser'];
+
 // Rough 0..1 ratings for the shop's stat bars.
 export function weaponRatings(w) {
   const dmg = w.pellets ? w.damage * w.pellets : w.damage;
@@ -238,6 +253,6 @@ export function weaponRatings(w) {
 // its price, or nothing once it's out of ammo.
 export function weaponValue(w) {
   const d = w && W[w.id];
-  if (!d || d.melee) return 0;
+  if (!d || d.melee || d.grenade) return 0;
   return w.clip + w.reserve > 0 ? d.price : 0;
 }

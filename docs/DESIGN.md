@@ -58,8 +58,9 @@ The player stickman is white with no headband or vest. Skins come later
 - `src/maps/index.js` lists the maps. `type` is `dm`, `bomb` or `hostage`.
   New maps are written with `src/maps/builder.js` (walls with doors,
   buildings, stairs, crates, pines, palms, water, footbridges and high
-  bridges you can wade under). Water is a hole in the ground with a riverbed
-  0.4 m down, so you can always step out; wading is 0.78x speed.
+  bridges you can swim under). Water is a hole in the ground with a riverbed
+  2.2 m down (it was 0.4 m and wadeable until the swimming update); see
+  section 4 for swimming.
 - Teams on a `bomb`/`hostage` map turns on `src/sim/objective.js`: rounds
   (4 s buy freeze, 1:55 bomb / 2:30 hostage, 5 s round end, first to 8),
   one life per round (late joiners within 20 s still spawn), spectating a
@@ -71,7 +72,10 @@ The player stickman is white with no headband or vest. Skins come later
   Hostages can't be shot yet.
 - The nav grid now stores a floor height per cell (lowest surface with
   headroom) and only lets bots step up 0.46 m, so bots use stairs and
-  bridges, wade through water, and never target crate tops.
+  bridges, and never target crate tops. Over deep water a bridge deck is the
+  floor; open water cells are swum (6x the cost of walking, and a swimmer
+  can climb 2.3 m out onto a bank), so paths cross on bridges when there are
+  any.
 - Snapshots carry `obj` (round, rounds, bomb, hostages). `hello` carries the
   map the client wants; the first human in an empty room sets it, and
   `welcome` tells the client which map the room plays. Protocol v5.
@@ -159,7 +163,7 @@ Modelled on the GoldSrc/CS 1.6 player movement code (`movement.js`).
 | Step height | 18 u | stairs and small ledges |
 | Hull | 32 u wide, 72 u standing, 46 u crouched | same |
 | Eye height | 1.6 m standing, 1.0 m crouched | |
-| Crouch speed | ×0.333 | duck speed |
+| Crouch speed | ×0.55, still silent | CS is ×0.333; Kenny wanted it faster |
 | Walk (Shift) speed | ×0.52, silent footsteps | walk |
 | Landing slowdown | ×0.8, 0.5 s jump stamina | stops bunny hops outpacing running |
 | Footsteps | one every 0.38 s above 150 u/s, silent below | CS plays one every 0.3–0.4 s; walk cycle and gun bob share the cadence |
@@ -167,6 +171,16 @@ Modelled on the GoldSrc/CS 1.6 player movement code (`movement.js`).
 
 Max run speed depends on the gun you hold (table in 5.1): 250 u/s with a
 pistol or most SMGs, down to 190 u/s with the Mini Gun.
+
+**Swimming** (after GoldSrc's `PM_WaterMove`). With the water more than 1 m
+above your feet you swim: no gravity or ground friction, a water drag of
+2.5/s on all three axes, and you move where you look (looking up or down
+less than 22 degrees still swims level, so you can aim). Jump swims up,
+crouch dives, and buoyancy lifts you back to the surface, where you float
+with your eyes 0.12 m above it. Swim speed is 0.9 x 0.78 of your run speed.
+Swimming forward into a bank or ledge you can stand on (up to 2.3 m above
+you) climbs out (`PM_CheckWaterJump`). Spread in the water counts as running.
+With your eyes under water the view fogs blue and sound is muffled.
 
 ## 5. Gunplay
 
@@ -483,6 +497,25 @@ trace is a center ray plus a small fan standing in for CS's hull trace. A
 backstab is when the attacker is within ~37 degrees of directly behind the
 victim (CS: dot of line of sight and victim forward > 0.8).
 
+### 5.10b HE grenade
+
+Slot 4 (key 4), bought from the Equipment page for $300, one at a time,
+rebought on respawn with the rest of the loadout; it can't be dropped. CS 1.6
+`wpn_hegrenade` / `ggrenade.cpp` numbers:
+
+- Hold fire to pull the pin (0.35 s before it can leave your hand), let go to
+  throw. Mouse 2 lobs it underhand at half speed.
+- Throw: 10 degrees above your aim, speed `(90 - pitch) * 6` u/s capped at
+  750 (looking up throws slower), plus your own velocity. Gravity x0.55.
+- It bounces off walls and floors (restitution 0.45, then x0.8), rolls to a
+  stop, and goes off 1.5 s after the throw. In water it slows right down.
+- Damage 100 at the blast, falling off linearly to 0 at 350 u (8.75 m),
+  only to players the blast can see (body or head). It counts as a chest hit,
+  so kevlar halves it. It hurts enemies and the thrower, never teammates.
+- Your last gun comes back 0.5 s after the throw. Bots don't use grenades yet.
+- Online, snapshots carry `nades` (position, velocity) and clients fly them
+  on between snapshots. Protocol v8.
+
 ### 5.11 Dropped guns
 
 When you die your stickman vanishes in a puff and your primary (or pistol, if
@@ -735,8 +768,7 @@ Screen" right away.
   a mix of wallbang materials. Ideas: a rooftop map with long AWP sightlines,
   a small indoor map for SMGs and shotguns, a dust-style three-lane map for
   round mode.
-- **Weapons:** knife (melee, fastest run speed), grenades (HE, flash,
-  smoke), more pistols (Glock with burst, P228, Five-SeveN), Scout, M249.
+- **Weapons:** flash and smoke grenades (HE shipped), more pistols (Glock with burst, P228, Five-SeveN), Scout, M249.
 - **Settings:** quality presets. (Key rebinding, crosshair editor,
   sensitivity, FOV and volume shipped in PRs #5 and #6.)
 

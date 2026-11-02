@@ -7,7 +7,7 @@ const DEG = Math.PI / 180;
 export const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
   jump: 'Space', duck: 'ControlLeft', duckAlt: 'KeyC', walk: 'ShiftLeft',
-  reload: 'KeyR', primary: 'Digit1', secondary: 'Digit2', melee: 'Digit3', lastWeapon: 'KeyQ',
+  reload: 'KeyR', primary: 'Digit1', secondary: 'Digit2', melee: 'Digit3', grenade: 'Digit4', lastWeapon: 'KeyQ',
   drop: 'KeyG', buy: 'KeyB', scores: 'Tab', switchTeam: 'KeyM', use: 'KeyE',
 };
 
@@ -15,7 +15,7 @@ export const DEFAULT_BINDS = {
 export const BIND_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
   jump: 'Jump', duck: 'Crouch', duckAlt: 'Crouch (alt)', walk: 'Walk',
-  reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', melee: 'Knife', lastWeapon: 'Last weapon',
+  reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', melee: 'Knife', grenade: 'HE grenade', lastWeapon: 'Last weapon',
   drop: 'Drop / pick up gun', buy: 'Buy menu', scores: 'Scoreboard', switchTeam: 'Switch team',
   use: 'Use (plant, defuse, hostages)',
 };
@@ -92,6 +92,7 @@ export class Input {
       if (e.code === b.primary) this.pending.slot = 'primary';
       if (e.code === b.secondary) this.pending.slot = 'secondary';
       if (e.code === b.melee) this.pending.slot = 'melee';
+      if (e.code === b.grenade) this.pending.slot = 'grenade';
       if (e.code === b.lastWeapon) this.pending.lastWeapon = true;
       if (e.code === b.jump) this.pending.jump = true;
       this.emit('key', e.code);
