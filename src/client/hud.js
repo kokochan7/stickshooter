@@ -248,9 +248,9 @@ export class Hud {
     this.set('health', String(p.health));
     this.set('armor', String(Math.round(p.armor)));
     this.set('money', String(p.money));
-    this.set('score-me', String(p.kills));
-    this.set('score-deaths', String(p.deaths));
-    this.set('score-hs', `${p.kills ? Math.round((p.headshots / p.kills) * 100) : 0}%`);
+    this.stats = p;
+    this.bar('hp-bar', Math.max(0, Math.min(100, p.health)));
+    this.bar('ap-bar', Math.max(0, Math.min(100, Math.round(p.armor))));
     $('helmet').style.display = p.helmet ? '' : 'none';
     $('health').parentElement.classList.toggle('low', p.health <= 25);
     if (def && w) {
@@ -261,9 +261,11 @@ export class Hud {
       $('clip').parentElement.classList.toggle('hidden', !!def.melee);
       $('clip').parentElement.classList.toggle('single', !!def.grenade);
     }
-    // A grenade on your belt shows next to the ammo (key 4).
+    // A grenade on your belt shows next to the ammo on touch screens (key 4
+    // is in the weapon list on the right otherwise).
     const nade = p.weapons?.grenade;
     $('nade-chip').classList.toggle('hidden', !nade || nade.clip <= 0 || p.active === 'grenade');
+    this.slots(p);
     const rb = $('reload-bar');
     rb.style.opacity = reloadFrac !== null ? '1' : '0';
     if (reloadFrac !== null) rb.firstElementChild.style.width = `${Math.round(reloadFrac * 100)}%`;
@@ -392,17 +394,65 @@ export class Hud {
     el.classList.toggle('hidden', !html);
   }
 
-  // Team scores (kills) under the top bar in Teams.
-  teamScores(kills, myTeam) {
-    const el = $('team-score');
-    const teams = myTeam === 'red' || myTeam === 'blue';
-    const key = teams ? `${myTeam}:${kills.red}:${kills.blue}` : '';
-    if (this.last.teams === key) return;
-    this.last.teams = key;
-    el.classList.toggle('hidden', !teams);
-    if (!teams) return;
-    const [, red, blue] = key.split(':');
-    el.innerHTML = `<span class="ts red">${red}</span><span class="ts-you team-${myTeam}">${myTeam === 'red' ? 'RED' : 'BLUE'}</span><span class="ts blue">${blue}</span>`;
+  // Width of a health / armor bar, 0..100.
+  bar(id, v) {
+    if (this.last[id] === v) return;
+    this.last[id] = v;
+    $(id).style.width = `${v}%`;
+  }
+
+  // Weapon list on the right: 1 primary, 2 pistol, 3 knife, 4 grenade,
+  // 5 bomb. The gun in hand is bright, the rest dim.
+  slots(p) {
+    const w = p.weapons ?? {};
+    const nade = w.grenade && w.grenade.clip > 0 ? w.grenade : null;
+    const rows = [
+      ['primary', 1, w.primary?.id],
+      ['secondary', 2, w.secondary?.id],
+      ['melee', 3, w.melee?.id],
+      ['grenade', 4, nade?.id],
+    ];
+    const key = `${p.alive}|${p.active}|${rows.map((r) => r[2] ?? '').join(',')}|${nade?.clip ?? 0}|${this.last.bombTag ? 1 : 0}`;
+    if (this.last.slots === key) return;
+    this.last.slots = key;
+    let html = '';
+    for (const [slot, n, id] of rows) {
+      if (!id || !p.alive) continue;
+      const g = this.glyphs[id];
+      const pic = g ? `<i class="g" style="--g:url(${g})"></i>` : `<em>${esc(WEAPONS[id]?.name ?? id)}</em>`;
+      const count = slot === 'grenade' && nade.clip > 1 ? `<small class="cnt">×${nade.clip}</small>` : '';
+      html += `<div class="slot ${p.active === slot ? 'on' : ''} s-${slot}"><sup>${n}</sup>${pic}${count}</div>`;
+    }
+    if (this.last.bombTag && p.alive) html += `<div class="slot s-bomb"><sup>5</sup>${C4_ICON}</div>`;
+    $('slots').innerHTML = html;
+  }
+
+  // Top middle score box. Teams: alive count of each side either side of
+  // the score (rounds or kills) with the round clock above it. FFA: your
+  // kills and deaths either side of your rank and headshot rate.
+  top({ mode, myTeam, scores, players, meId }) {
+    const p = this.stats;
+    let L, Ll, R, Rl, mid, sl, sr, cls;
+    if (mode === 'teams') {
+      const alive = (t) => players.filter((q) => q.team === t && q.alive).length;
+      L = alive('red'); Ll = 'ALIVE'; R = alive('blue'); Rl = 'ALIVE';
+      sl = scores.red; sr = scores.blue; mid = ''; cls = `teams me-${myTeam}`;
+    } else {
+      const k = p?.kills ?? 0;
+      const rank = 1 + players.filter((q) => q.id !== meId && q.kills > k).length;
+      L = k; Ll = 'KILLS'; R = p?.deaths ?? 0; Rl = 'DEATHS';
+      mid = `#${rank}<small>/${players.length}</small>`;
+      sl = 'HS'; sr = `${k ? Math.round(((p?.headshots ?? 0) / k) * 100) : 0}%`;
+      cls = 'ffa';
+    }
+    const key = [L, Ll, R, Rl, mid, sl, sr, cls].join('|');
+    if (this.last.top === key) return;
+    this.last.top = key;
+    $('scorebox').className = cls;
+    this.set('top-l', String(L)); this.set('top-l-lbl', Ll);
+    this.set('top-r', String(R)); this.set('top-r-lbl', Rl);
+    this.set('top-sl', String(sl)); this.set('top-sr', String(sr));
+    $('top-rank').innerHTML = mid;
   }
 
   // Teams sit side by side; a big FFA splits its ranking into two columns.
@@ -453,6 +503,7 @@ export class Hud {
 const HEAD_ICON = '<svg class="kf-ic hs" viewBox="0 0 24 24" aria-label="Headshot"><circle cx="12" cy="10" r="7"/><path d="M8 17h8v4H8z"/><circle cx="9.3" cy="10" r="1.8" class="cut"/><circle cx="14.7" cy="10" r="1.8" class="cut"/></svg>';
 const WALL_ICON = '<svg class="kf-ic" viewBox="0 0 24 24" aria-label="Through a wall"><path d="M3 4h7v4H3zM12 4h9v4h-9zM3 10h4v4H3zM9 10h7v4H9zM18 10h3v4h-3zM3 16h7v4H3zM12 16h9v4h-9z"/><path d="M0 12h24" class="shot"/></svg>';
 const BOMB_ICON = '<svg class="kf-ic bomb" viewBox="0 0 24 24" aria-label="Bomb"><path d="M12 2l2.2 5.3L20 6l-3 5 5 2-5.5 2.2L18 21l-6-3.5L6 21l1.5-5.8L2 13l5-2-3-5 5.8 1.3z"/></svg>';
+const C4_ICON = '<svg class="c4" viewBox="0 0 48 24" aria-label="Bomb"><path d="M2 6h44v14H2z"/><path d="M6 2h10v4H6zM20 2h10v4H20z"/><path d="M34 9h8v6h-8z" class="cut"/></svg>';
 const FALL_ICON = '<svg class="kf-ic" viewBox="0 0 24 24" aria-label="Fell"><path d="M12 3v13M6 11l6 6 6-6M4 21h16"/></svg>';
 
 // CS 1.6 style buy menu: number keys pick a category, then a weapon.

@@ -23,28 +23,36 @@
     <div id="scope" class="hidden"><div class="scope-ring"></div><div class="scope-h"></div><div class="scope-v"></div></div>
     <div id="vignette"></div>
     <div id="dmg-indicators"></div>
+    <div id="hud-strip"></div>
     <!-- Everything below is laid out at 1920x1080 and scaled to the screen (see fitUi in hud.js). -->
     <div id="hud-frame">
       <div id="killfeed"></div>
       <div id="top">
-        <div id="topbar"><span id="score-me">0</span><span class="sep">KILLS</span><span id="score-deaths">0</span><span class="sep">DEATHS</span><span id="score-hs">0%</span><span class="sep">HS</span></div>
-        <div id="team-score" class="hidden"></div>
-        <div id="round-timer" class="hidden"></div>
+        <div id="scorebox">
+          <div class="sbx-side l"><b id="top-l">0</b><small id="top-l-lbl">KILLS</small></div>
+          <div class="sbx-mid">
+            <div id="round-timer" class="hidden"></div>
+            <div id="top-rank"></div>
+            <div class="sbx-row"><span id="top-sl">0</span><span id="top-sr">0</span></div>
+          </div>
+          <div class="sbx-side r"><b id="top-r">0</b><small id="top-r-lbl">DEATHS</small></div>
+        </div>
         <div id="goal"></div>
       </div>
-      <div id="perf"><div id="fps"></div><div id="room-info" class="hidden"></div><div id="net" class="hidden"></div></div>
-      <div class="hud-bl">
-        <div id="bomb-tag" class="hidden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v9H3z"/><path d="M6 6h5v3H6zM13 6h5v3h-5z" opacity=".7"/></svg>BOMB</div>
+      <div class="hud-tl">
+        <div id="perf"><div id="fps"></div><div id="room-info" class="hidden"></div><div id="net" class="hidden"></div></div>
         <div class="money"><span>$</span><b id="money">0</b><em id="money-pop"></em></div>
-        <div class="vitals">
-          <div class="vital"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><b id="health">100</b></div>
-          <div class="vital armor"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z"/></svg><b id="armor">0</b><i id="helmet" title="Helmet">H</i></div>
-        </div>
+        <div id="bomb-tag" class="hidden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v9H3z"/><path d="M6 6h5v3H6zM13 6h5v3h-5z" opacity=".7"/></svg>BOMB</div>
+      </div>
+      <div id="slots"></div>
+      <div class="hud-bl">
+        <div class="vital hp"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><b id="health">100</b><div class="bar"><i id="hp-bar"></i></div></div>
+        <div class="vital armor"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z"/></svg><b id="armor">0</b><div class="bar"><i id="ap-bar"></i></div><i id="helmet" title="Helmet">H</i></div>
       </div>
       <div class="hud-br">
         <div id="nade-chip" class="hidden" title="HE grenade (4)"><svg viewBox="0 0 24 24"><path d="M10 2h4v3h-4z"/><path d="M15 3.5a3 3 0 0 1 3 3V8h-2V6.5a1 1 0 0 0-1-1z"/><path d="M8 7h8v2.2A7 7 0 1 1 8 9.2z"/></svg><span>HE</span></div>
         <div id="weapon-name">USP</div>
-        <div class="ammo"><b id="clip">12</b><span>/</span><span id="reserve">100</span></div>
+        <div class="ammo"><b id="clip">12</b><span>/</span><span id="reserve">100</span><svg class="rounds" viewBox="0 0 30 24" aria-hidden="true"><path d="M2 8l2-4 2 4v14H2zM8 8l2-4 2 4v14H8zM14 8l2-4 2 4v14h-4zM20 8l2-4 2 4v14h-4zM26 8l1.5-4L29 8v14h-3z"/></svg></div>
         <div id="reload-bar"><i></i></div>
       </div>
       <div id="center-msg"></div>

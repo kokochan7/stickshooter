@@ -1171,7 +1171,7 @@ function updateView(dt, alpha) {
     const f = (innerHeight / 2) / Math.tan((fov * DEG) / 2);
     const chOffset = me.alive ? [-Math.tan(punchY - shakeY) * f, -Math.tan(punchP - shakeP) * f] : null;
     hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0, chOffset });
-    hud.teamScores(game.objective ? game.rounds : game.teamKills, game.mode === 'teams' ? me.team : null);
+    hud.top({ mode: game.mode, myTeam: me.team, scores: game.objective ? game.rounds : game.teamKills, players: game.players, meId: me.id });
     hud.goal(goalText());
     hud.message(centerMessage());
     hud.prompt(pickupPrompt() || objectivePrompt());
