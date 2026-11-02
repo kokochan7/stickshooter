@@ -386,12 +386,14 @@ export class Hud {
   }
 
   // "G  Pick up AK47" when a gun is in reach.
-  prompt(html) {
-    if (this.last.prompt === html) return;
+  prompt(html, cls = '') {
+    if (this.last.prompt === html && this.last.promptCls === cls) return;
     this.last.prompt = html;
+    this.last.promptCls = cls;
     const el = $('prompt');
     el.innerHTML = html;
     el.classList.toggle('hidden', !html);
+    el.classList.toggle('spec', cls === 'spec');
   }
 
   // Width of a health / armor bar, 0..100.

@@ -109,6 +109,7 @@ export class Input {
         if (e.button === 0) this.emit('cursorClick', this.cursor);
         return;
       }
+      this.emit('mouse', e.button);
       if (e.button === 0) { this.mouse.left = true; this.pending.fire = true; }
       if (e.button === 2) { this.mouse.right = true; this.pending.alt = true; }
     });

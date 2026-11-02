@@ -24,6 +24,7 @@ import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, DEPLOY_SOUNDS, STE
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
 import { TouchControls, isTouchDevice } from './client/touch.js';
+import { Spectator, SPEC_LABELS, worldBounds } from './client/spectator.js';
 import { Hud, BuyMenu, SettingsPanel, loadSettings, saveSettings, renderGunIcons } from './client/hud.js';
 import { OnlineSession, roomUrl, fetchRoomCounts } from './net/online.js';
 import { PUBLIC_ROOMS, pickRoom, roomMode } from './net/protocol.js';
@@ -62,6 +63,8 @@ const touch = TOUCH ? new TouchControls(input, settings, {
   drop: () => dropOrPickup(),
   scores: (show) => { if (scoresForced === null) showScoreboard(show); },
   pause: () => pauseGame(),
+  // While spectating, FIRE / SCOPE switch player and JUMP switches camera.
+  spectate: (id) => spectateButton(id),
   knife: () => { input.pending.slot = me?.active === 'melee' ? (me.weapons.primary ? 'primary' : 'secondary') : 'melee'; },
   nade: () => {
     if (me?.active === 'grenade') input.pending.slot = me.weapons.primary ? 'primary' : 'secondary';
@@ -93,7 +96,7 @@ let goUntil = 0; // "GO!" stays up briefly after the countdown
 let scoresForced = null; // scoreboard title while it's held open to show the winner
 let alertMsg = null; // { html, until }: "BOMB PLANTED" and the like
 let nextBeep = 0; // when the planted bomb beeps next (game time)
-let spectating = null; // id of the teammate we watch while dead in a round
+const spec = new Spectator(); // who/how we watch while dead in a round
 const timers = [];
 const underwaterEl = $('underwater');
 const stepState = new Map();
@@ -538,6 +541,12 @@ input.on('key', (code) => {
   else if (code === b.switchTeam) switchTeam();
   else if (code === b.drop && !buyMenu.open) dropOrPickup();
   else if (code === b.scores) showScoreboard(true);
+  else if (code === b.jump && !buyMenu.open) spectateButton('jump');
+});
+input.on('mouse', (button) => {
+  if (mode !== 'playing' || buyMenu.open || consoleOpen) return;
+  if (button === 0) spectateButton('fire');
+  else if (button === 2) spectateButton('alt');
 });
 input.on('keyup', (code) => {
   if (code === settings.binds.scores && scoresForced === null) showScoreboard(false);
@@ -1066,6 +1075,7 @@ function updateView(dt, alpha) {
   // The buy menu closes when the buy time runs out.
   if (buyMenu.open && me && !game.canBuy(me)) { setBuyMenu(false); buyTimeOver(); }
   // Characters.
+  const eyeId = spec.mode === 'eye' && specActive() ? spec.id : null;
   for (const p of game.players) {
     const v = view.viewFor(p);
     const x = lerp(p.prevPos[0], p.pos[0], alpha);
@@ -1076,7 +1086,8 @@ function updateView(dt, alpha) {
     // Someone standing right where your eyes are (two players on one spot)
     // would fill the screen from the inside, so they're not drawn.
     const inYourFace = me?.alive && Math.hypot(x - me.pos[0], z - me.pos[2]) < 0.6 && Math.abs(y - me.pos[1]) < 1.5;
-    const visible = p.alive && p !== me && !inYourFace;
+    // First-person spectating puts the camera inside whoever we watch.
+    const visible = p.alive && p !== me && !inYourFace && p.id !== eyeId;
     v.man.setVisible(visible);
     v.shadow.visible = visible;
     if (!visible) continue;
@@ -1102,6 +1113,8 @@ function updateView(dt, alpha) {
   let showVm = false;
   let punchP = 0, punchY = 0;
   if (!(me && me.alive)) { shakeP = 0; shakeY = 0; }
+  const specOn = !!me && !me.alive && mode !== 'menu' && specActive();
+  const specT = specOn && spec.mode !== 'free' ? spectateTarget() : null;
   if (me && me.alive && mode !== 'menu') {
     const duck = lerp(me.prevDuck, me.duckAmount, alpha);
     const eye = STAND_EYE + (DUCK_EYE - STAND_EYE) * duck;
@@ -1124,9 +1137,35 @@ function updateView(dt, alpha) {
     showVm = me.zoom === 0;
     audio.setListener(px, py, pz, input.yaw);
     underwater = game.underwater(px, py, pz);
-  } else if (me && !me.alive && mode !== 'menu' && spectateTarget()) {
-    // Objective rounds: watch a teammate over the shoulder until next round.
-    const t = spectateTarget();
+  } else if (specOn && spec.mode === 'free') {
+    // Free roam: fly around the map, through walls, like CS's free look.
+    const b = settings.binds, t = input.touch;
+    const keys = mode === 'playing' && !buyMenu.open && !consoleOpen;
+    const axis = (pos, neg) => (keys && input.has(pos) ? 1 : 0) - (keys && input.has(neg) ? 1 : 0);
+    const fwd = Math.max(-1, Math.min(1, axis(b.forward, b.back) + t.fwd));
+    const side = Math.max(-1, Math.min(1, axis(b.right, b.left) + t.side));
+    const down = keys && (input.has(b.duck) || input.has(b.duckAlt)) || t.duck ? 1 : 0;
+    const slow = keys && (input.has(b.walk) || input.has('ShiftRight'));
+    if (spec.boundsFor !== game.world) { spec.bounds = worldBounds(game.world); spec.boundsFor = game.world; }
+    const [fx, fy, fz] = spec.fly(dt, input.yaw, input.pitch, fwd, side, down, slow);
+    cam.position.set(fx, fy, fz);
+    cam.rotation.set(input.pitch, input.yaw, 0);
+    audio.setListener(fx, fy, fz, input.yaw);
+    underwater = game.underwater(fx, fy, fz);
+  } else if (specT && spec.mode === 'eye') {
+    // First person: look through their eyes.
+    const t = specT;
+    const duck = lerp(t.prevDuck ?? t.duckAmount ?? 0, t.duckAmount ?? 0, alpha);
+    const ex = lerp(t.prevPos[0], t.pos[0], alpha);
+    const ey = lerp(t.prevPos[1], t.pos[1], alpha) - (t.stepOffset ?? 0) + STAND_EYE + (DUCK_EYE - STAND_EYE) * duck;
+    const ez = lerp(t.prevPos[2], t.pos[2], alpha);
+    cam.position.set(ex, ey, ez);
+    cam.rotation.set(t.pitch, t.yaw, 0);
+    audio.setListener(ex, ey, ez, t.yaw);
+    underwater = game.underwater(ex, ey, ez);
+  } else if (specT) {
+    // Chase cam: watch them over the shoulder until next round.
+    const t = specT;
     const tx = lerp(t.prevPos[0], t.pos[0], alpha), ty = lerp(t.prevPos[1], t.pos[1], alpha) + 1.55, tz = lerp(t.prevPos[2], t.pos[2], alpha);
     const f = [-Math.sin(t.yaw), -Math.cos(t.yaw)];
     // Pull back 2.6 m, less if a wall is in the way.
@@ -1194,7 +1233,8 @@ function updateView(dt, alpha) {
     hud.top({ mode: game.mode, myTeam: me.team, scores: game.objective ? game.rounds : game.teamKills, players: game.players, meId: me.id });
     hud.goal(goalText());
     hud.message(centerMessage());
-    hud.prompt(pickupPrompt() || objectivePrompt());
+    if (specActive() && !buyMenu.open) hud.prompt(spectatePrompt(), 'spec');
+    else hud.prompt(pickupPrompt() || objectivePrompt());
     roundHud();
   } else {
     hud.update(dt, { p: null, showFps: settings.showFps });
@@ -1224,17 +1264,45 @@ function roundHud() {
   else hud.task(null);
 }
 
-// While dead in a round: the teammate to watch (or anyone, once the team
-// is wiped out). Starts two seconds after you die.
+// While dead in a round you spectate, CS 1.6 style (see client/spectator.js).
+// It starts two seconds after you die, once the death cam has shown the killer.
+function specActive() {
+  if (!game.objective || !me || me.alive) return false;
+  return !(killInfo && game.time - (killInfo.time ?? 0) < 2);
+}
+
+// The player being watched (teammates first, then anyone), or null.
 function spectateTarget() {
-  if (!game.objective || !me || me.alive) { spectating = null; return null; }
-  if (killInfo && game.time - (killInfo.time ?? 0) < 2) return null;
-  let t = spectating ? game.getPlayer(spectating) : null;
-  if (!t || !t.alive) {
-    t = game.players.find((p) => p.alive && p.team === me.team && p !== me) ?? game.players.find((p) => p.alive && p !== me) ?? null;
-    spectating = t?.id ?? null;
+  if (!specActive()) { spec.id = null; return null; }
+  return spec.target(game.players, me);
+}
+
+// Click / right-click: next / previous player. Jump: next camera mode.
+// Returns true when spectating took the press.
+function spectateButton(id) {
+  if (mode !== 'playing' || !specActive()) return false;
+  if (id === 'fire' || id === 'alt') {
+    if (spec.cycle(game.players, me, id === 'alt' ? -1 : 1)) audio.play('beep', { volume: 0.25 });
+    return true;
   }
-  return t;
+  if (id === 'jump') {
+    const c = view.camera;
+    spec.nextMode([c.position.x, c.position.y, c.position.z]);
+    // Free roam starts looking the way the camera already looks.
+    if (spec.mode === 'free') input.setAngles(c.rotation.y, Math.max(-1.5, Math.min(1.5, c.rotation.x)));
+    return true;
+  }
+  return false;
+}
+
+// Bottom bar while spectating: who, how, and the controls.
+function spectatePrompt() {
+  const t = spec.mode === 'free' ? null : spectateTarget();
+  const who = t ? `<span class="team-${t.team}">${escapeHtml(t.name)}</span> <small>${Math.max(0, Math.ceil(t.health))} HP</small> · ` : '';
+  const help = TOUCH
+    ? 'FIRE next · SCOPE previous · JUMP camera'
+    : `<kbd>Click</kbd> next · <kbd>Right-click</kbd> previous · <kbd>${keyName(settings.binds.jump)}</kbd> camera`;
+  return `${who}${SPEC_LABELS[spec.mode]}<br><span class="spec-help">${help}</span>`;
 }
 
 // The planted bomb beeps faster and faster, like the real thing.
@@ -1326,12 +1394,10 @@ function centerMessage() {
     return `<span class="team-${me.team}">You joined ${me.team === 'red' ? 'Red' : 'Blue'} team</span>`;
   }
   if (!me.alive && game.objective) {
-    const t2 = spectateTarget();
-    const watch = t2 ? ` · watching ${escapeHtml(t2.name)}` : '';
     const k = killInfo;
     const killer = k?.attacker ? game.getPlayer(k.attacker) : null;
     if (killer && game.time - (k.time ?? 0) < 2) return `Killed by ${escapeHtml(killer.name)}<small>You're out until the next round</small>`;
-    return `<small>You're out until the next round${watch}</small>`;
+    return `<small>You're out until the next round</small>`;
   }
   if (!me.alive) {
     const k = killInfo;
