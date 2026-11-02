@@ -137,6 +137,35 @@ test('deep water: you swim, float with your eyes above the surface, dive and cli
   assert.ok(!a.swimming);
 });
 
+// Where water runs into the map edge, the outer wall has to reach the
+// riverbed, or a diver slips under it and falls out of the world.
+for (const map of MAP_LIST) {
+  for (const [i, w] of (map.water ?? []).entries()) {
+    const { min, max } = map.bounds;
+    const edges = [
+      [w.min[0] <= min[0], 'west', Math.PI / 2, (z) => [w.min[0] + 0.6, z]],
+      [w.max[0] >= max[0], 'east', -Math.PI / 2, (z) => [w.max[0] - 0.6, z]],
+      [w.min[1] <= min[1], 'north', 0, (x) => [x, w.min[1] + 0.6]],
+      [w.max[1] >= max[1], 'south', Math.PI, (x) => [x, w.max[1] - 0.6]],
+    ];
+    for (const [touches, side, yaw, at] of edges) {
+      if (!touches) continue;
+      test(`${map.name}: diving into the ${side} edge of water ${i} stays inside the map`, () => {
+        const g = new Game(map, { seed: 1 });
+        const a = g.addPlayer({ name: 'A' });
+        g.spawn(a);
+        const along = side === 'west' || side === 'east' ? (w.min[1] + w.max[1]) / 2 : (w.min[0] + w.max[0]) / 2;
+        const [x, z] = at(along);
+        place(a, x, -1.8, z); a.yaw = yaw;
+        run(g, 4, (p) => hold(p, { fwd: 1, duck: true }));
+        assert.ok(a.alive, `still alive (${a.pos.map((v) => v.toFixed(2))})`);
+        assert.ok(a.pos[0] > min[0] && a.pos[0] < max[0] && a.pos[2] > min[1] && a.pos[2] < max[1], `inside the map (${a.pos.map((v) => v.toFixed(2))})`);
+        assert.ok(a.pos[1] > -3, `above the riverbed (${a.pos[1].toFixed(2)})`);
+      });
+    }
+  }
+}
+
 test('the nav grid uses bridges over deep water and only swims when it must', () => {
   const g = new Game(MAPS.canal);
   const nav = g.nav;

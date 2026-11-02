@@ -308,10 +308,15 @@ export class GameView {
     this.effects.world = world;
     if (this.mapGroup) {
       this.scene.remove(this.mapGroup);
+      // A mesh can carry one material or a list of them (the bomb site
+      // signs do). The shared grid and water textures stay.
+      const keep = new Set([this.tex, this.waterTex]);
       this.mapGroup.traverse((o) => {
         o.geometry?.dispose();
-        if (o.material && o.material.map !== this.tex && o.material.map !== this.waterTex) o.material.map?.dispose();
-        o.material?.dispose?.();
+        for (const m of [o.material ?? []].flat()) {
+          if (m.map && !keep.has(m.map)) m.map.dispose();
+          m.dispose();
+        }
       });
     }
     for (const id of [...this.hostageViews.keys()]) this.removeHostage(id);
