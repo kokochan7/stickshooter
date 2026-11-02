@@ -1056,7 +1056,10 @@ function updateView(dt, alpha) {
     const z = lerp(p.prevPos[2], p.pos[2], alpha);
     footsteps(p, dt, x, z);
     v.man.setTeam(p.team);
-    const visible = p.alive && p !== me;
+    // Someone standing right where your eyes are (two players on one spot)
+    // would fill the screen from the inside, so they're not drawn.
+    const inYourFace = me?.alive && Math.hypot(x - me.pos[0], z - me.pos[2]) < 0.6 && Math.abs(y - me.pos[1]) < 1.5;
+    const visible = p.alive && p !== me && !inYourFace;
     v.man.setVisible(visible);
     v.shadow.visible = visible;
     if (!visible) continue;
