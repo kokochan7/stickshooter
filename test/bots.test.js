@@ -174,7 +174,8 @@ test('Red bots carry the bomb in, plant it, and hold posts that can see it', () 
   const brains = [bot(g, 'red'), bot(g, 'red'), bot(g, 'red')];
   g.restartMatch();
   assert.ok(runBots(g, brains, ROUND_FREEZE + ROUND_TIME.bomb, (g) => g.bomb.state === 'planted'), `bomb is ${g.bomb.state}`);
-  runBots(g, brains, 25); // on a CS-sized map the flank can be a long walk away when the bomb goes down
+  runBots(g, brains, 31); // on a CS-sized map the flank can be a long walk away when the bomb goes down,
+  // and bots shift-walk and stop to check angles on the way in
   const b = g.bomb;
   let watching = 0;
   for (const br of brains) {
@@ -203,4 +204,28 @@ test('only the nearest two go back for a dropped bomb', () => {
   g.bomb.state = 'dropped'; g.bomb.carrier = null; g.bomb.pos = [...carrier.pos];
   const going = brains.filter((b) => { const o = b.objective(emptyCmd()); return o?.goal === g.bomb.pos; });
   assert.equal(going.length, 2);
+});
+
+test('bots each have their own idea of the best route', async () => {
+  const { MAPS } = await import('../src/maps/index.js');
+  const g = new Game(MAPS.canal, { mode: 'teams' });
+  const nav = g.nav;
+  const a = MAPS.canal.teamSpawns.red[0].pos, b = MAPS.canal.teamSpawns.blue[0].pos;
+  const routes = new Set();
+  for (let seed = 1; seed <= 6; seed++) {
+    const path = nav.findPath(a[0], a[2], b[0], b[2], { seed, amt: 0.5 });
+    assert.ok(path, 'a route exists');
+    routes.add(path.map(([x, z]) => `${x.toFixed(0)},${z.toFixed(0)}`).join(' '));
+  }
+  assert.ok(routes.size >= 3, `${routes.size} different routes out of 6`);
+});
+
+test('bots ease into turns instead of snapping', () => {
+  const g = new Game(YARD, { seed: 1, mode: 'teams' });
+  const p = g.addPlayer({ name: 'r', team: 'red', isBot: true });
+  const b = new BotBrain(g, p, null, 'normal');
+  b.steer([1, 0], TICK_DT);
+  const d = b.steer([0, 1], TICK_DT); // a 90 degree turn
+  const turned = Math.atan2(d[1], d[0]);
+  assert.ok(turned > 0 && turned < 0.1, `turned ${turned.toFixed(3)} rad in one tick`);
 });
