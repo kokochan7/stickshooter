@@ -153,11 +153,14 @@ export function mapBuilder(palette = {}) {
       b.box(x0, 0, z0, x1, h, z1, material, col, { kind: 'block' });
     },
 
+    // The outer walls reach down past the riverbed, so nobody swims under
+    // them and drops out of the world where water meets the map edge.
     perimeter(x0, z0, x1, z1, h = 7, col = 'wall') {
-      b.box(x0 - 1, 0, z0 - 1, x1 + 1, h, z0, 'concrete', col);
-      b.box(x0 - 1, 0, z1, x1 + 1, h, z1 + 1, 'concrete', col);
-      b.box(x0 - 1, 0, z0, x0, h, z1, 'concrete', col);
-      b.box(x1, 0, z0, x1 + 1, h, z1, 'concrete', col);
+      const y0 = -WATER_DEPTH - 0.8;
+      b.box(x0 - 1, y0, z0 - 1, x1 + 1, h, z0, 'concrete', col);
+      b.box(x0 - 1, y0, z1, x1 + 1, h, z1 + 1, 'concrete', col);
+      b.box(x0 - 1, y0, z0, x0, h, z1, 'concrete', col);
+      b.box(x1, y0, z0, x1 + 1, h, z1, 'concrete', col);
     },
 
     // Ground slab with the water holes cut out of it, plus a riverbed under
