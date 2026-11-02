@@ -156,7 +156,6 @@ export class Game {
       health: MAX_HEALTH, armor: 0, helmet: false,
       money: START_MONEY, kills: 0, deaths: 0, headshots: 0,
       weapons: { primary: null, secondary: null, melee: null, grenade: null }, active: 'secondary', lastActive: 'primary',
-      loadout: { primary: null, secondary: 'usp', armor: null },
       nextAttack: 0, deployEnd: 0, reloading: false, reloadEnd: 0, shellNext: 0,
       shotsFired: 0, decreaseShotsAt: 0, delayFire: false, pistolAcc: 0.9, accuracy: 0.2, lastFire: -10,
       punch: [0, 0], prevPunch: [0, 0], recoilDir: 1, shotSeed: 0,
@@ -319,7 +318,11 @@ export class Game {
     return [...pos];
   }
 
+  // Survivors of an objective round keep their guns (with the ammo left in
+  // them), grenades, armor, helmet and kit into the next round, like CS 1.6.
+  // Anyone who died starts again with a USP and a knife and buys by hand.
   spawn(p) {
+    const keepGear = p.alive && !!this.objective && this.round.n > 1;
     const enemies = this.players.filter((o) => o.alive && isEnemy(p, o));
     let best = null, bestScore = -Infinity;
     const pool = (this.mode === 'teams' && this.map.teamSpawns?.[p.team]) || this.map.spawns;
@@ -347,26 +350,23 @@ export class Game {
     // money streak and the multi-kill chain.
     p.roundKills = 0;
     p.multi = 0;
-    p.armor = 0; p.helmet = false;
     p.ducked = false; p.duckAmount = 0; p.onGround = true;
-    p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife'), grenade: null };
-    p.active = 'secondary';
+    if (!keepGear) {
+      p.armor = 0; p.helmet = false; p.defuser = false;
+      p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife'), grenade: null };
+      p.active = 'secondary';
+    } else {
+      if (!p.weapons.melee) p.weapons.melee = makeWeapon('knife');
+      if (!p.weapons[p.active]) p.active = ['primary', 'secondary', 'melee'].find((s) => p.weapons[s]);
+    }
     p.life++;
     p.punch = [0, 0]; p.prevPunch = [0, 0];
     p.zoom = 0; p.spin = 0; p.reloading = false; p.shotsFired = 0;
     p.tagMul = 1;
     p.nadePin = 0; p.swimming = false; p.waterJump = 0;
-    p.task = null; p.defuser = false;
+    p.task = null;
     p.deployEnd = this.time + 0.3; p.nextAttack = this.time + 0.3; p.nextStab = this.time + 0.3;
     if (this.match.state === 'over') p.frozenUntil = this.match.endsAt + 1;
-
-    // Re-buy the last loadout (practice convenience).
-    const lo = p.loadout;
-    if (lo.secondary && lo.secondary !== 'usp') this.buy(p, lo.secondary, true);
-    if (lo.armor) this.buy(p, lo.armor, true);
-    if (lo.primary) this.buy(p, lo.primary, true);
-    if (lo.defuser) this.buy(p, 'defuser', true);
-    if (lo.grenade) this.buy(p, lo.grenade, true);
     this.emit({ type: 'spawn', pid: p.id, yaw: p.yaw }); // yaw: cmds later in the tick overwrite p.yaw
   }
 
@@ -377,7 +377,6 @@ export class Game {
       if (p.defuser || p.team !== 'blue' || this.objective !== 'bomb' || p.money < GEAR.defuser.price) return false;
       p.money -= GEAR.defuser.price;
       p.defuser = true;
-      p.loadout.defuser = true;
       if (!silent) this.emit({ type: 'buy', pid: p.id, item });
       return true;
     }
@@ -391,7 +390,6 @@ export class Game {
       p.money -= price;
       p.armor = 100;
       if (item === 'kevlarHelmet') p.helmet = true;
-      p.loadout.armor = item;
       if (!silent) this.emit({ type: 'buy', pid: p.id, item });
       return true;
     }
@@ -406,7 +404,6 @@ export class Game {
     if (p.money < def.price) return false;
     p.money -= def.price;
     p.weapons[def.slot] = makeWeapon(item);
-    p.loadout[def.slot] = item;
     // Buying a gun puts it in your hands; a grenade goes on your belt (4).
     if (!def.grenade) this.switchTo(p, def.slot, true);
     if (!silent) this.emit({ type: 'buy', pid: p.id, item });

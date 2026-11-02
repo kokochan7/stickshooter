@@ -1025,11 +1025,12 @@ export class BotBrain {
   buyLoadout() {
     const g = this.game, p = this.p;
     p.money = 16000;
-    const pick = PRIMARY_POOL[Math.floor(Math.random() * PRIMARY_POOL.length)];
-    p.loadout.primary = null;
     g.buy(p, 'kevlarHelmet', true);
+    if (g.objective === 'bomb' && p.team === 'blue') g.buy(p, 'defuser', true);
+    // A bot that survived the last round keeps its gun, like everyone else.
+    if (p.weapons.primary) return;
+    const pick = PRIMARY_POOL[Math.floor(Math.random() * PRIMARY_POOL.length)];
     g.buy(p, pick, true);
     if (Math.random() < 0.3) { g.buy(p, 'deagle', true); g.switchTo(p, 'primary', true); }
-    if (g.objective === 'bomb' && p.team === 'blue') g.buy(p, 'defuser', true);
   }
 }

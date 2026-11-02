@@ -40,7 +40,10 @@ The first build (PR #1) is a complete single-player loop:
 - Bots with A* navigation that buy guns, fight and respawn.
 - 13 guns, a shop (`B`), kevlar and kevlar + helmet.
 - Practice economy: everyone starts with $16,000 (the CS cap), +$300 per
-  kill, respawn after 3 seconds with your last loadout re-bought.
+  kill, respawn after 3 seconds with a USP and a knife (nothing is re-bought).
+- Objective rounds keep CS 1.6 rules: survivors carry their guns (ammo as
+  left), grenades, armor, helmet and kit into the next round; anyone who died
+  starts over with a USP and a knife and buys by hand. Bots follow the same rule.
 - HUD: health, armor, ammo, dynamic crosshair, kill feed, hit markers,
   scoreboard (`Tab`, split by team in Teams mode). First person only.
 - Modes: Free for all (team `ffa`, white stickmen) and Teams (Red vs Blue,
