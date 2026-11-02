@@ -362,20 +362,20 @@ body.touch .pause-hint { display: none; }
 .console-row span { color: var(--accent); font-weight: 700; }
 #console-input { flex: 1; background: transparent; border: 0; outline: 0; color: #fff; font: inherit; padding: 4px 0; border-radius: 0; }
 
-/* ---------- In-match HUD: cyan, CS-style layout ---------- */
+/* ---------- In-match HUD: green, CS-style layout ---------- */
 /* Score box top middle, money top left, weapon list on the right, health and
    armor bottom left, ammo bottom right, on a soft dark strip. */
-#hud { --hud: #3fe6ee; --hud-dim: rgba(63, 230, 238, .38); --hud-bg: rgba(8, 18, 24, .55); --hud-ink: #04161a; }
+#hud { --hud: #5aff78; --hud-dim: rgba(90, 255, 120, .38); --hud-bg: rgba(8, 18, 24, .55); --hud-ink: #06200c; }
 #hud-frame { text-shadow: 0 1px 2px rgba(0,0,0,.55); }
 
 #top { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; }
-#scorebox { display: flex; align-items: stretch; height: 52px; border-radius: 8px; overflow: hidden; background: var(--hud-bg); border: 1px solid rgba(63,230,238,.25); }
+#scorebox { display: flex; align-items: stretch; height: 52px; border-radius: 8px; overflow: hidden; background: var(--hud-bg); border: 1px solid rgba(90, 255, 120,.25); }
 .sbx-side { width: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
 .sbx-side b { font: 400 28px/1 var(--title); color: #fff; font-variant-numeric: tabular-nums; }
 .sbx-side small { font: 800 9px var(--body); letter-spacing: 1px; color: rgba(255,255,255,.7); margin-top: 2px; }
 #scorebox.teams .sbx-side.l { background: rgba(255, 90, 95, .32); }
 #scorebox.teams .sbx-side.r { background: rgba(79, 149, 255, .32); }
-#scorebox.ffa .sbx-side { background: rgba(63, 230, 238, .14); }
+#scorebox.ffa .sbx-side { background: rgba(90, 255, 120, .14); }
 .sbx-mid { min-width: 92px; padding: 3px 10px 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
 #round-timer { font: 400 22px/1 var(--title); letter-spacing: 1px; color: #fff; font-variant-numeric: tabular-nums; }
 #round-timer.low { color: #ff5a5f; }
@@ -415,7 +415,7 @@ body.touch .pause-hint { display: none; }
 .slot svg.c4 { width: 46px; height: 24px; fill: currentColor; }
 .slot svg.c4 .cut { fill: var(--hud-ink); }
 .slot.s-bomb { color: rgba(255, 110, 100, .85); }
-.slot.on { color: var(--hud); background: linear-gradient(90deg, transparent, rgba(63,230,238,.16)); filter: drop-shadow(0 0 6px rgba(63,230,238,.45)); }
+.slot.on { color: var(--hud); background: linear-gradient(90deg, transparent, rgba(90, 255, 120,.16)); filter: drop-shadow(0 0 6px rgba(90, 255, 120,.45)); }
 
 /* Bottom strip with health / armor on the left and ammo on the right. */
 #hud-strip { position: absolute; left: 0; right: 0; bottom: 0; height: 9vh; min-height: 48px; background: linear-gradient(180deg, transparent, rgba(4,10,14,.45)); }
@@ -423,7 +423,7 @@ body.touch .pause-hint { display: none; }
 .vital { display: flex; align-items: center; gap: 8px; color: var(--hud); }
 .vital svg { width: 24px; height: 24px; fill: currentColor; }
 .vital b { font: 400 36px/1 var(--title); min-width: 58px; font-variant-numeric: tabular-nums; }
-.vital .bar { width: 84px; height: 7px; border-radius: 4px; background: rgba(63,230,238,.18); overflow: hidden; }
+.vital .bar { width: 84px; height: 7px; border-radius: 4px; background: rgba(90, 255, 120,.18); overflow: hidden; }
 .vital .bar i { display: block; height: 100%; width: 100%; background: currentColor; border-radius: inherit; transition: width .2s; }
 .vital.low { color: var(--red); }
 .vital.low b { animation: pulse 1s ease-in-out infinite; }
@@ -437,7 +437,7 @@ body.touch .pause-hint { display: none; }
 .ammo svg.rounds { width: 30px; height: 24px; fill: currentColor; margin-left: 4px; align-self: center; }
 .ammo.single span, .ammo.single svg.rounds { display: none; }
 #nade-chip { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px; padding: 4px 10px; border-radius: 8px; background: var(--hud-bg); font: 800 14px var(--body); color: var(--hud); }
-#reload-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: rgba(63,230,238,.15); overflow: hidden; opacity: 0; }
+#reload-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: rgba(90, 255, 120,.15); overflow: hidden; opacity: 0; }
 #reload-bar i { display: block; height: 100%; width: 0; background: var(--hud); }
 
 /* Start countdown: a light number high up, so the view stays clear. */

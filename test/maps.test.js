@@ -404,3 +404,28 @@ test('nav grid builds fast enough for a server cold start', () => {
     assert.ok(performance.now() - t0 < 1500, map.id);
   }
 });
+
+test('big teams never spawn two players on one spot, and stay on solid ground', () => {
+  for (const map of MAP_LIST) {
+    const g = new Game(map, { seed: 7, mode: 'teams' });
+    for (let i = 0; i < 16; i++) { g.addPlayer({ name: `R${i}`, team: 'red' }); g.addPlayer({ name: `B${i}`, team: 'blue' }); }
+    g.restartMatch();
+    for (let round = 0; round < 2; round++) {
+      const alive = g.players.filter((p) => p.alive);
+      assert.equal(alive.length, 32, map.id);
+      for (const a of alive) {
+        for (const b of alive) {
+          if (a !== b) assert.ok(Math.hypot(a.pos[0] - b.pos[0], a.pos[2] - b.pos[2]) >= 1.05, `${map.id}: ${a.name} on ${b.name}`);
+        }
+        const r = PLAYER_RADIUS;
+        assert.equal(g.world.overlaps(a.pos[0] - r, a.pos[1] + 0.05, a.pos[2] - r, a.pos[0] + r, a.pos[1] + STAND_HEIGHT, a.pos[2] + r), null, `${map.id}: ${a.name} in a wall`);
+        assert.equal(g.waterSurface(a.pos[0], a.pos[2]), null, `${map.id}: ${a.name} in water`);
+      }
+      // Let them settle a moment: nobody falls through the floor either.
+      run(g, 0.5);
+      for (const a of g.players) assert.ok(a.pos[1] > -0.2, `${map.id}: ${a.name} fell`);
+      if (g.objective) { for (const p of g.players) if (p.team === 'red') p.alive = false; run(g, 10); }
+      else break;
+    }
+  }
+});

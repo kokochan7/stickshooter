@@ -9,6 +9,7 @@ import {
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
   DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE, NEVER, WATER_SPEED_MUL,
   NADE_FUSE, NADE_GRAVITY, NADE_PIN_TIME, NADE_SWITCH_TIME, NADE_BOUNCE, NADE_RADIUS,
+  PLAYER_RADIUS, STAND_HEIGHT,
 } from './constants.js';
 import { WEAPONS, GEAR } from './weapons.js';
 import { World } from './world.js';
@@ -278,6 +279,32 @@ export class Game {
 
   // ---------- Spawning / buying ----------
 
+  // A spot at or near a spawn point that no other living player stands on.
+  // Big teams outnumber a map's spawn points, and stacked players block each
+  // other's view (the camera ends up inside a teammate) until they move.
+  freeSpot(pos, self) {
+    const taken = (x, z) => this.players.some((o) => o !== self && o.alive && Math.hypot(o.pos[0] - x, o.pos[2] - z) < 1.1);
+    if (!taken(pos[0], pos[2])) return [...pos];
+    const [x0, y, z0] = pos;
+    const r = PLAYER_RADIUS;
+    for (const ring of [1.3, 2.6, 3.9, 5.2]) {
+      const n = Math.round(ring * 5);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const x = x0 + Math.cos(a) * ring, z = z0 + Math.sin(a) * ring;
+        if (taken(x, z)) continue;
+        if (this.world.overlaps(x - r, y + 0.05, z - r, x + r, y + STAND_HEIGHT, z + r)) continue;
+        if (this.waterSurface(x, z) !== null) continue;
+        // Raised spawns need a floor under the new spot too.
+        if (y > 0.05 && !this.world.overlaps(x - 0.1, y - 0.2, z - 0.1, x + 0.1, y + 0.01, z + 0.1)) continue;
+        // Same room: no wall between the spawn point and the spot.
+        if (!this.world.visible(x0, y + 1, z0, x, y + 1, z)) continue;
+        return [x, y, z];
+      }
+    }
+    return [...pos];
+  }
+
   spawn(p) {
     const enemies = this.players.filter((o) => o.alive && isEnemy(p, o));
     let best = null, bestScore = -Infinity;
@@ -294,8 +321,9 @@ export class Game {
       const score = minD + this.rand() * 12 - (blocked ? 1000 : 0);
       if (score > bestScore) { bestScore = score; best = s; }
     }
-    p.pos = [...best.pos];
-    p.prevPos = [...best.pos];
+    const pos = this.freeSpot(best.pos, p);
+    p.pos = pos;
+    p.prevPos = [...pos];
     p.vel = [0, 0, 0];
     p.yaw = best.yaw;
     p.pitch = 0;
