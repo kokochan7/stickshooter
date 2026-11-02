@@ -95,7 +95,7 @@ also has a crosshair editor (length, gap, thickness, dot, outline, dynamic).
 ## Admin console
 
 Press **~** in a match to open the console. Type `help` for the list:
-`money`, `addbot`, `removebot`, `bots <n>` (max 32), `difficulty`, `give <gun>`,
+`money`, `addbot`, `removebot`, `bots <n>` (max 128), `difficulty`, `give <gun>`,
 `heal`, `god`, `slay`, `map <id>`, `restart`, `players`.
 
 - **Practice:** the commands work right away on your own game.
