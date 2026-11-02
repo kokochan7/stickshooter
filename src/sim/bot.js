@@ -79,12 +79,29 @@ export class BotBrain {
   // Other bots on our side that are alive (in FFA: every other bot, used only
   // for spreading out, never for holding fire).
   allies() {
-    const g = this.game, out = [];
-    for (const b of brainsOf(g).values()) {
-      if (b === this || !b.p.alive || g.getPlayer(b.p.id) !== b.p) continue;
-      if (g.mode === 'ffa' || b.p.team === this.p.team) out.push(b);
+    return this.team().filter((b) => b !== this);
+  }
+
+  // Our side's living bots, self included, sorted by id. Worked out once per
+  // tick for everyone: with 128 bots, rebuilding it in every call was the
+  // bulk of a tick.
+  team() {
+    const g = this.game, m = brainsOf(g);
+    let c = m.teamCache;
+    let alive = 0;
+    for (const b of m.values()) if (b.p.alive) alive++;
+    if (!c || c.time !== g.time || c.players !== g.players || c.size !== m.size || c.mode !== g.mode || c.alive !== alive) {
+      const inGame = new Set(g.players);
+      c = m.teamCache = { time: g.time, players: g.players, size: m.size, mode: g.mode, alive, lists: new Map() };
+      for (const b of m.values()) {
+        if (!b.p.alive || !inGame.has(b.p)) continue;
+        const key = g.mode === 'ffa' ? 'ffa' : b.p.team;
+        if (!c.lists.has(key)) c.lists.set(key, []);
+        c.lists.get(key).push(b);
+      }
+      for (const list of c.lists.values()) list.sort((a, b) => a.p.id - b.p.id);
     }
-    return out;
+    return c.lists.get(g.mode === 'ffa' ? 'ffa' : this.p.team) ?? [];
   }
 
   // Take the role our team has least of (ties broken at random).
@@ -813,8 +830,11 @@ export class BotBrain {
   // Our place among the team's bots (by id) and how many there are, so jobs
   // can be dealt out evenly whatever the ids are.
   teamIndex() {
-    const ids = [this.p.id, ...this.allies().map((b) => b.p.id)].sort((a, b) => a - b);
-    return [ids.indexOf(this.p.id), ids.length];
+    const team = this.team();
+    const i = team.indexOf(this);
+    // Dead (not in the list): counted as if we were, like before.
+    if (i >= 0) return [i, team.length];
+    return [team.filter((b) => b.p.id < this.p.id).length, team.length + 1];
   }
 
   // How many of our team's bots (passing `filter`) are closer to pos than we
@@ -823,8 +843,8 @@ export class BotBrain {
     const p = this.p;
     const d0 = Math.hypot(pos[0] - p.pos[0], pos[2] - p.pos[2]);
     let n = 0;
-    for (const a of this.allies()) {
-      if (filter && !filter(a)) continue;
+    for (const a of this.team()) {
+      if (a === this || (filter && !filter(a))) continue;
       if (Math.hypot(pos[0] - a.p.pos[0], pos[2] - a.p.pos[2]) < d0) n++;
     }
     return n;

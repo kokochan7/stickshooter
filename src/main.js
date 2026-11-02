@@ -16,6 +16,7 @@ import {
   TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT,
   FOOTSTEP_RANGE, ROUND_WIN_LIMIT, GRAVITY, NADE_GRAVITY,
   BUY_TIME,
+  BOT_NAMES,
 } from './sim/constants.js';
 import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
@@ -31,7 +32,6 @@ import { PUBLIC_ROOMS, pickRoom, roomMode } from './net/protocol.js';
 
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
-const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil', 'Eraser', 'Crayon', 'Marker', 'Quill'];
 
 const settings = loadSettings();
 const canvas = $('game');

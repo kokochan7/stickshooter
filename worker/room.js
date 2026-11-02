@@ -9,14 +9,13 @@ import { DurableObject } from 'cloudflare:workers';
 import { Game, emptyCmd } from '../src/sim/game.js';
 import { BotBrain } from '../src/sim/bot.js';
 import { runAdmin, MAX_BOTS } from '../src/sim/admin.js';
-import { TICK_DT, TICK_RATE } from '../src/sim/constants.js';
+import { TICK_DT, TICK_RATE, BOT_NAMES } from '../src/sim/constants.js';
 import { MAPS, getMap, DEFAULT_MAP } from '../src/maps/index.js';
 import {
   PROTOCOL_VERSION, SNAP_EVERY, MAX_LAG_COMP, MAX_HUMANS, BOT_FILL,
   packOwn, packOther, packDrops, packNades, sanitizeCmd, cleanName, cleanMap, roomMode,
 } from '../src/net/protocol.js';
 
-const BOT_NAMES = ['Inkblot', 'Doodle', 'Scribble', 'Smudge', 'Sketch', 'Graphite', 'Charcoal', 'Pencil', 'Eraser', 'Crayon', 'Marker', 'Quill'];
 // Wrong admin passwords a connection may try before it's ignored.
 const MAX_ADMIN_FAILS = 5;
 const MAX_QUEUE = 16; // cmds accepted per client before old ones are dropped

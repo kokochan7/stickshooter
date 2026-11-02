@@ -14,14 +14,14 @@
 import { WEAPONS } from './weapons.js';
 import { MAX_MONEY, MAX_ARMOR, MAX_HEALTH } from './constants.js';
 
-export const MAX_BOTS = 32;
+export const MAX_BOTS = 128;
 const DIFFICULTIES = ['easy', 'normal', 'hard'];
 
 export const ADMIN_HELP = [
   'money <amount> [player|all]   add money (default: you)',
   'addbot [n]                    add n bots (default 1)',
   'removebot [n|all]             remove n bots (default 1)',
-  'bots <n>                      set the bot count (0-32)',
+  'bots <n>                      set the bot count (0-128)',
   'difficulty <easy|normal|hard> bot skill',
   'give <gun> [player]           e.g. give awp',
   'heal [player|all]             full health and armor',

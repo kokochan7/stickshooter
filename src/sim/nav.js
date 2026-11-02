@@ -184,37 +184,50 @@ export class NavGrid {
     const s0 = this.isBlocked(...c0) ? this.nearestOpen(...c0, true) ?? this.nearestOpen(...c0) : c0;
     const g0 = this.nearestOpen(...this.cellOf(bx, bz), true);
     if (!s0 || !g0) return null;
-    const W = this.w;
+    const W = this.w, N = this.w * this.h;
     const start = s0[1] * W + s0[0], goal = g0[1] * W + g0[0];
-    const gScore = new Float32Array(this.w * this.h).fill(Infinity);
-    const came = new Int32Array(this.w * this.h).fill(-1);
-    const closed = new Uint8Array(this.w * this.h);
-    const heap = new MinHeap();
-    gScore[start] = 0;
-    heap.push(start, 0);
+    // Search buffers are kept between calls and stamped per search instead of
+    // being allocated and cleared: big maps have ~100k cells and 128 bots
+    // path a lot.
+    if (!this.search) this.search = { gScore: new Float32Array(N), came: new Int32Array(N), seen: new Uint32Array(N), stamp: 0, heap: new MinHeap(N) };
+    const S = this.search;
+    if (++S.stamp >= 0x7fffffff) { S.seen.fill(0); S.stamp = 1; }
+    const { gScore, came, seen } = S;
+    const stamp = S.stamp, closedMark = (stamp | 0x80000000) >>> 0; // never equals a live stamp below 2^31
+    const heap = S.heap;
+    heap.clear();
+    const blocked = this.blocked, floor = this.floor, swim = this.swim, H = this.h;
+    const free = (i, j) => i >= 0 && j >= 0 && i < W && j < H && blocked[j * W + i] !== 1;
+    const step = (from, to) => floor[to] - floor[from] <= MAX_STEP || this.canStep(from, to);
     const gi = g0[0], gj = g0[1];
+    // Octile distance, weighted a little: a tight estimate keeps A* from
+    // flooding big open maps. Paths get string-pulled afterwards anyway.
+    const est = (i, j) => { const dx = Math.abs(i - gi), dz = Math.abs(j - gj); return (dx + dz - 0.5858 * Math.min(dx, dz)) * 1.2; };
+    gScore[start] = 0; came[start] = -1; seen[start] = stamp;
+    heap.push(start, est(s0[0], s0[1]));
     let found = false, iter = 0;
     while (heap.size && iter++ < this.maxIter) {
       const cur = heap.pop();
       if (cur === goal) { found = true; break; }
-      if (closed[cur]) continue;
-      closed[cur] = 1;
+      if (seen[cur] === closedMark) continue;
+      seen[cur] = closedMark;
       const ci = cur % W, cj = (cur / W) | 0;
+      const gc = gScore[cur];
       for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
         if (!di && !dj) continue;
         const ni = ci + di, nj = cj + dj;
-        if (this.isBlocked(ni, nj)) continue;
-        if (di && dj && (this.isBlocked(ci + di, cj) || this.isBlocked(ci, cj + dj))) continue;
+        if (!free(ni, nj)) continue;
+        if (di && dj && (!free(ci + di, cj) || !free(ci, cj + dj))) continue;
         const n = nj * W + ni;
-        if (!this.canStep(cur, n)) continue;
-        if (di && dj && (!this.canStep(cur, cj * W + ci + di) || !this.canStep(cur, (cj + dj) * W + ci))) continue;
-        if (closed[n]) continue;
-        const g = gScore[cur] + (di && dj ? 1.4142 : 1) * (this.swim[n] ? SWIM_COST : 1);
-        if (g < gScore[n]) {
+        if (seen[n] === closedMark) continue;
+        if (!step(cur, n)) continue;
+        if (di && dj && (!step(cur, cj * W + ci + di) || !step(cur, (cj + dj) * W + ci))) continue;
+        const g = gc + (di && dj ? 1.4142 : 1) * (swim[n] ? SWIM_COST : 1);
+        if (seen[n] !== stamp || g < gScore[n]) {
+          seen[n] = stamp;
           gScore[n] = g;
           came[n] = cur;
-          const h = Math.hypot(ni - gi, nj - gj);
-          heap.push(n, g + h);
+          heap.push(n, g + est(ni, nj));
         }
       }
     }
@@ -240,36 +253,43 @@ export class NavGrid {
   }
 }
 
+// Binary min-heap on typed arrays (grows as needed); duplicates are allowed
+// and skipped by the caller once a cell is closed.
 class MinHeap {
-  constructor() { this.items = []; this.prio = []; }
-  get size() { return this.items.length; }
+  constructor(cap = 1024) { this.items = new Int32Array(cap); this.prio = new Float32Array(cap); this.size = 0; }
+  clear() { this.size = 0; }
   push(item, p) {
+    if (this.size === this.items.length) {
+      const a = new Int32Array(this.size * 2); a.set(this.items); this.items = a;
+      const q = new Float32Array(this.size * 2); q.set(this.prio); this.prio = q;
+    }
     const a = this.items, q = this.prio;
-    a.push(item); q.push(p);
-    let i = a.length - 1;
+    let i = this.size++;
     while (i > 0) {
       const par = (i - 1) >> 1;
-      if (q[par] <= q[i]) break;
-      [a[par], a[i]] = [a[i], a[par]]; [q[par], q[i]] = [q[i], q[par]];
+      if (q[par] <= p) break;
+      a[i] = a[par]; q[i] = q[par];
       i = par;
     }
+    a[i] = item; q[i] = p;
   }
   pop() {
     const a = this.items, q = this.prio;
     const top = a[0];
-    const lastI = a.pop(), lastP = q.pop();
-    if (a.length) {
-      a[0] = lastI; q[0] = lastP;
+    const n = --this.size;
+    if (n > 0) {
+      const item = a[n], p = q[n];
       let i = 0;
       for (;;) {
-        const l = i * 2 + 1, r = l + 1;
-        let m = i;
-        if (l < a.length && q[l] < q[m]) m = l;
-        if (r < a.length && q[r] < q[m]) m = r;
-        if (m === i) break;
-        [a[m], a[i]] = [a[i], a[m]]; [q[m], q[i]] = [q[i], q[m]];
+        const l = i * 2 + 1;
+        if (l >= n) break;
+        const r = l + 1;
+        const m = r < n && q[r] < q[l] ? r : l;
+        if (q[m] >= p) break;
+        a[i] = a[m]; q[i] = q[m];
         i = m;
       }
+      a[i] = item; q[i] = p;
     }
     return top;
   }

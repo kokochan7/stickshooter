@@ -186,11 +186,18 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 /* Teams side by side, big FFA in two ranked columns. Row size shrinks with
    column length (.compact / .tight); --sb-fit scales it down as a last resort. */
 #scoreboard { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(var(--sb-fit, 1)); width: 600px; padding: 16px 18px 18px; --row: 34px; --fs: 15px; }
-#scoreboard.wide { width: 1040px; }
+#scoreboard.cols-2 { width: 1040px; }
+#scoreboard.cols-3 { width: 1240px; }
+#scoreboard.cols-4 { width: 1420px; }
 #scoreboard.compact { --row: 27px; --fs: 14px; }
 #scoreboard.tight { --row: 22px; --fs: 13px; }
+#scoreboard.micro { --row: 18px; --fs: 12px; }
+#scoreboard.micro th { padding-top: 3px; padding-bottom: 2px; }
 #scoreboard .sb-cols { display: flex; gap: 22px; align-items: flex-start; }
 #scoreboard .sb-col { flex: 1 1 0; min-width: 0; }
+#scoreboard .sb-sub { display: flex; gap: 14px; align-items: flex-start; }
+#scoreboard .sb-sub > table { flex: 1 1 0; min-width: 0; }
+#scoreboard.cols-3 .sb-cols, #scoreboard.cols-4 .sb-cols { gap: 16px; }
 #scoreboard .sb-bar { display: flex; justify-content: space-between; font: 800 11px var(--body); letter-spacing: 1.5px; color: var(--muted); margin: 0 4px 10px; }
 #scoreboard .sb-head { text-align: center; font: 400 24px var(--title); letter-spacing: 1px; color: var(--accent); margin: 0 0 12px; }
 #scoreboard .sb-head .win { display: block; font: 400 52px/1.05 var(--title); letter-spacing: 1px; color: var(--accent); text-shadow: 0 4px 0 #1b1f27; }
@@ -203,7 +210,7 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #scoreboard .sb-team.red .sb-title { color: #ff5a5f; }
 #scoreboard .sb-team.blue .sb-title { color: #4f95ff; }
 #scoreboard table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs); }
-#scoreboard col.c-rk { width: 30px; }
+#scoreboard col.c-rk { width: 36px; }
 #scoreboard col.c-n { width: 40px; }
 #scoreboard col.c-hs { width: 54px; }
 #scoreboard th { text-align: left; color: var(--muted); font-size: 10px; letter-spacing: 1px; padding: 6px 6px 4px; }

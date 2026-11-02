@@ -32,13 +32,13 @@ test('money adds to you, capped at the max', () => {
   assert.equal(me.money, MAX_MONEY);
 });
 
-test('bot commands go through the host and stop at 32', () => {
+test('bot commands go through the host and stop at 128', () => {
   const { g, me, host, state } = setup();
   runAdmin(g, host, me, 'addbot 5');
   assert.equal(state().bots, 5);
   runAdmin(g, host, me, 'removebot 2');
   assert.equal(state().bots, 3);
-  runAdmin(g, host, me, 'bots 99');
+  runAdmin(g, host, me, 'bots 999');
   assert.equal(state().bots, MAX_BOTS);
   runAdmin(g, host, me, 'removebot all');
   assert.equal(state().bots, 0);
