@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Game, emptyCmd } from '../src/sim/game.js';
 import { BotBrain, ROLES } from '../src/sim/bot.js';
 import { TICK_DT } from '../src/sim/constants.js';
+import { WEAPONS } from '../src/sim/weapons.js';
 import { YARD } from '../src/maps/yard.js';
 
 function place(p, x, z, yaw) {
@@ -108,4 +109,125 @@ test('team strategies change from round to round', async () => {
   }
   for (let i = 1; i < names.length; i++) assert.notEqual(names[i], names[i - 1], 'never the same plan twice in a row');
   assert.ok(new Set(names).size >= 3, names.join(','));
+});
+
+// ---------- Buying, the bomb and bunny hops ----------
+
+import { MAPS } from '../src/maps/index.js';
+import { ROUND_FREEZE, ROUND_TIME, U } from '../src/sim/constants.js';
+
+function bot(g, team, difficulty = 'normal') {
+  const p = g.addPlayer({ name: team + g.players.length, team, isBot: true });
+  return new BotBrain(g, p, null, difficulty);
+}
+
+function runBots(g, brains, seconds, until = () => false) {
+  for (let i = 0; i < seconds / TICK_DT; i++) {
+    const cmds = new Map();
+    for (const b of brains) cmds.set(b.p.id, b.think(TICK_DT));
+    g.tick(cmds);
+    if (until(g)) return true;
+  }
+  return false;
+}
+
+test('bots buy Kevlar + helmet 30% / 50% / 100% of the time by difficulty, with their own money', () => {
+  for (const [diff, chance] of [['easy', 0.3], ['normal', 0.5], ['hard', 1]]) {
+    for (const roll of [chance - 0.01, Math.min(0.999, chance + 0.01)]) {
+      const g = new Game(YARD, { seed: 1, mode: 'teams' });
+      const b = bot(g, 'red', diff);
+      g.spawn(b.p);
+      b.p.money = 5000;
+      b.buyLoadout(() => roll);
+      const wants = roll < chance;
+      assert.equal(b.p.helmet, wants, `${diff}, roll ${roll}`);
+      assert.equal(b.p.armor, wants ? 100 : 0);
+      assert.ok(b.p.weapons.primary, 'still buys a gun');
+      assert.ok(b.p.money < 5000 && b.p.money >= 0, 'paid for it from its own money');
+      if (wants) assert.ok(b.p.money <= 5000 - 1000 - 1250);
+    }
+  }
+});
+
+test('a bot only buys armor it can afford, and picks a gun that leaves room for it', () => {
+  const g = new Game(YARD, { seed: 1, mode: 'teams' });
+  const b = bot(g, 'red', 'hard');
+  g.spawn(b.p);
+  b.p.money = 700; // vest only
+  b.buyLoadout(() => 0.5);
+  assert.equal(b.p.armor, 100);
+  assert.equal(b.p.helmet, false);
+  assert.equal(b.p.weapons.primary, null, 'no money left for a gun');
+  assert.equal(b.p.money, 50);
+
+  const g2 = new Game(YARD, { seed: 1, mode: 'teams' });
+  const b2 = bot(g2, 'red', 'hard');
+  g2.spawn(b2.p);
+  b2.p.money = 3000;
+  b2.buyLoadout(() => 0.99); // would pick the Mini Gun
+  assert.ok(b2.p.helmet, 'armor bought');
+  assert.ok(b2.p.weapons.primary && WEAPONS[b2.p.weapons.primary.id].price <= 2000, b2.p.weapons.primary?.id);
+});
+
+test('Red bots carry the bomb in, plant it, and hold posts that can see it', () => {
+  const g = new Game(MAPS.canal, { seed: 11, mode: 'teams' });
+  const brains = [bot(g, 'red'), bot(g, 'red'), bot(g, 'red')];
+  g.restartMatch();
+  assert.ok(runBots(g, brains, ROUND_FREEZE + ROUND_TIME.bomb, (g) => g.bomb.state === 'planted'), `bomb is ${g.bomb.state}`);
+  runBots(g, brains, 15);
+  const b = g.bomb;
+  let watching = 0;
+  for (const br of brains) {
+    const p = br.p;
+    assert.ok(Math.hypot(p.pos[0] - b.pos[0], p.pos[2] - b.pos[2]) < 17, `${br.role} stayed near the bomb`);
+    if (g.world.visible(p.pos[0], p.pos[1] + 1.0, p.pos[2], b.pos[0], b.pos[1] + 0.3, b.pos[2])) watching++;
+  }
+  assert.ok(watching >= 2, `${watching}/3 can see the bomb`);
+  // Someone starts defusing: they all come back for it.
+  const blue = g.addPlayer({ name: 'B', team: 'blue' });
+  blue.alive = true;
+  b.defuser = blue.id;
+  for (const br of brains) {
+    const obj = br.objective(emptyCmd());
+    assert.deepEqual(obj.goal, b.pos);
+    assert.ok(obj.urgent && obj.hop);
+  }
+});
+
+test('only the nearest two go back for a dropped bomb', () => {
+  const g = new Game(MAPS.canal, { seed: 3, mode: 'teams' });
+  const brains = [bot(g, 'red'), bot(g, 'red'), bot(g, 'red'), bot(g, 'red')];
+  g.restartMatch();
+  runBots(g, brains, ROUND_FREEZE + 1);
+  const carrier = g.getPlayer(g.bomb.carrier);
+  g.bomb.state = 'dropped'; g.bomb.carrier = null; g.bomb.pos = [...carrier.pos];
+  const going = brains.filter((b) => { const o = b.objective(emptyCmd()); return o?.goal === g.bomb.pos; });
+  assert.equal(going.length, 2);
+});
+
+test('a hard bot bunny hops a long run and gains speed air strafing', () => {
+  const g = new Game(MAPS.canal, { seed: 4, mode: 'teams' });
+  const b = bot(g, 'red', 'hard');
+  g.restartMatch();
+  runBots(g, [b], ROUND_FREEZE + 0.5);
+  // Drop the bomb down the open street: fetching it is worth hurrying for.
+  const p = b.p;
+  g.bomb.state = 'dropped'; g.bomb.carrier = null;
+  const run = g.activeDef(p).speed * U;
+  let hops = 0, top = 0, wasGround = true;
+  let seed = 9;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  let far;
+  do far = g.nav.randomOpenPoint(rnd);
+  while (Math.hypot(far[0] - p.pos[0], far[1] - p.pos[2]) < 40 || !g.nav.isMain(...g.nav.cellOf(far[0], far[1])));
+  g.bomb.pos = [far[0], g.nav.floorAt(far[0], far[1]), far[1]];
+  runBots(g, [b], 25, (g) => {
+    if (wasGround && !p.onGround) hops++;
+    wasGround = p.onGround;
+    top = Math.max(top, Math.hypot(p.vel[0], p.vel[2]));
+    return g.bomb.state === 'carried';
+  });
+  assert.equal(g.bomb.state, 'carried', 'got the bomb');
+  assert.ok(hops >= 3, `${hops} hops`);
+  assert.ok(top > run * 1.15, `top speed ${top.toFixed(2)} vs run ${run.toFixed(2)}`);
 });
