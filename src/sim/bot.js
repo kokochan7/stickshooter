@@ -399,10 +399,16 @@ export class BotBrain {
       if (speed < 0.6) this.stuckTime += dt; else this.stuckTime = 0;
       if (this.stuckTime > 0.7) {
         this.stuckTime = 0;
-        this.jumpNext = true;
         this.repathAt = 0;
         this.path = null;
+        // Players are solid: if someone is in the way, step round them
+        // rather than hopping into their back.
+        const g = this.game;
+        const blocker = g.players.some((o) => o !== p && o.alive && Math.hypot(o.pos[0] - p.pos[0], o.pos[2] - p.pos[2]) < 1.3);
+        if (blocker) { this.sidestepUntil = g.time + 0.6; this.sidestepDir = g.rand() < 0.5 ? -1 : 1; }
+        else this.jumpNext = true;
       }
+      if (this.sidestepUntil > this.game.time) { cmd.side = this.sidestepDir; cmd.fwd *= 0.3; }
     }
     if (this.jumpNext && p.onGround) { cmd.jump = true; this.jumpNext = false; }
 

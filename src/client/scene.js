@@ -6,6 +6,7 @@ import { Effects } from './effects.js';
 import { ViewModel } from './viewmodel.js';
 import { buildGun } from './gunModels.js';
 import { WATER_DEPTH } from '../maps/builder.js';
+import { zoneFloor } from '../sim/world.js';
 
 function gridTexture() {
   const S = 256;
@@ -74,27 +75,122 @@ function waterTexture() {
   return t;
 }
 
-// Ground decal: a painted zone outline with a big label (bomb sites, the
-// hostage rescue zone).
-function zoneTexture(label, color) {
-  const W = 512, H = 512;
+// Ground paint for a zone (bomb sites, the hostage rescue zone), sized to
+// the zone so the letter isn't stretched: a black-and-colour hazard stripe
+// border, a light wash inside, and the label big in the middle. For a bomb
+// site, bomb is { x, z, r, x0, z0 }: the letter goes in a ring of radius ~r
+// at (x, z) on the open floor, with a bomb icon and "BOMBSITE".
+function zoneTexture(label, color, w, d, bomb) {
+  const W = 1024, H = Math.max(256, Math.min(2048, Math.round(W * d / w)));
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d');
-  g.strokeStyle = color;
-  g.lineWidth = 14;
-  g.setLineDash([46, 26]);
-  g.strokeRect(10, 10, W - 20, H - 20);
-  g.setLineDash([]);
+  const m = Math.min(W, H);
+  // Wash.
+  g.globalAlpha = 0.16;
   g.fillStyle = color;
-  g.font = `900 ${label.length > 2 ? 90 : 300}px Inter, Arial, sans-serif`;
+  g.fillRect(0, 0, W, H);
+  g.globalAlpha = 1;
+  // Hazard stripe border.
+  const band = Math.round(m * 0.06);
+  g.save();
+  g.beginPath();
+  g.rect(0, 0, W, H);
+  g.rect(band, band, W - band * 2, H - band * 2);
+  g.clip('evenodd');
+  g.fillStyle = '#16120a';
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = color;
+  const step = band * 1.4;
+  for (let x = -H; x < W + H; x += step * 2) {
+    g.beginPath();
+    g.moveTo(x, 0); g.lineTo(x + step, 0); g.lineTo(x + step - H, H); g.lineTo(x - H, H);
+    g.closePath(); g.fill();
+  }
+  g.restore();
+  // Label.
+  const cx = W / 2, cy = H / 2;
+  g.fillStyle = color;
+  g.strokeStyle = '#16120a';
+  g.lineJoin = 'round';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillText(label, W / 2, H / 2 + 10);
+  if (bomb) {
+    // Centred on the open floor (bomb.label) so crates don't cover it.
+    const ppm = W / w;
+    const lx = (bomb.x - bomb.x0) * ppm, ly = (bomb.z - bomb.z0) * (H / d);
+    const R = Math.max(1.6, bomb.r * 0.72) * ppm;
+    const ring = (lw, col) => { g.lineWidth = lw; g.strokeStyle = col; g.beginPath(); g.arc(lx, ly, R, 0, Math.PI * 2); g.stroke(); };
+    ring(R * 0.13, '#16120a');
+    ring(R * 0.07, color);
+    g.strokeStyle = '#16120a';
+    g.font = `900 ${Math.round(R * 1.35)}px Inter, Arial, sans-serif`;
+    g.lineWidth = R * 0.1;
+    g.strokeText(label, lx, ly + R * 0.07);
+    g.fillText(label, lx, ly + R * 0.07);
+    // Bomb icon above the ring.
+    const by = ly - R * 1.32, br = R * 0.17;
+    g.fillStyle = '#16120a';
+    g.beginPath(); g.arc(lx, by, br, 0, Math.PI * 2); g.fill();
+    g.fillRect(lx + br * 0.4, by - br * 1.25, br * 0.55, br * 0.6);
+    g.lineWidth = br * 0.2;
+    g.beginPath(); g.moveTo(lx + br * 0.7, by - br * 1.2); g.quadraticCurveTo(lx + br * 1.4, by - br * 2, lx + br * 1.9, by - br * 1.5); g.stroke();
+    g.fillStyle = '#ff5a1f';
+    g.beginPath(); g.arc(lx + br * 1.95, by - br * 1.5, br * 0.3, 0, Math.PI * 2); g.fill();
+    // BOMBSITE under the ring.
+    g.fillStyle = color;
+    g.font = `900 ${Math.round(R * 0.3)}px Inter, Arial, sans-serif`;
+    g.lineWidth = R * 0.06;
+    g.strokeText('BOMBSITE', lx, ly + R * 1.33);
+    g.fillText('BOMBSITE', lx, ly + R * 1.33);
+  } else {
+    g.font = `900 ${Math.round(Math.min(m * 0.3, (W - band * 4) / (label.length * 0.75)))}px Inter, Arial, sans-serif`;
+    g.lineWidth = m * 0.025;
+    g.strokeText(label, cx, cy);
+    g.fillText(label, cx, cy);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+// The site letter on all four sides of a sign box, for the sign post.
+function signTexture(label, color) {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = color;
+  g.fillRect(0, 0, S, S);
+  g.lineWidth = 16;
+  g.strokeStyle = '#16120a';
+  g.strokeRect(8, 8, S - 16, S - 16);
+  g.fillStyle = '#16120a';
+  g.font = '900 190px Inter, Arial, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(label, S / 2, S / 2 + 12);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   return t;
+}
+
+// Flat quads for a zone's floor cells, with UVs across the whole zone rect.
+function zoneGeometry(rect, cells, y) {
+  const [x0, z0] = rect.min, [x1, z1] = rect.max;
+  const pos = [], uv = [];
+  for (const [ax, az, bx, bz] of cells) {
+    const u0 = (ax - x0) / (x1 - x0), u1 = (bx - x0) / (x1 - x0);
+    const v0 = 1 - (az - z0) / (z1 - z0), v1 = 1 - (bz - z0) / (z1 - z0);
+    pos.push(ax, y, az, ax, y, bz, bx, y, bz, ax, y, az, bx, y, bz, bx, y, az);
+    uv.push(u0, v0, u0, v1, u1, v1, u0, v0, u1, v1, u1, v0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  return g;
 }
 
 const _c = new THREE.Color();
@@ -133,6 +229,22 @@ function buildMapGeometry(boxes) {
     geos.push(g);
   }
   return mergeGeometries(geos);
+}
+
+// Where a bomb site's sign post stands: the painted floor nearest (cx, cz)
+// with a metre clear all round and room above the sign.
+function signSpot(world, cells, y, cx, cz) {
+  let best = null, bestD = Infinity;
+  for (const [ax, az, bx, bz] of cells) {
+    for (let x = ax + 0.25; x < bx; x += 0.5) {
+      const z = (az + bz) / 2;
+      const dd = Math.hypot(x - cx, z - cz);
+      if (dd >= bestD) continue;
+      if (world.overlaps(x - 1, y + 0.02, z - 1, x + 1, y + 3.2, z + 1)) continue;
+      best = [x, z]; bestD = dd;
+    }
+  }
+  return best;
 }
 
 export class GameView {
@@ -247,22 +359,34 @@ export class GameView {
       this.waterMat = null;
     }
 
-    // Painted zones: bomb sites and hostage rescue areas.
-    const decal = (r, label, color) => {
+    // Painted zones: bomb sites and hostage rescue areas, laid on the floor
+    // (not on crates, roofs or water inside the zone). Bomb sites also get a
+    // sign post with the letter, standing on the floor in the open.
+    const decal = (r, label, color, bomb) => {
       const w = r.max[0] - r.min[0], d = r.max[1] - r.min[1];
-      const g = new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2);
-      const mat = new THREE.MeshBasicMaterial({ map: zoneTexture(label, color), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, opacity: 0.85 });
-      const m = new THREE.Mesh(g, mat);
-      m.position.set((r.min[0] + r.max[0]) / 2, this.floorAt((r.min[0] + r.max[0]) / 2, (r.min[1] + r.max[1]) / 2) + 0.02, (r.min[1] + r.max[1]) / 2);
+      const { y, cells, label: at } = zoneFloor(world, r);
+      const spot = bomb && { ...at, x0: r.min[0], z0: r.min[1] };
+      const mat = new THREE.MeshBasicMaterial({ map: zoneTexture(label, color, w, d, spot), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+      const m = new THREE.Mesh(zoneGeometry(r, cells, y + 0.01), mat);
+      m.renderOrder = 1;
       grp.add(m);
+      if (bomb) {
+        // The sign stands just past the top of the painted ring.
+        const pole = signSpot(world, cells, y, at.x, at.z - Math.max(1.6, at.r * 0.72) * 1.6);
+        if (pole) {
+          const H = 2.6, S = 0.8;
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, H - S, 0.1), new THREE.MeshLambertMaterial({ color: 0x2a2620 }));
+          post.position.set(pole[0], y + (H - S) / 2, pole[1]);
+          const top = new THREE.MeshLambertMaterial({ color: 0x16120a });
+          const side = new THREE.MeshLambertMaterial({ map: signTexture(label, color) });
+          const sign = new THREE.Mesh(new THREE.BoxGeometry(S, S, S), [side, side, top, top, side, side]);
+          sign.position.set(pole[0], y + H - S / 2, pole[1]);
+          grp.add(post, sign);
+        }
+      }
     };
-    for (const [name, r] of Object.entries(map.sites ?? {})) decal(r, name, '#e8b020');
-    for (const r of map.rescue ?? []) decal(r, 'RESCUE', '#3fbf5f');
-  }
-
-  floorAt(x, z) {
-    const h = this.world.raycast(x, 30, z, 0, -1, 0, 60);
-    return h ? 30 - h.t : 0;
+    for (const [name, r] of Object.entries(map.sites ?? {})) decal(r, name, '#f2b01e', true);
+    for (const r of map.rescue ?? []) decal(r, 'RESCUE', '#3fbf5f', false);
   }
 
   // Bomb and hostages, every frame.

@@ -198,6 +198,7 @@ export class OnlineSession {
       });
     }
     this.snaps.push({ time: msg.time, players: states });
+    g.collideStates = states;
     while (this.snaps.length > 2 && this.snaps[1].time < this.viewTime() - 0.5) this.snaps.shift();
 
     // Us: take the server's word, then replay what it hasn't seen yet.

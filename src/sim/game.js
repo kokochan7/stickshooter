@@ -13,7 +13,7 @@ import {
 } from './constants.js';
 import { WEAPONS, GEAR } from './weapons.js';
 import { World } from './world.js';
-import { movePlayer, aimDir, forwardVec, rightVec } from './movement.js';
+import { movePlayer, aimDir, forwardVec, rightVec, playerBox, hullTouches } from './movement.js';
 import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
 import { NavGrid } from './nav.js';
 import * as Obj from './objective.js';
@@ -471,9 +471,31 @@ export class Game {
     if (def && def.scopedSpeed && p.zoom > 0) speed = def.scopedSpeed;
     if (def && def.spinUp && p.spin > 0) speed *= 0.85;
     if (this.inWater(p)) speed *= WATER_SPEED_MUL;
-    movePlayer(this.world, p, cmd, dt, speed * U, this.waterSurface(p.pos[0], p.pos[2]));
+    movePlayer(this.world, p, cmd, dt, speed * U, this.waterSurface(p.pos[0], p.pos[2]), this.blockers(p));
     // Smooth stair steps for the camera.
     p.stepOffset *= Math.max(0, 1 - dt * 14);
+  }
+
+  // Boxes of the living players near p that p can't walk through: teammates,
+  // enemies and bots alike, like CS 1.6. Someone p is already inside (a spawn
+  // stack, a prediction miss online) is left out, so the two can walk apart
+  // instead of being shoved. Online, the browser checks against the newest
+  // snapshot (collideStates) rather than the 100 ms-old drawn positions, as
+  // that's closer to where the server has everyone when our cmd runs.
+  blockers(p) {
+    const out = [];
+    for (const o of this.players) {
+      if (o === p) continue;
+      const s = this.collideStates?.get(o.id);
+      const alive = s ? s.alive : o.alive;
+      if (!alive) continue;
+      const pos = s ? s.pos : o.pos;
+      if (Math.abs(pos[0] - p.pos[0]) > 3 || Math.abs(pos[2] - p.pos[2]) > 3 || Math.abs(pos[1] - p.pos[1]) > 4) continue;
+      const b = playerBox(pos, s ? s.ducked : o.ducked);
+      if (hullTouches(p, b)) continue;
+      out.push(b);
+    }
+    return out;
   }
 
   handleAction(p, a) {

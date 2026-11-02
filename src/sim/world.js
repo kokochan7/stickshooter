@@ -116,3 +116,84 @@ export function rayBox(ox, oy, oz, dx, dy, dz, min, max) {
   if (axis >= 0) normal[axis] = sign;
   return { tEnter: tmin, tExit: tmax, normal };
 }
+
+// The lowest surface at (x, z) a player could stand on: the top of a box
+// with headroom above it. Crate tops and roofs sit above the real floor, so
+// the lowest one is the floor. null if there's nothing under the spot.
+export function floorUnder(world, x, z, headroom = 1.0) {
+  const d = 0.01;
+  let best = null;
+  for (const b of world.overlapping(x - d, -50, z - d, x + d, 50, z + d)) {
+    const top = b.max[1];
+    if (best !== null && top >= best) continue;
+    if (world.overlaps(x - d, top + 0.01, z - d, x + d, top + headroom, z + d)) continue;
+    best = top;
+  }
+  return best;
+}
+
+// Where a painted zone (a bomb site, a rescue area) goes: the floor height
+// most of the rect stands on, and the cells (cell x cell meters) at that
+// height, merged into runs along x: [[x0, z0, x1, z1], ...]. Cells under
+// walls or crates, over water or on a raised step are left out, so the paint
+// lies on the floor instead of floating over it. label: the middle of the
+// biggest open patch of floor near the zone's middle, and how far it's clear
+// all round (r, capped at maxR), so the big letter isn't hidden under a crate.
+export function zoneFloor(world, rect, cell = 0.5, maxR = 4) {
+  const [x0, z0] = rect.min, [x1, z1] = rect.max;
+  const nx = Math.max(1, Math.round((x1 - x0) / cell)), nz = Math.max(1, Math.round((z1 - z0) / cell));
+  const cw = (x1 - x0) / nx, cd = (z1 - z0) / nz;
+  const ys = [];
+  const count = new Map();
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const y = floorUnder(world, x0 + (i + 0.5) * cw, z0 + (j + 0.5) * cd);
+      ys.push(y);
+      if (y === null) continue;
+      const k = Math.round(y * 100);
+      count.set(k, (count.get(k) ?? 0) + 1);
+    }
+  }
+  let mode = 0, n = -1;
+  for (const [k, c] of count) if (c > n) { n = c; mode = k; }
+  const y = mode / 100;
+  const onFloor = (k) => ys[k] !== null && Math.abs(ys[k] - y) < 0.02;
+  const cells = [];
+  for (let j = 0; j < nz; j++) {
+    let start = -1;
+    for (let i = 0; i <= nx; i++) {
+      const on = i < nx && onFloor(j * nx + i);
+      if (on && start < 0) start = i;
+      if (!on && start >= 0) {
+        cells.push([x0 + start * cw, z0 + j * cd, x0 + i * cw, z0 + (j + 1) * cd]);
+        start = -1;
+      }
+    }
+  }
+
+  // Open floor: painted, with nothing standing on it up to chest height.
+  const blocked = [];
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      const x = x0 + (i + 0.5) * cw, z = z0 + (j + 0.5) * cd;
+      if (!onFloor(k) || world.overlaps(x - cw / 2, y + 0.02, z - cd / 2, x + cw / 2, y + 1.2, z + cd / 2)) blocked.push([x, z]);
+    }
+  }
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  let label = { x: cx, z: cz, r: 0 }, best = -Infinity;
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const x = x0 + (i + 0.5) * cw, z = z0 + (j + 0.5) * cd;
+      // Clear radius: to the nearest blocked cell or the zone's edge.
+      let r = Math.min(maxR, x - x0, x1 - x, z - z0, z1 - z);
+      for (const [bx, bz] of blocked) {
+        const d = Math.hypot(bx - x, bz - z) - cell * 0.5;
+        if (d < r) { r = d; if (r <= 0) break; }
+      }
+      const score = r - Math.hypot(x - cx, z - cz) * 0.15;
+      if (r > 0 && score > best) { best = score; label = { x, z, r }; }
+    }
+  }
+  return { y, cells, label };
+}

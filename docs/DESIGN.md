@@ -168,6 +168,7 @@ Modelled on the GoldSrc/CS 1.6 player movement code (`movement.js`).
 | Landing slowdown | ×0.8, 0.5 s jump stamina | stops bunny hops outpacing running |
 | Footsteps | one every 0.38 s above 150 u/s, silent below | CS plays one every 0.3–0.4 s; walk cycle and gun bob share the cadence |
 | Tagging (being shot) | ×0.55, recovers over 0.6 s | flinch slowdown |
+| Player collision | living players are solid hull boxes: no walking through teammates, enemies or bots; you can stand on heads | same |
 
 Max run speed depends on the gun you hold (table in 5.1): 250 u/s with a
 pistol or most SMGs, down to 190 u/s with the Mini Gun.
@@ -608,7 +609,10 @@ instantly. When a snapshot arrives, the client resets its player to the
 server state for the acked sequence and replays every unacked cmd. Because
 both sides run the same movement code at the same 128 Hz, corrections are
 normally zero. Small errors should be smoothed over ~100 ms rather than
-snapped.
+snapped. Other players block movement, so the client predicts against them
+at their newest snapshot positions (`Game.collideStates`), not the 100 ms-old
+drawn ones; that's closest to where the server has them when the cmd runs.
+Players already overlapping each other don't block, so they can walk apart.
 
 **Interpolation (everyone else).** Remote players are drawn about 100 ms
 behind (roughly three snapshot intervals), interpolating between the two
