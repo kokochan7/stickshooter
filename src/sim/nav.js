@@ -198,7 +198,7 @@ export class NavGrid {
     heap.clear();
     const blocked = this.blocked, floor = this.floor, swim = this.swim, H = this.h;
     const free = (i, j) => i >= 0 && j >= 0 && i < W && j < H && blocked[j * W + i] !== 1;
-    const step = (from, to) => { const up = floor[to] - floor[from]; return up <= MAX_STEP || (swim[from] === 1 && up <= CLIMB_OUT); };
+    const step = (from, to) => floor[to] - floor[from] <= MAX_STEP || this.canStep(from, to);
     const gi = g0[0], gj = g0[1];
     // Octile distance, weighted a little: a tight estimate keeps A* from
     // flooding big open maps. Paths get string-pulled afterwards anyway.
