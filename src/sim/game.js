@@ -742,7 +742,7 @@ export class Game {
     // you look, and the harder you look up the slower it goes.
     let a = -p.pitch / DEG; // CS pitch: negative is up
     a = a < 0 ? -10 + a * (80 / 90) : -10 + a * (100 / 90);
-    let speed = Math.min(g.maxSpeed, (90 - a) * 6) * U;
+    let speed = Math.min(g.maxSpeed, (90 - a) * g.throwMul) * U;
     if (p.nadeLob) speed *= g.lobMul;
     const dir = aimDir(p.yaw, -a * DEG);
     const eye = this.eyePos(p);
