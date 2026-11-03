@@ -1,193 +1,202 @@
-# Stick Shooter
+<div align="center">
 
-A lightweight 3D stickman shooter for the browser. Counter-Strike 1.6 style
-gunplay (damage, armor, hitboxes, range falloff, wall penetration, spray
-patterns) with an original look: a white stickman, low-poly guns and a
-bright toy-like arena.
+# STICK SHOOTER
 
-Five maps, picked on the main menu: **Yard** (deathmatch), **Canal** and
-**Dunes** (bomb defusal), **Harbor** and **Frost** (hostage rescue). Teams on a
-bomb or hostage map plays CS-style rounds: one life per round, a short buy
-time, first to 8 rounds. Red plants the bomb at site A or B (or guards the
-hostages); Blue defends and defuses (or leads the hostages to the rescue zone).
-Free for all is plain deathmatch on every map. Canal, Harbor and Frost have
-shallow water you can wade through (slower, splashy footsteps) and bridges.
+**Classic Counter-Strike gunplay. Stickman simplicity. Zero install.**
 
-Two ways to play: **practice** (runs entirely in the
-browser, with 0 to 10 bots; 0 by default) and **online** (an early test:
-`BOT_FILL` in `src/net/protocol.js` can fill rooms with server bots, and is 0
-for now). Both play either **Free for all** (everyone, bots included, fights
-everyone; white stickmen) or **Teams** (Red vs Blue, tinted stickmen, each team
-spawns on its own side; `M` switches team). Online, FFA is the `public` room and
-Teams is `public-teams`; the menu shows how many people are in each, and
-PLAY ONLINE joins the other mode's room if yours is empty and it isn't. The
-first person into an empty room picks its map; everyone after joins that map.
+A fast, lightweight 3D multiplayer shooter that runs in your browser, on desktop or phone.
 
-## Play locally
+### [▶ Play now at stickshooter.kennk.workers.dev](https://stickshooter.kennk.workers.dev)
 
-```bash
-npm install
-npm run dev        # http://localhost:5173
-npm test           # sim + netcode tests
-npm run dev:server # wrangler dev on :8787: the Worker, rooms and the built game
-                   # (npm run dev proxies /api and /ws to it for online play)
-npm run build      # production build in dist/
-```
+![Stick Shooter: an AK47 firefight against white stickman bots on the Yard map](docs/screenshot.jpg)
 
-## Deploy to Cloudflare
+</div>
 
-`wrangler.jsonc` deploys the `stickshooter` Worker
-(stickshooter.kennk.workers.dev): `dist/` as static assets plus the
-multiplayer Worker and its `GameRoom` Durable Object.
+---
 
-```bash
-npx wrangler login   # once
-npm run deploy       # wrangler builds (npm run build) then deploys
-```
+## Why Stick Shooter
 
-`wrangler.jsonc` runs `npm run build` itself before each deploy, so Workers
-Builds connected to this repo works with the default `npx wrangler deploy`
-deploy command and no build command.
+Most browser shooters feel floaty. Stick Shooter is built on the rules that
+made Counter-Strike 1.6 a classic: real damage numbers, hitboxes, armor,
+wall penetration, spray patterns and movement. It wraps them in a clean,
+original look with a white stickman, detailed low-poly guns and bright arenas.
 
-## Online multiplayer
+Open a link and you're in a match within seconds. No download, no account,
+no launcher.
 
-Same Worker, same deploy. `worker/index.js` handles `/api/*` and `/ws/*`;
-everything else is the static game.
+## Features
 
-- **Rooms:** one `GameRoom` Durable Object per room (`worker/room.js`, binding
-  `ROOMS`). It runs the same `src/sim` Game as practice mode at 128 Hz, so the
-  server decides every hit with the CS 1.6 rules. Bots (the same `BotBrain`)
-  keep a room at 6 players until humans fill it; max 10 humans.
-- **Routes:** `GET /ws/:room` (WebSocket; the menu's PLAY ONLINE uses `public`),
-  `GET /api/rooms` (players in each quick play room), `POST /api/rooms` (new
-  random room id), `GET /api/health`.
-- **Netcode** (`src/net/`): clients send their inputs every 2 ticks with a
-  sequence number; the room sends 32 Hz snapshots + events with the last input
-  it used. The client predicts its own movement and replays unacknowledged
-  inputs on each snapshot, draws other players 100 ms in the past, and the
-  server rewinds other players to what the shooter saw (up to 200 ms) when
-  tracing bullets. Messages are JSON for now.
-- **Not yet:** local prediction of your own shots (muzzle flash/recoil wait for
-  the server), room browser, rounds, binary snapshots.
+**🎯 Gunplay that rewards skill**
+- 13 guns at launch, from the USP to the AWP and a spin-up Mini Gun, plus a
+  knife and HE grenades. Every number (damage, fire rate, magazine, price)
+  matches CS 1.6.
+- **Hitboxes**: headshots do 4× damage, stomach 1.25×, legs 0.75×.
+- **Armor**: kevlar and helmet, with per-gun armor penetration (the AK lets
+  77.5% through, the AWP 97.5%).
+- **Wall penetration** by material. Rifles punch through wood and thin metal;
+  concrete and containers stop everything.
+- **Range falloff**, first-shot accuracy, CS-style recoil and spray, and
+  movement inaccuracy. Crouch and walk to tighten your shots.
+
+**💣 Real game modes**
+- **Bomb defusal**: plant at site A or B, or defend and defuse.
+- **Hostage rescue**: lead the hostages out, or guard them.
+- **Deathmatch**: Free for all or Teams (Red vs Blue).
+- CS-style rounds with one life, a buy menu, buy time, kill rewards and a
+  first-to-8 match. Spectate teammates after you die.
+- Multi-kill streaks with announcer calls: DOUBLE, TRIPLE, MULTI, ULTRA,
+  **MONSTER KILL**.
+
+**🗺️ Five original maps**
+
+| Map | Mode | Size |
+| --- | --- | --- |
+| Yard | Deathmatch | Medium |
+| Canal | Bomb defusal | Huge |
+| Dunes | Bomb defusal | Huge |
+| Harbor | Hostage rescue | Large |
+| Frost | Hostage rescue | Huge |
+
+All are CS 1.6 scale, with water you can wade, swim and dive in, bridges,
+and cover to fight around.
+
+**🤖 Smart bots, up to 128 of them**
+- Bots take roles (rush, flank, anchor, lurk), use cover, buy their own
+  gear, plant and guard the bomb, and run real team strategies that change
+  round to round.
+- Easy, Normal and Hard difficulty.
+- Fill a server with up to **128 bots** for total chaos.
+
+**🌐 Online multiplayer**
+- Hit **PLAY ONLINE** and you're in a live room in seconds.
+- The server runs the same game rules as the client at 128 ticks per
+  second, so every hit is decided fairly.
+- Client prediction and lag compensation make shots land where you aimed.
+
+**📱 Plays on phones too**
+- Built-in touch controls for iPhone, iPad and Android: a floating move
+  stick, drag to aim, and buttons for fire, jump, crouch, reload, scope,
+  grenade, buy and more.
+
+**⚡ Lightweight and smooth**
+- About 240 KB of code (gzipped) and roughly 1 MB of sound.
+- Uncapped frame rate: 120 Hz and 144 Hz screens get 120 and 144 FPS.
+- 128 Hz simulation, raw mouse input and a fully rebindable keyboard.
+- Crosshair editor, FOV and sensitivity settings.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
 | WASD | Move |
-| Mouse | Aim (raw input, CS-style sensitivity) |
+| Mouse | Aim |
 | Mouse 1 / Mouse 2 | Fire / scope (AWP) |
 | Space | Jump |
 | Ctrl or C | Crouch |
-| Shift | Walk (silent footsteps, more accurate) |
+| Shift | Walk (silent, more accurate) |
 | R | Reload |
-| 1 / 2 / Q / wheel | Primary / pistol / last weapon |
-| B | Buy menu (number keys pick a category, then a gun: B 4 3 = M4A1) |
+| 1 / 2 / 3 / 4 / Q | Primary / pistol / knife / grenade / last weapon |
+| B | Buy menu (number keys: B 4 3 = M4A1) |
+| N | Buy ammo |
+| G | Drop or pick up a gun |
+| E | Plant or defuse the bomb, lead a hostage |
 | Tab | Scoreboard |
-| M | Switch team (Teams mode) |
-| E | Use: hold to plant or defuse the bomb, press to lead or stop a hostage |
+| M | Switch team |
 | Esc | Pause |
-| ~ | Admin console (see below) |
+| ~ | Admin console |
 
-Every key above except Esc can be rebound in Settings → Controls. Settings
-also has a crosshair editor (length, gap, thickness, dot, outline, dynamic).
+Every key except Esc can be rebound in **Settings → Controls**.
 
-## Admin console
+## The weapons
 
-Press **~** in a match to open the console. Type `help` for the list:
-`money`, `addbot`, `removebot`, `bots <n>` (max 128), `difficulty`, `give <gun>`,
-`heal`, `god`, `slay`, `map <id>`, `restart`, `players`.
+| Gun | Damage | Mag | RPM | Wall pen. | Price |
+| --- | --- | --- | --- | --- | --- |
+| USP | 34 | 12 | 400 | 1 | $500 |
+| Desert Eagle | 54 | 7 | 267 | 2 | $650 |
+| UZI | 27 | 32 | 857 | 1 | $1250 |
+| MP5 | 26 | 30 | 800 | 1 | $1500 |
+| UMP45 | 30 | 25 | 600 | 1 | $1700 |
+| P90 | 21 | 50 | 909 | 1 | $2350 |
+| Shotgun | 9 × 20 | 8 | 69 | 0 | $1700 |
+| Auto Shotgun | 6 × 20 | 7 | 240 | 0 | $3000 |
+| FAMAS | 30 | 25 | 727 | 2 | $2250 |
+| AK47 | 36 | 30 | 628 | 2 | $2500 |
+| M4A1 | 33 | 30 | 686 | 2 | $3100 |
+| AWP | 115 | 10 | 41 | 3 | $4750 |
+| Mini Gun | 30 | 150 | 1091 | 2 | $5750 |
 
-- **Practice:** the commands work right away on your own game.
-- **Online:** only the admin can run them. The room checks a password against
-  the Worker secret `ADMIN_KEY`; type `login <password>` once and the browser
-  remembers it (`logout` forgets it). Set or change the secret with
-  `npx wrangler secret put ADMIN_KEY`, or in the Cloudflare dashboard under
-  Workers & Pages → stickshooter → Settings → Variables and Secrets (type
-  Secret). Without the secret, online admin is off. For `wrangler dev`, put
-  `ADMIN_KEY=...` in `.dev.vars` (git-ignored).
+Full damage rules (armor ratios, range modifiers, materials) are in
+[docs/DESIGN.md](docs/DESIGN.md).
 
-## Kill money and multi-kills
+## Roadmap
 
-- Free for all pays a flat $800 per kill.
-- Teams pays $500 for your first kill of the round, then $250 more for each
-  kill after it, up to $2500. In team deathmatch a "round" is one life.
-- Kills within 4 s of each other chain into DOUBLE, TRIPLE, MULTI, ULTRA and
-  MONSTER KILL, with a voice line. The voice lines in
-  `public/audio/announcer/` are original: generated with the Apache-2.0
-  Kokoro TTS model, then pitched down with an arena echo in ffmpeg. In game
-  they also run through a live reverb + echo (`arenaVoice` in audio.js).
+- Skins and stickman customization
+- iOS app (the touch controls already work in mobile Safari)
+- Room browser and private matches
+- More maps and weapons
 
-## Weapons
+---
 
-All numbers come from CS 1.6 (prices too). The Mini Gun isn't in CS, so it
-uses the M249's numbers with a faster fire rate, a spin-up and a heavier
-movement penalty. The UZI uses TMP/MAC-10 style numbers.
+## For developers
 
-| Gun | Dmg | Armor pen. | Range mod | Mag | RPM | Wall pen. | Price |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| USP | 34 | 1.0 | 0.79 | 12/100 | 400 | 1 | $500 |
-| Desert Eagle | 54 | 1.5 | 0.81 | 7/35 | 267 | 2 | $650 |
-| UZI | 27 | 0.95 | 0.84 | 32/128 | 857 | 1 | $1250 |
-| MP5 | 26 | 1.0 | 0.84 | 30/120 | 800 | 1 | $1500 |
-| UMP45 | 30 | 1.0 | 0.82 | 25/100 | 600 | 1 | $1700 |
-| P90 | 21 | 1.5 | 0.885 | 50/100 | 909 | 1 | $2350 |
-| Shotgun | 9×20 | 1.0 | linear | 8/32 | 69 | 0 | $1700 |
-| Auto Shotgun | 6×20 | 1.0 | linear | 7/32 | 240 | 0 | $3000 |
-| FAMAS | 30 | 1.4 | 0.96 | 25/90 | 727 | 2 | $2250 |
-| AK47 | 36 | 1.55 | 0.98 | 30/90 | 628 | 2 | $2500 |
-| M4A1 | 33 | 1.4 | 0.97 | 30/90 | 686 | 2 | $3100 |
-| AWP | 115 | 1.95 | 0.99 | 10/30 | 41 | 3 | $4750 |
-| Mini Gun | 30 | 1.5 | 0.97 | 150/300 | 1091 | 2 | $5750 |
+Built with [Three.js](https://threejs.org) and vanilla JavaScript, bundled
+by Vite, hosted on a Cloudflare Worker with a Durable Object per game room.
 
-How damage works (same as CS 1.6):
+```bash
+npm install
+npm run dev         # game at http://localhost:5173
+npm run dev:server  # Worker + rooms on :8787 (dev proxies /api and /ws to it)
+npm test            # sim, bot and netcode tests
+npm run build       # production build in dist/
+npm run deploy      # build and deploy to Cloudflare
+```
 
-- **Hitgroups:** head ×4, chest ×1, stomach ×1.25, arms ×1, legs ×0.75.
-- **Armor:** kevlar absorbs part of the hit on body and arms; the gun's armor
-  penetration decides how much gets through (AK 77.5%, AWP 97.5%). Head is
-  only protected with a helmet. Legs are never protected.
-- **Range:** damage × rangeMod^(distance / 500 units). Shotgun pellets lose
-  damage linearly up to their max range.
-- **Wall penetration:** each surface has a material. Wood is easy to shoot
-  through, thin metal sheets take a rifle, the 20 cm lane walls only let
-  rifles and the AWP through, and thick concrete and containers stop
-  everything. Each wall cuts the damage (wood 60%, concrete 50%, metal 20%).
-- **Accuracy:** first shot is accurate; spread grows with spray, moving,
-  jumping. Crouching and walking help. Recoil kicks the view (and the
-  bullets) up and sideways like CS's KickBack.
-- **Movement:** CS pmove: 250 u/s with a knife-speed pistol, slower with
-  rifles, ground friction, air strafing, landing slowdown, and slowdown when
-  you get shot.
+Pushing to `main` deploys automatically through Cloudflare Workers Builds.
 
-## Code layout
+### Code layout
 
 ```
-src/sim/      Game rules. No DOM or Three.js. Runs in Node (tests) and could
-              run on a server unchanged.
-  game.js       Game state, fixed 128 Hz tick, weapons, damage, buying, events
-  movement.js   CS-style player movement and collision
+src/sim/      Game rules: no DOM, no Three.js. Runs in the browser, in Node
+              tests and on the server unchanged.
+  game.js       Game state, fixed 128 Hz tick, weapons, damage, buying
+  movement.js   CS-style movement, collision and swimming
   combat.js     Hitboxes, bullet tracing, wall penetration, armor
   weapons.js    Weapon table (CS 1.6 numbers)
-  world.js      Box collision world and materials
-  bot.js/nav.js Bot AI and A* navigation
-src/maps/     Map definitions (boxes + spawns)
-src/client/   Rendering (Three.js), audio (sound pack + synth fallback), input, HUD
-src/main.js   Glue + main loop
+  objective.js  Bomb and hostage rounds
+  bot.js        Bot AI (botplan.js team strategies, nav.js A* paths)
+  admin.js      Admin console commands
+src/maps/     Map definitions (boxes, spawns, sites)
+src/client/   Rendering, audio, input, touch controls, HUD
+src/net/      Netcode: protocol, prediction, interpolation
+worker/       Cloudflare Worker and the GameRoom Durable Object
 ```
 
-**Performance:** the sim ticks at a fixed 128 Hz; rendering runs at the
-display's refresh rate (120/144 Hz monitors get 120/144 FPS) and interpolates
-between ticks. Mouse look is applied every frame. The map is one draw call,
-effects are pooled, the sound pack is about 1 MB of 22 kHz mono mp3s fetched
-after the first click (synthesized stand-ins play until they arrive), and
-the whole game is about 155 KB gzipped.
+### Online multiplayer
 
-**Multiplayer plan** (details in [docs/DESIGN.md](docs/DESIGN.md)): clients send the same `cmd` objects the bots produce;
-a Cloudflare Durable Object runs `Game.tick()` for each room and streams
-player state + events back. The client already predicts by running the same
-sim locally, so the next step is a server, reconciliation and lag
-compensation for hit registration.
+`worker/index.js` handles `/api/*` and `/ws/*`; everything else is the static
+game. Each room is a `GameRoom` Durable Object (binding `ROOMS`) running the
+same `src/sim` game at 128 Hz and sending 32 Hz snapshots. Clients predict
+their own movement and shots, draw other players 100 ms in the past, and the
+server rewinds players (up to 200 ms) to what the shooter saw.
 
-**iOS plan:** the input layer produces plain `cmd` objects, so a touch
-controller (virtual stick + fire/aim buttons) can plug in next to the
-keyboard/mouse one. Audio is unlocked on the first tap as iOS requires.
+- `GET /ws/:room`: WebSocket (quick play uses `public` and `public-teams`)
+- `GET /api/rooms`: players in each quick play room
+- `POST /api/rooms`: new random room id
+- `GET /api/health`
+
+### Admin console
+
+Press **~** in a match and type `help`: `money`, `addbot`, `removebot`,
+`bots <n>` (max 128), `difficulty`, `give <gun>`, `heal`, `god`, `slay`,
+`map <id>`, `restart`, `players`.
+
+Commands work right away in practice. Online they need the Worker secret
+`ADMIN_KEY` (`npx wrangler secret put ADMIN_KEY`); type `login <password>`
+once and the browser remembers it. For `wrangler dev`, put `ADMIN_KEY=...`
+in `.dev.vars`.
+
+### Credits
+
+Announcer voice lines are original, generated with the Apache-2.0 Kokoro TTS
+model and processed with ffmpeg. Gameplay numbers follow Counter-Strike 1.6;
+all art, maps and models are original.
