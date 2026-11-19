@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT } from '../sim/weapons.js';
 import { buildGun } from './gunModels.js';
 import { DEFAULT_BINDS, BIND_LABELS, keyName } from './input.js';
+import { MAX_BOTS } from '../sim/admin.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -26,11 +27,12 @@ export const DEFAULT_SETTINGS = {
   difficulty: 'normal',
   // Fullscreen during matches, which also lets the game take Ctrl+W, Ctrl+T
   // and the like away from the browser (Keyboard Lock, Chrome and Edge).
-  fullscreen: true,
+  // Off by default; players can turn it on in settings.
+  fullscreen: false,
   touchSens: 1, // look speed for touch controls
   mode: 'ffa', // 'ffa' or 'teams', for practice and online
   map: 'yard', // see src/maps/index.js
-  version: 5,
+  version: 6,
 };
 
 // Sensitivity uses CS units (0.022 degrees per mouse count per point).
@@ -48,6 +50,10 @@ export function loadSettings() {
     // v3 narrowed the sensitivity range and dropped render scale and invert mouse.
     // v4 made the default sensitivity higher (1.5 -> 3).
     if ((saved.version ?? 1) < 4) delete saved.sensitivity;
+    // v6 turned fullscreen off by default. Older saves stored the old default
+    // (on) whether or not the player chose it, so drop a saved "on" and keep a
+    // saved "off", which can only have been picked on purpose.
+    if ((saved.version ?? 1) < 6 && saved.fullscreen === true) delete saved.fullscreen;
     // Screen shake (always 100% now) and HUD size are no longer settings.
     delete saved.viewKick;
     delete saved.hudScale;
