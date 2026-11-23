@@ -96,6 +96,10 @@ let goUntil = 0; // "GO!" stays up briefly after the countdown
 let scoresForced = null; // scoreboard title while it's held open to show the winner
 let alertMsg = null; // { html, until }: "BOMB PLANTED" and the like
 let nextBeep = 0; // when the planted bomb beeps next (game time)
+// F1 re-buy: what you bought since your last spawn, and what you bought the
+// life (or round) before that, which is what F1 buys again.
+let buyLog = [];
+let lastBuys = [];
 const spec = new Spectator(); // who/how we watch while dead in a round
 const timers = [];
 const underwaterEl = $('underwater');
@@ -516,6 +520,19 @@ function buyAmmo() {
   pendingActions.push({ type: 'buy', item: 'ammo' });
 }
 
+// F1: buy again what you bought last life / round (CS 1.6's rebuy). The
+// game skips what you already have.
+function rebuy() {
+  if (!me?.alive) return;
+  if (!game.canBuy(me)) return buyTimeOver();
+  const items = lastBuys.length ? lastBuys : buyLog;
+  if (!items.length) {
+    alertMsg = { html: '<span class="alert">NOTHING TO RE-BUY YET</span>', until: performance.now() + 1500 };
+    return;
+  }
+  pendingActions.push({ type: 'rebuy', items: items.slice(-8) });
+}
+
 function setBuyMenu(open) {
   if (!me || !me.alive) open = false;
   if (open && !game.canBuy(me)) { buyTimeOver(); open = false; }
@@ -536,6 +553,7 @@ input.on('key', (code) => {
   const b = settings.binds;
   if (code === b.buy) setBuyMenu(!buyMenu.open);
   else if (code === b.buyAmmo) buyAmmo();
+  else if (code === b.rebuy) rebuy();
   else if (code === 'Escape' && buyMenu.open) setBuyMenu(false);
   else if (code === 'Escape') pauseGame();
   else if (buyMenu.open && /^(Digit|Numpad)\d$/.test(code)) buyMenu.key(+code.slice(-1));
@@ -544,6 +562,7 @@ input.on('key', (code) => {
   else if (code === b.drop && !buyMenu.open) dropOrPickup();
   else if (code === b.scores) showScoreboard(true);
   else if (code === b.jump && !buyMenu.open) spectateButton('jump');
+  else if (code === b.use && !buyMenu.open) spectateButton('use');
 });
 input.on('mouse', (button) => {
   if (mode !== 'playing' || buyMenu.open || consoleOpen) return;
@@ -897,7 +916,11 @@ function handleEvent(e) {
       if (p === me) audio.play('zoom', { volume: 0.6 });
       break;
     case 'buy':
-      if (p === me) { audio.play('buy', { volume: 0.4 }); if (buyMenu.open) buyMenu.render(me); }
+      if (p === me) {
+        audio.play('buy', { volume: 0.4 });
+        if (buyMenu.open) buyMenu.render(me);
+        if (e.item !== 'ammo') buyLog.push(e.item);
+      }
       break;
     case 'team':
       if (p === me) { killInfo = null; teamMsgUntil = performance.now() + 2500; }
@@ -905,7 +928,25 @@ function handleEvent(e) {
     case 'spawn': {
       const v = view.views.get(p.id);
       if (v) v.man.revive();
-      if (p === me) { input.setAngles(e.yaw ?? me.yaw, 0); killInfo = null; }
+      if (p === me) {
+        input.setAngles(e.yaw ?? me.yaw, 0); killInfo = null;
+        if (buyLog.length) { lastBuys = buyLog; buyLog = []; }
+      }
+      break;
+    }
+    case 'takeover': {
+      // A dead player took over a teammate bot: they're alive in its body.
+      const v = view.views.get(p?.id);
+      if (v) v.man.revive();
+      const bot = game.getPlayer(e.bot);
+      if (p === me) {
+        input.setAngles(e.yaw ?? me.yaw, e.pitch ?? 0);
+        killInfo = null;
+        spec.id = null;
+        view.viewModel.deploy();
+        audio.play('beep', { volume: 0.35 });
+        alertMsg = { html: `<span class="alert good">YOU TOOK CONTROL OF ${escapeHtml(bot?.name ?? 'A BOT').toUpperCase()}</span>`, until: performance.now() + 2000 };
+      }
       break;
     }
     // ----- Objective rounds -----
@@ -1120,6 +1161,7 @@ function updateView(dt, alpha) {
     v.man.update({
       x, y, z, yaw, pitch, vx: p.vel[0], vz: p.vel[2],
       duck: lerp(p.prevDuck, p.duckAmount, alpha), onGround: p.onGround || !!p.swimming, reloading: p.reloading, spin: p.spin,
+      planting: p.task?.kind === 'plant',
     }, dt);
     v.shadow.position.set(x, view.groundBelow(x, y, z) + 0.01, z);
   }
@@ -1233,6 +1275,7 @@ function updateView(dt, alpha) {
   view.viewModel.update(dt, {
     mouseDX: mdx, mouseDY: mdy, speed: me ? Math.hypot(me.vel[0], me.vel[2]) : 0, onGround: (me?.onGround || me?.swimming) ?? true,
     reloading: me?.reloading ?? false, spin: me?.spin ?? 0, visible: showVm,
+    plant: me?.alive && me.task?.kind === 'plant' ? (gunTime() - me.task.start) / (me.task.end - me.task.start) : -1,
   });
   view.effects.update(dt);
 
@@ -1308,6 +1351,12 @@ function spectateButton(id) {
     if (spec.cycle(game.players, me, id === 'alt' ? -1 : 1)) audio.play('beep', { volume: 0.25 });
     return true;
   }
+  if (id === 'use') {
+    // Teams: take over the teammate bot you're watching.
+    const t = spec.mode === 'free' ? null : spectateTarget();
+    if (t && game.canTakeOver(me, t)) pendingActions.push({ type: 'takeover', id: t.id });
+    return true;
+  }
   if (id === 'jump') {
     const c = view.camera;
     spec.nextMode([c.position.x, c.position.y, c.position.z]);
@@ -1325,7 +1374,9 @@ function spectatePrompt() {
   const help = TOUCH
     ? 'FIRE next · SCOPE previous · JUMP camera'
     : `<kbd>Click</kbd> next · <kbd>Right-click</kbd> previous · <kbd>${keyName(settings.binds.jump)}</kbd> camera`;
-  return `${who}${SPEC_LABELS[spec.mode]}<br><span class="spec-help">${help}</span>`;
+  const take = t && game.canTakeOver(me, t)
+    ? `<br><span class="spec-take">${TOUCH ? 'USE' : `<kbd>${keyName(settings.binds.use)}</kbd>`} Take control of this bot</span>` : '';
+  return `${who}${SPEC_LABELS[spec.mode]}${take}<br><span class="spec-help">${help}</span>`;
 }
 
 // The planted bomb beeps faster and faster, like the real thing.
@@ -1346,7 +1397,10 @@ function objectivePrompt() {
   const b = game.bomb;
   if (game.objective === 'bomb') {
     if (me.task) return '';
-    if (canPlant(game, me)) return `Hold ${k} to plant the bomb`;
+    if (canPlant(game, me)) {
+      if (me.active !== 'c4') return `Press <kbd>${keyName(settings.binds.melee)}</kbd> to take out the bomb`;
+      return `Hold ${k} or <kbd>${TOUCH ? 'FIRE' : 'Click'}</kbd> to plant the bomb`;
+    }
     if (b.state === 'carried' && b.carrier === me.id) return siteAt(game.map, me.pos) ? '' : `<small style="opacity:.75">You have the bomb: plant it at site A or B</small>`;
     if (canDefuse(game, me)) return `Hold ${k} to defuse${me.defuser ? ' (kit)' : ''}`;
     return '';

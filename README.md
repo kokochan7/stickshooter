@@ -95,11 +95,12 @@ and cover to fight around.
 | Ctrl or C | Crouch |
 | Shift | Walk (silent, more accurate) |
 | R | Reload |
-| 1 / 2 / 3 / 4 / Q | Primary / pistol / knife / grenade / last weapon |
+| 1 / 2 / 3 / 4 / Q | Primary / pistol / knife (or the bomb when you carry it) / grenade / last weapon |
 | B | Buy menu (number keys: B 4 3 = M4A1) |
 | N | Buy ammo |
+| F1 | Re-buy what you bought last round |
 | G | Drop or pick up a gun |
-| E | Plant or defuse the bomb, lead a hostage |
+| E | Plant (bomb in hand) or defuse the bomb, lead a hostage; while dead in Teams, take over the teammate bot you're watching |
 | Tab | Scoreboard |
 | M | Switch team |
 | Esc | Pause |

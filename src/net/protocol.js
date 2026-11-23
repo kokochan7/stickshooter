@@ -24,7 +24,7 @@
 //   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -101,7 +101,7 @@ export function packOther(p) {
 // Cmd fields the server accepts; anything else a client sends is dropped.
 export function sanitizeCmd(c) {
   const num = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : 0);
-  const slot = ['primary', 'secondary', 'melee', 'grenade'].includes(c.slot) ? c.slot : null;
+  const slot = ['primary', 'secondary', 'melee', 'grenade', 'c4'].includes(c.slot) ? c.slot : null;
   let actions = null;
   if (Array.isArray(c.actions)) {
     actions = c.actions.slice(0, 4).map(cleanAction).filter(Boolean);
@@ -122,6 +122,10 @@ function cleanAction(a) {
   if (a.type === 'team' && (a.team === 'red' || a.team === 'blue')) return { type: 'team', team: a.team };
   if (a.type === 'drop') return { type: 'drop' };
   if (a.type === 'pickup' && Number.isInteger(a.id)) return { type: 'pickup', id: a.id };
+  if (a.type === 'takeover' && Number.isInteger(a.id)) return { type: 'takeover', id: a.id };
+  if (a.type === 'rebuy' && Array.isArray(a.items)) {
+    return { type: 'rebuy', items: a.items.filter((i) => typeof i === 'string').slice(0, 8).map((i) => i.slice(0, 24)) };
+  }
   return null;
 }
 

@@ -95,7 +95,8 @@ export const TEAM_KILL_LIMIT = 50;
 export const MATCH_OVER_TIME = 8;
 export const START_DELAY = 3;
 
-// Dropped guns lie on the ground this long before they disappear.
+// Dropped guns lie on the ground this long before they disappear. In
+// objective rounds they stay until the round ends instead.
 export const DROP_LIFETIME = 10;
 // How close you have to be to pick a gun up (meters, from your feet).
 export const PICKUP_RANGE = 1.6;
@@ -106,7 +107,7 @@ export const TOUCH_RANGE = 0.8;
 // per round, a short freeze to buy at the start, first team to
 // ROUND_WIN_LIMIT rounds wins the match. Red attacks (plants the bomb, guards
 // the hostages), Blue defends (defuses, rescues).
-export const ROUND_WIN_LIMIT = 8;
+export const ROUND_WIN_LIMIT = 7;
 export const ROUND_FREEZE = 4;
 export const ROUND_END_TIME = 5;
 export const ROUND_TIME = { bomb: 115, hostage: 150 };

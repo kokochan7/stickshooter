@@ -216,6 +216,16 @@ W.hegrenade = {
   grenade: { radius: 525, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
 };
 
+// The C4 bomb. Only the Red player carrying the bomb has it, in its own slot
+// (key 3 swaps between it and the knife). You have to hold it to plant: hold
+// E or fire inside a bomb site. Can't be bought; G drops it.
+W.c4 = {
+  name: 'C4', slot: 'c4', category: 'Bomb', price: 0, bomb: true,
+  damage: 0, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
+  cycle: 0.5, auto: false, clip: 0, reserve: 0, deploy: 0.6, speed: 250,
+  accuracy: { type: 'none' }, kick: { punch: [0, 0] },
+};
+
 for (const [id, w] of Object.entries(W)) {
   w.id = id;
   w.runThreshold ??= 140;
@@ -261,6 +271,6 @@ export function weaponRatings(w) {
 // its price, or nothing once it's out of ammo.
 export function weaponValue(w) {
   const d = w && W[w.id];
-  if (!d || d.melee || d.grenade) return 0;
+  if (!d || d.melee || d.grenade || d.bomb) return 0;
   return w.clip + w.reserve > 0 ? d.price : 0;
 }

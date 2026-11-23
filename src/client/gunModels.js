@@ -28,6 +28,8 @@ const MATS = {
   brass: [0xb48a3c, 0.9],
   glass: [0x1d3448, 1.0],
   red: [0xa8322a, 0.5],
+  clay: [0xa38f63, 0.12], // C4 charges
+  lcd: [0x7fd45a, 0.6],
 };
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _c = new THREE.Color();
@@ -631,6 +633,31 @@ SPECS.hegrenade = () => ({
   muzzle: [0, 0.05, -0.05], fore: [-0.16, -0.32, 0.12], gripPoint: [0.012, 0.03, 0.03], hold: 'grenade', eject: [0, 0, 0],
   ring: [0.027, 0.088, 0],
 });
+
+// C4: three taped charges with a keypad and timer on top and a couple of
+// wires. Held flat in both hands with the keypad facing you; the planting
+// animation (viewmodel.js) types on the keys.
+SPECS.c4 = () => {
+  const parts = [
+    box(0.062, 0.05, 0.15, -0.066, 0.025, 0, 'clay'),
+    box(0.062, 0.05, 0.15, 0, 0.025, 0, 'clay'),
+    box(0.062, 0.05, 0.15, 0.066, 0.025, 0, 'clay'),
+    box(0.204, 0.054, 0.016, 0, 0.025, -0.048, 'black'),
+    box(0.204, 0.054, 0.016, 0, 0.025, 0.048, 'black'),
+    box(0.1, 0.02, 0.085, 0.02, 0.06, 0.004, 'poly'),
+    box(0.056, 0.004, 0.022, 0.02, 0.0715, -0.024, 'lcd'),
+    xcyl(0.0045, 0.1, -0.05, 0.056, -0.02, 'red', 6),
+    xcyl(0.0045, 0.1, -0.05, 0.056, 0.026, 'steel', 6),
+    ycyl(0.006, 0.006, 0.06, 0.072, -0.026, 'red', 8),
+  ];
+  // 3x4 keys.
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) parts.push(box(0.007, 0.003, 0.007, 0.006 + c * 0.014, 0.0715, -0.003 + r * 0.012, 'metal'));
+  return {
+    parts,
+    muzzle: [0, 0.04, -0.09], fore: [-0.105, 0.03, 0.03], gripPoint: [0.105, 0.03, 0.03], hold: 'c4', eject: [0, 0, 0],
+    keypad: [0.02, 0.074, 0.015],
+  };
+};
 
 // Phong with the shine attribute as specular strength, plus a cheap sky
 // reflection on shiny parts so metal reads as metal without an env map.
