@@ -264,7 +264,7 @@ export class Hud {
       this.set('clip', String(w.clip));
       this.set('reserve', String(w.reserve));
       $('clip').classList.toggle('low', !def.grenade && w.clip <= Math.ceil(def.clip * 0.2));
-      $('clip').parentElement.classList.toggle('hidden', !!def.melee);
+      $('clip').parentElement.classList.toggle('hidden', !!def.melee || !!def.bomb);
       $('clip').parentElement.classList.toggle('single', !!def.grenade);
     }
     // A grenade on your belt shows next to the ammo on touch screens (key 4
@@ -419,8 +419,8 @@ export class Hud {
     $(id).style.width = `${v}%`;
   }
 
-  // Weapon list on the right: 1 primary, 2 pistol, 3 knife, 4 grenade,
-  // 5 bomb. The gun in hand is bright, the rest dim.
+  // Weapon list on the right: 1 primary, 2 pistol, 3 knife (and the bomb,
+  // which 3 swaps to), 4 grenade. The gun in hand is bright, the rest dim.
   slots(p) {
     const w = p.weapons ?? {};
     const nade = w.grenade && w.grenade.clip > 0 ? w.grenade : null;
@@ -430,7 +430,7 @@ export class Hud {
       ['melee', 3, w.melee?.id],
       ['grenade', 4, nade?.id],
     ];
-    const key = `${p.alive}|${p.active}|${rows.map((r) => r[2] ?? '').join(',')}|${nade?.clip ?? 0}|${this.last.bombTag ? 1 : 0}`;
+    const key = `${p.alive}|${p.active}|${rows.map((r) => r[2] ?? '').join(',')}|${nade?.clip ?? 0}|${w.c4 ? 1 : 0}`;
     if (this.last.slots === key) return;
     this.last.slots = key;
     let html = '';
@@ -441,7 +441,7 @@ export class Hud {
       const count = slot === 'grenade' && nade.clip > 1 ? `<small class="cnt">×${nade.clip}</small>` : '';
       html += `<div class="slot ${p.active === slot ? 'on' : ''} s-${slot}"><sup>${n}</sup>${pic}${count}</div>`;
     }
-    if (this.last.bombTag && p.alive) html += `<div class="slot s-bomb"><sup>5</sup>${C4_ICON}</div>`;
+    if (w.c4 && p.alive) html += `<div class="slot s-bomb ${p.active === 'c4' ? 'on' : ''}"><sup>3</sup>${C4_ICON}</div>`;
     $('slots').innerHTML = html;
   }
 

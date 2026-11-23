@@ -206,6 +206,13 @@ function intoSite(g, p, site = 'A') {
   assert.equal(siteAt(g.map, p.pos), site);
 }
 
+// Key 3 takes the bomb out; wait for it to come up.
+function takeOutBomb(g, p) {
+  run(g, TICK_DT, (q) => (q === p ? hold(q, { slot: 'melee' }) : null));
+  assert.equal(p.active, 'c4', 'key 3 takes out the bomb');
+  run(g, 0.7);
+}
+
 test('a bomb round: freeze, the bomb goes to Red, plant, explode, Red scores', () => {
   const { g, red, blue } = bombGame();
   assert.equal(g.objective, 'bomb');
@@ -218,6 +225,11 @@ test('a bomb round: freeze, the bomb goes to Red, plant, explode, Red scores', (
   assert.equal(g.bomb.state, 'carried');
   intoSite(g, red, 'A');
   place(blue, -30, 0, 30); // far away, safe from the blast
+  // In the site but holding a gun: E does nothing.
+  run(g, 0.5, (p) => (p === red ? hold(p, { use: true }) : null));
+  assert.equal(red.task, null, 'the bomb has to be in your hands');
+  run(g, 0.1);
+  takeOutBomb(g, red);
   run(g, PLANT_TIME - 0.5, (p) => (p === red ? hold(p, { use: true, fwd: 1 }) : null));
   assert.equal(red.task?.kind, 'plant');
   const at = [...red.pos];
@@ -226,6 +238,8 @@ test('a bomb round: freeze, the bomb goes to Red, plant, explode, Red scores', (
   run(g, 0.5, (p) => (p === red ? hold(p, { use: true }) : null));
   assert.equal(g.bomb.state, 'planted');
   assert.equal(g.bomb.site, 'A');
+  assert.equal(red.weapons.c4, null, 'the C4 is gone once planted');
+  assert.notEqual(red.active, 'c4', 'back to a weapon');
   place(red, 30, 0, 30);
   run(g, BOMB_TIMER + 0.1);
   assert.equal(g.bomb.state, 'exploded');
@@ -242,6 +256,7 @@ test('releasing E stops the plant; defusing with and without a kit', () => {
   const { g, red, blue } = bombGame();
   run(g, ROUND_FREEZE + 0.1);
   intoSite(g, red, 'B');
+  takeOutBomb(g, red);
   run(g, 1, (p) => (p === red ? hold(p, { use: true }) : null));
   run(g, 0.1);
   assert.equal(red.task, null, 'letting go cancels');
@@ -260,7 +275,10 @@ test('releasing E stops the plant; defusing with and without a kit', () => {
   assert.ok(!g.buy(red, 'defuser'), 'Red cannot buy a kit');
   run(g, ROUND_FREEZE + 0.1);
   intoSite(g, red, 'A');
-  run(g, PLANT_TIME + 0.1, (p) => (p === red ? hold(p, { use: true }) : null));
+  takeOutBomb(g, red);
+  // Fire plants too while the bomb is in hand.
+  run(g, PLANT_TIME + 0.1, (p) => (p === red ? hold(p, { fire: true }) : null));
+  assert.equal(g.bomb.state, 'planted');
   place(blue, g.bomb.pos[0], g.bomb.pos[1], g.bomb.pos[2] + 0.8);
   run(g, DEFUSE_KIT_TIME + 0.1, (p) => (p === blue ? hold(p, { use: true }) : null));
   assert.equal(g.bomb.state, 'defused');

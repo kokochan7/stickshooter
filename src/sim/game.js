@@ -34,14 +34,22 @@ export function emptyCmd() {
   };
 }
 
+// What a player takes from the bot they take over.
+const TAKEOVER_FIELDS = [
+  'pos', 'prevPos', 'vel', 'yaw', 'pitch', 'onGround', 'ducked', 'duckAmount', 'prevDuck', 'stepOffset',
+  'stamina', 'health', 'armor', 'helmet', 'defuser', 'active', 'lastActive', 'nextAttack', 'deployEnd',
+  'reloading', 'reloadEnd', 'shellNext', 'shotsFired', 'pistolAcc', 'accuracy', 'zoom', 'spin', 'tagMul',
+  'swimming', 'waterJump', 'nadePin',
+];
+
 function makeWeapon(id) {
   const def = WEAPONS[id];
   return { id, clip: def.clip, reserve: def.reserve };
 }
 
 // Slots in the order the number keys use them: 1 primary, 2 pistol, 3 knife,
-// 4 grenade.
-export const SLOTS = ['primary', 'secondary', 'melee', 'grenade'];
+// 4 grenade. The bomb carrier also has the C4, which key 3 swaps to.
+export const SLOTS = ['primary', 'secondary', 'melee', 'grenade', 'c4'];
 
 // Small seeded RNG.
 function mulberry32(seed) {
@@ -155,7 +163,7 @@ export class Game {
       stepOffset: 0, stamina: 0, jumpHeld: false,
       health: MAX_HEALTH, armor: 0, helmet: false,
       money: START_MONEY, kills: 0, deaths: 0, headshots: 0,
-      weapons: { primary: null, secondary: null, melee: null, grenade: null }, active: 'secondary', lastActive: 'primary',
+      weapons: { primary: null, secondary: null, melee: null, grenade: null, c4: null }, active: 'secondary', lastActive: 'primary',
       nextAttack: 0, deployEnd: 0, reloading: false, reloadEnd: 0, shellNext: 0,
       shotsFired: 0, decreaseShotsAt: 0, delayFire: false, pistolAcc: 0.9, accuracy: 0.2, lastFire: -10,
       punch: [0, 0], prevPunch: [0, 0], recoilDir: 1, shotSeed: 0,
@@ -354,7 +362,7 @@ export class Game {
     p.ducked = false; p.duckAmount = 0; p.onGround = true;
     if (!keepGear) {
       p.armor = 0; p.helmet = false; p.defuser = false;
-      p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife'), grenade: null };
+      p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife'), grenade: null, c4: null };
       p.active = 'secondary';
     } else {
       if (!p.weapons.melee) p.weapons.melee = makeWeapon('knife');
@@ -432,7 +440,7 @@ export class Game {
       return true;
     }
     const def = WEAPONS[item];
-    if (!def) return false;
+    if (!def || def.bomb || def.melee) return false;
     const cur = p.weapons[def.slot];
     // Already have it: buying it again buys its ammo.
     if (cur && cur.id === item && !def.grenade) return this.buyAmmo(p, def.slot, silent);
@@ -443,6 +451,65 @@ export class Game {
     // Buying a gun puts it in your hands; a grenade goes on your belt (4).
     if (!def.grenade) this.switchTo(p, def.slot, true);
     if (!silent) this.emit({ type: 'buy', pid: p.id, item });
+    return true;
+  }
+
+  // F1: buy again what you bought last time (items in the order they were
+  // bought). Skips what you already have, like CS 1.6's rebuy: a gun you're
+  // holding, full armor, a grenade on your belt or a kit. Buying a gun
+  // again would otherwise buy ammo, and armor twice would cost twice.
+  rebuy(p, items) {
+    if (!Array.isArray(items) || !p.alive || !this.canBuy(p)) return 0;
+    let n = 0;
+    for (const item of items) {
+      const def = WEAPONS[item];
+      if (def && p.weapons[def.slot]?.id === item) continue;
+      if (item === 'kevlar' && p.armor >= 100) continue;
+      if (item === 'kevlarHelmet' && p.armor >= 100 && p.helmet) continue;
+      if (this.buy(p, item)) n++;
+    }
+    return n;
+  }
+
+  // Teams: a dead player watching a living bot on their own team takes it
+  // over (E while spectating, like CS 1.6). They get its body where it
+  // stands, with its health, armor, guns and the bomb if it has it. The bot
+  // sits out until it would respawn (the next round in objective rounds);
+  // that doesn't count as a death for it.
+  canTakeOver(p, bot) {
+    return !!bot && this.mode === 'teams' && !p.isBot && !p.alive && bot.isBot && bot.alive &&
+      bot.team === p.team && bot !== p && this.match.state === 'live' && !this.frozen(bot);
+  }
+
+  takeOver(p, bot) {
+    if (!this.canTakeOver(p, bot)) return false;
+    for (const k of TAKEOVER_FIELDS) {
+      const v = bot[k];
+      p[k] = Array.isArray(v) ? [...v] : v;
+    }
+    p.weapons = { ...bot.weapons };
+    p.punch = [0, 0]; p.prevPunch = [0, 0];
+    p.task = null;
+    p.useHeld = true; // the E that took over doesn't also press use
+    p.alive = true;
+    p.life++;
+    p.spawnedAt = this.time;
+    p.frozenUntil = 0;
+    p.roundKills = 0;
+    if (this.objective) {
+      const b = this.bomb;
+      if (bot.task?.kind === 'defuse' && b.defuser === bot.id) b.defuser = null;
+      if (b.state === 'carried' && b.carrier === bot.id) b.carrier = p.id;
+      for (const h of this.hostages) if (h.leader === bot.id) h.leader = p.id;
+    }
+    bot.task = null;
+    bot.alive = false;
+    bot.reloading = false;
+    bot.zoom = 0;
+    bot.nadePin = 0;
+    bot.weapons = { primary: null, secondary: null, melee: null, grenade: null, c4: null };
+    bot.respawnAt = this.objective ? NEVER : this.time + RESPAWN_TIME;
+    this.emit({ type: 'takeover', pid: p.id, bot: bot.id, yaw: p.yaw, pitch: p.pitch });
     return true;
   }
 
@@ -464,7 +531,8 @@ export class Game {
       const cmd = cmds.get(p.id) ?? emptyCmd();
       if (!p.alive) {
         // Dead players can still change team, but not buy.
-        if (cmd.actions) for (const a of cmd.actions) if (a.type === 'team') this.handleAction(p, a);
+        if (cmd.actions) for (const a of cmd.actions) if (a.type === 'team' || a.type === 'takeover') this.handleAction(p, a);
+        if (p.alive) continue; // took over a bot
         if (this.time >= p.respawnAt && (!this.objective || Obj.canSpawnNow(this))) {
           this.spawn(p);
           if (this.objective) p.frozenUntil = this.round.freezeEnd;
@@ -534,8 +602,12 @@ export class Game {
   handleAction(p, a) {
     if (a.type === 'buy') this.buy(p, a.item);
     else if (a.type === 'team') this.setTeam(p, a.team);
-    else if (a.type === 'drop') this.dropWeapon(p, p.active, true);
-    else if (a.type === 'pickup') this.pickup(p, a.id);
+    else if (a.type === 'drop') {
+      if (p.active === 'c4') Obj.dropBomb(this, p, true);
+      else this.dropWeapon(p, p.active, true);
+    } else if (a.type === 'pickup') this.pickup(p, a.id);
+    else if (a.type === 'rebuy') this.rebuy(p, a.items);
+    else if (a.type === 'takeover') this.takeOver(p, this.getPlayer(a.id));
   }
 
   // ---------- Dropped guns ----------
@@ -545,7 +617,7 @@ export class Game {
   // never drops. Returns the drop or null.
   dropWeapon(p, slot, thrown, { switchAway = true } = {}) {
     const w = p.weapons[slot];
-    if (!w || WEAPONS[w.id].melee || WEAPONS[w.id].grenade) return null;
+    if (!w || WEAPONS[w.id].melee || WEAPONS[w.id].grenade || WEAPONS[w.id].bomb) return null;
     p.weapons[slot] = null;
     let pos, vel;
     if (thrown) {
@@ -559,7 +631,7 @@ export class Game {
     }
     const d = {
       id: this.nextDropId++, weapon: w, pos, vel, yaw: p.yaw + (this.rand() - 0.5) * 0.8, rest: false,
-      expiresAt: this.time + DROP_LIFETIME, noPickup: { pid: p.id, until: this.time + 0.8 },
+      expiresAt: this.objective ? NEVER : this.time + DROP_LIFETIME, noPickup: { pid: p.id, until: this.time + 0.8 },
     };
     this.drops.push(d);
     if (this.drops.length > 32) this.drops.shift();
@@ -693,8 +765,11 @@ export class Game {
       p.punch[0] *= nl / len; p.punch[1] *= nl / len;
     }
 
-    // Weapon switching.
-    if (cmd.slot && p.weapons[cmd.slot] && cmd.slot !== p.active) this.switchTo(p, cmd.slot);
+    // Weapon switching. With the bomb, key 3 takes it out, and again swaps
+    // to the knife.
+    let slot = cmd.slot;
+    if (slot === 'melee' && p.weapons.c4 && p.active !== 'c4') slot = 'c4';
+    if (slot && p.weapons[slot] && slot !== p.active) this.switchTo(p, slot);
     if (cmd.lastWeapon && p.weapons[p.lastActive]) this.switchTo(p, p.lastActive);
 
     const w = this.activeWeapon(p);
@@ -703,6 +778,7 @@ export class Game {
     // A browser predicting its own player (online) leaves the knife and
     // grenades to the server; it only predicts guns.
     if ((def.melee || def.grenade) && (this.predicting || this.replaying)) return;
+    if (def.bomb) return; // planting is objective.js (playerUse)
     if (def.melee) { this.updateMelee(p, cmd, def); return; }
     if (def.grenade) { this.updateGrenade(p, cmd, def, w); return; }
 

@@ -270,8 +270,15 @@ export class Stickman {
     this.body.position.set(0, 0, 0);
   }
 
-  // s: { x, y, z, yaw, pitch, vx, vz, duck, onGround, reloading, spin }
+  // s: { x, y, z, yaw, pitch, vx, vz, duck, onGround, reloading, spin, planting }
+  // planting: crouched over the bomb, typing the code (CS 1.6's plant anim).
   update(s, dt) {
+    if (s.planting) {
+      this.plantT = (this.plantT ?? 0) + dt;
+      s = { ...s, duck: Math.max(s.duck, 0.85), pitch: -0.8 };
+    } else {
+      this.plantT = 0;
+    }
     this.root.position.set(s.x, s.y, s.z);
     this.root.rotation.y = s.yaw;
 
@@ -338,9 +345,10 @@ export class Stickman {
       else if (hold === 'heavy') this.gun.group.position.set(0.12, -0.2, -0.22 + this.kick * 0.03);
       else if (hold === 'knife') this.gun.group.position.set(0.12, -0.1, -0.36 - this.kick * 0.15);
       else if (hold === 'grenade') this.gun.group.position.set(0.14, 0.05 + this.kick * 0.1, -0.3 - this.kick * 0.25);
+      else if (hold === 'c4') this.gun.group.position.set(0, -0.22, -0.3);
       else this.gun.group.position.set(0.09, -0.07, -0.24 + this.kick * 0.05);
       // A knife swing reads from far away as a big chop.
-      this.gun.group.rotation.x = hold === 'knife' ? 0.5 - this.kick * 1.4 : hold === 'grenade' ? -this.kick * 1.2 : this.kick * 0.15;
+      this.gun.group.rotation.x = hold === 'knife' ? 0.5 - this.kick * 1.4 : hold === 'grenade' ? -this.kick * 1.2 : hold === 'c4' ? 0.5 - s.pitch : this.kick * 0.15;
       if (s.reloading) {
         this.gun.group.rotation.x = -0.5;
         this.gun.group.position.y -= 0.08;
@@ -354,6 +362,11 @@ export class Stickman {
       const handL = v[5].copy(this.gun.fore).applyMatrix4(m);
       if (s.reloading) handL.set(-0.05, chest.y - 0.25, chest.z - 0.2);
       if (hold === 'knife' || hold === 'grenade') handL.set(-0.22, chest.y - 0.5, chest.z - 0.05);
+      if (hold === 'c4' && s.planting) {
+        // Right hand taps the keypad.
+        const tap = Math.abs(Math.sin(this.plantT * Math.PI * 4));
+        handR.set(0.02, 0.09 + tap * 0.05, 0.01).applyMatrix4(m);
+      }
       this.arm('R', 1, chest, handR);
       this.arm('L', -1, chest, handL);
     } else {

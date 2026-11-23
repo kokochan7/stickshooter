@@ -229,8 +229,13 @@ export class BotBrain {
     let fightDist = Infinity;
 
     // Out of ammo: switch to a gun that still has some, or the knife.
-    if (w && !def.melee && w.clip === 0 && w.reserve === 0) {
+    if (w && !def.melee && !def.bomb && w.clip === 0 && w.reserve === 0) {
       cmd.slot = ['primary', 'secondary'].find((s) => s !== p.active && weaponValue(p.weapons[s]) > 0) ?? 'melee';
+    }
+    // The bomb is only taken out to plant (see objective()); otherwise put
+    // a gun back in hand.
+    if (w && def.bomb && !p.task && !(this.objSpotKey === 'plant-here' && canPlant(g, p))) {
+      cmd.slot = ['primary', 'secondary'].find((s) => weaponValue(p.weapons[s]) > 0) ?? 'melee';
     }
     const tgt = this.target ? g.getPlayer(this.target) : null;
 
@@ -549,6 +554,12 @@ export class BotBrain {
     return cmd;
   }
 
+  // Take the bomb out (it has to be in hand) and hold use to plant it.
+  armBomb(cmd) {
+    if (this.p.active !== 'c4') cmd.slot = 'c4';
+    cmd.use = true;
+  }
+
   // What the objective wants from us right now. Returns { goal: [x, y, z] }
   // to walk somewhere, { hold: true } to stand and hold the use key, or null.
   // Sets cmd.use as needed. urgent: drop the hunt sooner to get back to it.
@@ -566,11 +577,11 @@ export class BotBrain {
         if (b.state === 'carried' && b.carrier === p.id) {
           if (canPlant(g, p) || p.task?.kind === 'plant') {
             // Inside the site: walk a bit further in, then plant.
-            if (p.task || this.objSpotKey === 'plant-here') { cmd.use = true; return { hold: true }; }
+            if (p.task || this.objSpotKey === 'plant-here') { this.armBomb(cmd); return { hold: true }; }
             if (this.objSpotKey !== 'plant') this.pickSpot('plant', g.map.sites[g.plan], 0.25);
             if (Math.hypot(this.objSpot[0] - p.pos[0], this.objSpot[1] - p.pos[2]) < 1.2 && siteAt(g.map, p.pos)) {
               this.objSpotKey = 'plant-here';
-              cmd.use = true;
+              this.armBomb(cmd);
               return { hold: true };
             }
             return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };

@@ -63,6 +63,8 @@ export function startRound(g) {
   }
   g.bomb = emptyBomb();
   g.hostages = [];
+  // Last round's carrier doesn't keep the C4.
+  for (const p of g.players) takeC4(g, p);
   if (g.objective === 'bomb') {
     // Red's plan for the round, which its bots follow.
     g.plan = g.rand() < 0.5 ? 'A' : 'B';
@@ -83,6 +85,29 @@ function giveBomb(g) {
   g.bomb.state = 'carried';
   g.bomb.carrier = p.id;
   g.bomb.pos = [...p.pos];
+  giveC4(p);
+}
+
+// The carrier has the C4 in its own weapon slot (key 3 swaps to it).
+function giveC4(p) {
+  p.weapons.c4 = { id: 'c4', clip: 0, reserve: 0 };
+}
+
+// Take the C4 away (planted, dropped, new round). If it was in hand, switch
+// back to the last weapon, or the best one left.
+function takeC4(g, p) {
+  if (!p.weapons.c4) return;
+  p.weapons.c4 = null;
+  if (p.active !== 'c4') return;
+  const back = p.lastActive !== 'c4' && p.weapons[p.lastActive] ? p.lastActive
+    : ['primary', 'secondary', 'melee'].find((s) => p.weapons[s]) ?? 'melee';
+  if (p.alive && p.weapons[back]) g.switchTo(p, back, true);
+  else p.active = back;
+}
+
+// Holding the C4 (and done taking it out), so a press of use or fire plants.
+export function holdingBomb(g, p) {
+  return p.active === 'c4' && !!p.weapons.c4 && g.time >= p.deployEnd;
 }
 
 export function endRound(g, winner, reason) {
@@ -122,15 +147,18 @@ export function preTick(g) {
 
 // ---------- Per player ----------
 
-// The use key (E): hold to plant or defuse, press to lead a hostage.
+// The use key (E): hold to plant or defuse, press to lead a hostage. The
+// bomb has to be in your hands to plant (key 3); then fire plants too, like
+// CS 1.6.
 export function playerUse(g, p, cmd) {
   const pressed = cmd.use && !p.useHeld;
   p.useHeld = !!cmd.use;
+  const arming = (cmd.use || cmd.fire) && holdingBomb(g, p);
   const live = g.round.state === 'live' && g.match.state === 'live';
   const b = g.bomb;
   if (g.objective === 'bomb') {
     if (p.task) {
-      const ok = cmd.use && live && (p.task.kind === 'plant' ? canPlant(g, p) : b.state === 'planted' && b.defuser === p.id && nearBomb(p, b));
+      const ok = live && (p.task.kind === 'plant' ? arming && canPlant(g, p) : cmd.use && b.state === 'planted' && b.defuser === p.id && nearBomb(p, b));
       if (!ok) {
         if (p.task.kind === 'defuse' && b.defuser === p.id) b.defuser = null;
         p.task = null;
@@ -138,8 +166,8 @@ export function playerUse(g, p, cmd) {
       } else if (g.time >= p.task.end) {
         p.task.kind === 'plant' ? plant(g, p) : defuse(g, p);
       }
-    } else if (cmd.use && live) {
-      if (canPlant(g, p)) {
+    } else if ((cmd.use || arming) && live) {
+      if (arming && canPlant(g, p)) {
         p.task = { kind: 'plant', start: g.time, end: g.time + PLANT_TIME };
         g.emit({ type: 'plantStart', pid: p.id });
       } else if (p.team === 'blue' && b.state === 'planted' && !b.defuser && nearBomb(p, b)) {
@@ -200,6 +228,7 @@ function plant(g, p) {
   b.explodeAt = g.time + BOMB_TIMER;
   b.defuser = null;
   p.task = null;
+  takeC4(g, p);
   p.money = Math.min(MAX_MONEY, p.money + BOMB_PLANT_REWARD);
   g.emit({ type: 'planted', pid: p.id, site: b.site, pos: b.pos });
 }
@@ -217,22 +246,37 @@ function defuse(g, p) {
 export function touchBomb(g, p) {
   const b = g.bomb;
   if (b.state !== 'dropped' || p.team !== 'red') return;
+  if (b.noPickup && b.noPickup.pid === p.id && g.time < b.noPickup.until) return;
   if (Math.hypot(p.pos[0] - b.pos[0], p.pos[2] - b.pos[2]) < 0.9 && Math.abs(p.pos[1] - b.pos[1]) < 1.6) {
     b.state = 'carried';
     b.carrier = p.id;
+    giveC4(p);
     g.emit({ type: 'bombPickup', pid: p.id });
   }
 }
 
-// Called when the carrier dies, leaves or changes team.
-export function dropBomb(g, p) {
+// Called when the carrier dies, leaves or changes team, or drops it on
+// purpose (G with the bomb in hand: it lands a step ahead, and the one who
+// dropped it can't pick it straight back up).
+export function dropBomb(g, p, thrown = false) {
   const b = g.bomb;
   if (b.state !== 'carried' || b.carrier !== p.id) return;
   b.state = 'dropped';
   b.carrier = null;
-  // Rest it on whatever is under the carrier's feet.
-  const h = g.world.raycast(p.pos[0], p.pos[1] + 0.5, p.pos[2], 0, -1, 0, 40);
-  b.pos = [p.pos[0], h ? p.pos[1] + 0.5 - h.t : p.pos[1], p.pos[2]];
+  takeC4(g, p);
+  let x = p.pos[0], z = p.pos[2];
+  if (thrown) {
+    const f = forwardVec(p.yaw);
+    const wall = g.world.raycast(x, p.pos[1] + 0.5, z, f[0], 0, f[2], 1.5);
+    const d = wall ? Math.max(0, wall.t - 0.3) : 1.2;
+    x += f[0] * d; z += f[2] * d;
+    b.noPickup = { pid: p.id, until: g.time + 1.5 };
+  } else {
+    b.noPickup = null;
+  }
+  // Rest it on whatever is under it.
+  const h = g.world.raycast(x, p.pos[1] + 0.5, z, 0, -1, 0, 40);
+  b.pos = [x, h ? p.pos[1] + 0.5 - h.t : p.pos[1], z];
   g.emit({ type: 'bombDrop', pid: p.id, pos: b.pos });
 }
 
@@ -247,7 +291,10 @@ export function update(g, dt) {
   const b = g.bomb;
   if (b.state === 'carried') {
     const c = g.getPlayer(b.carrier);
-    if (c) b.pos = [c.pos[0], c.pos[1], c.pos[2]];
+    if (c) {
+      b.pos = [c.pos[0], c.pos[1], c.pos[2]];
+      if (!c.weapons.c4) giveC4(c);
+    }
   }
   if (b.state === 'planted' && g.time >= b.explodeAt) explode(g);
   for (const h of g.hostages) updateHostage(g, h, dt);

@@ -171,8 +171,9 @@ export class TouchControls {
 
   press(id) {
     const inp = this.input, p = inp.pending, t = inp.touch;
-    // Spectating (dead in a round) can take FIRE, SCOPE and JUMP.
-    if ((id === 'fire' || id === 'alt' || id === 'jump') && this.actions.spectate?.(id)) { this.held.add(id); return; }
+    // Spectating (dead in a round) can take FIRE, SCOPE, JUMP and USE (take
+    // over a teammate bot).
+    if ((id === 'fire' || id === 'alt' || id === 'jump' || id === 'use') && this.actions.spectate?.(id)) { this.held.add(id); return; }
     switch (id) {
       case 'fire': t.fire = true; p.fire = true; break;
       case 'use': t.use = true; break;

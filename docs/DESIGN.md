@@ -78,7 +78,7 @@ The player stickman is white with no headband or vest. Skins come later
   4.4 m down (Kenny doubled it from 2.2 m; it started at 0.4 m and wadeable); see
   section 4 for swimming.
 - Teams on a `bomb`/`hostage` map turns on `src/sim/objective.js`: rounds
-  (4 s buy freeze, 1:55 bomb / 2:30 hostage, 5 s round end, first to 8),
+  (4 s buy freeze, 1:55 bomb / 2:30 hostage, 5 s round end, first to 7),
   one life per round (late joiners within 20 s still spawn), spectating a
   teammate while dead. Bomb: given to a random Red human (else bot), E held
   3 s inside site A/B plants it, 35 s timer, Blue defuses in 10 s (5 s with

@@ -27,6 +27,7 @@ const HOLD = {
   heavy: new THREE.Vector3(0.15, -0.2, -0.4),
   knife: new THREE.Vector3(0.19, -0.17, -0.38),
   grenade: new THREE.Vector3(0.17, -0.17, -0.36),
+  c4: new THREE.Vector3(0.0, -0.17, -0.47),
 };
 
 export class ViewModel {
@@ -173,7 +174,8 @@ export class ViewModel {
   }
 
   // look: mouse delta this frame (pixels), move: horizontal speed m/s
-  update(dt, { mouseDX, mouseDY, speed, onGround, reloading, spin, visible }) {
+  // plant: how far along planting the bomb is (0..1), or -1.
+  update(dt, { mouseDX, mouseDY, speed, onGround, reloading, spin, visible, plant = -1 }) {
     this.rig.visible = visible;
     if (!visible || !this.gun) return;
 
@@ -203,7 +205,8 @@ export class ViewModel {
     const slap = this.slap.update(dt);
 
     const hold = HOLD[this.gun.spec.hold] ?? HOLD.rifle;
-    const mp = this.gun.spec.hold === 'grenade' ? this.nadePose(dt) : this.meleePose(dt);
+    const holdKind = this.gun.spec.hold;
+    const mp = holdKind === 'grenade' ? this.nadePose(dt) : holdKind === 'c4' ? this.plantPose(plant) : this.meleePose(dt);
     this.rig.position.set(
       hold.x + sx + bobX + ks * 0.01 + rp.x + mp.x,
       hold.y + sy + bobY - drop * 0.4 + rp.y + slap * 0.01 + mp.y,
@@ -233,12 +236,15 @@ export class ViewModel {
     fore.z += pump;
     if (rp.hand) fore.lerp(rp.hand, rp.handW);
     if (mp.handW) fore.lerp(mp.hand, mp.handW);
+    if (mp.handRW) grip.lerp(mp.handR, mp.handRW);
     // Shoulders (and, for the knife, the left hand) are fixed in view space;
     // the limbs live in the rig, so bring them into its space.
     this.rig.updateMatrix();
     const inv = this._m.copy(this.rig.matrix).invert();
     const shoulderR = this._v[2].set(0.24, -0.4, 0.0).applyMatrix4(inv);
     const shoulderL = this._v[3].set(-0.2, -0.42, -0.06).applyMatrix4(inv);
+    // The left hand is hidden while the knife slashes or stabs.
+    this.showLeft(!(this.gun.spec.hold === 'knife' && this.meleeT >= 0));
     if (this.gun.spec.hold === 'knife') {
       // Knife, like CS 1.6: only the right hand swings. The left hand rests
       // low on the left and doesn't follow the slash or stab, only the walk.
@@ -373,6 +379,34 @@ export class ViewModel {
     return mp;
   }
 
+  // The bomb in both hands, keypad up. Planting, like CS 1.6's v_c4: bring
+  // it down and in, type the code with the right hand (one key per press,
+  // the keypad sounds play every half second), then set it down.
+  plantPose(plant) {
+    const mp = this._cp ??= { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0, handR: new THREE.Vector3(), handRW: 0, handW: 0 };
+    mp.x = mp.y = mp.z = mp.yaw = mp.roll = 0;
+    mp.pitch = 0.7;
+    mp.handRW = 0;
+    if (plant < 0) return mp;
+    const u = Math.min(1, plant);
+    const kneel = smooth(u / 0.12);
+    const place = smooth((u - 0.86) / 0.14);
+    mp.y += 0.015 * kneel - 0.25 * place;
+    mp.z += 0.04 * kneel - 0.06 * place;
+    mp.x += -0.02 * kneel;
+    mp.pitch += 0.2 * kneel - 0.5 * place;
+    // Typing: a new key every 0.1 of the plant, each a quick press.
+    const typing = Math.max(0, (u - 0.1) / 0.1);
+    const k = Math.floor(typing) % CODE.length;
+    const press = Math.sin(Math.min(1, (typing % 1) / 0.6) * Math.PI);
+    const [cx, cz] = CODE[k];
+    // The fingertip is the front of the hand, so the hand sits a little behind
+    // and right of the key it presses.
+    mp.handR.set(...this.gun.spec.keypad).add(this._v[5].set(0.006 + cx * 0.014, 0.035 * (1 - press) + 0.03, 0.012 + cz * 0.012));
+    mp.handRW = smooth((u - 0.04) / 0.08) * (1 - smooth((u - 0.8) / 0.08));
+    return mp;
+  }
+
   // Grenade in hand: held up a little, pin pulled with the left hand, the
   // arm cocked back while you hold it, then an overhand throw (or an
   // underhand lob). The grenade leaves the hand partway through the throw.
@@ -410,6 +444,16 @@ export class ViewModel {
     mp.yaw += swing * 0.2;
     this.gun.group.visible = u < 0.3;
     return mp;
+  }
+
+  showLeft(on) {
+    if (this.leftShown === on) return;
+    this.leftShown = on;
+    for (const k of ['upperL', 'foreL', 'elbowL', 'handL']) {
+      const part = this.arms[k];
+      part.mesh.visible = on;
+      if (part.outline) part.outline.visible = on;
+    }
   }
 
   limb(side, shoulder, hand, pole) {
@@ -456,6 +500,8 @@ const STAB_KEYS = [
   [0.6, -0.05, -0.035, -0.25, -0.6, 0.15, -0.1, 'o'], // hold
   [1, 0, 0, 0, 0, 0, 0, 's'],
 ];
+// Keys typed while planting, as [column, row] on the C4's keypad.
+const CODE = [[0, 0], [2, 1], [1, 3], [1, 0], [0, 2], [2, 2], [1, 1]];
 const EASE = { s: smooth, i: (t) => t * t, o: (t) => 1 - (1 - t) * (1 - t) };
 const _k = new Array(7).fill(0);
 function keyAt(keys, u) {

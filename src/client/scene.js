@@ -3,10 +3,10 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Stickman } from './stickman.js';
 
-// Dead bodies lie where they fell for CORPSE_TIME seconds, sinking into the
-// floor over the last CORPSE_SINK. At most MAX_CORPSES at once (oldest go).
-export const CORPSE_TIME = 5;
-const CORPSE_SINK = 0.4, MAX_CORPSES = 24;
+// Dead bodies lie where they fell for CORPSE_TIME seconds, then vanish all at
+// once. At most MAX_CORPSES at once (oldest go).
+export const CORPSE_TIME = 10;
+const MAX_CORPSES = 24;
 import { Effects } from './effects.js';
 import { ViewModel } from './viewmodel.js';
 import { buildGun } from './gunModels.js';
@@ -415,7 +415,10 @@ export class GameView {
       m.visible = false;
     }
     // The carrier wears it on their back.
-    for (const [id, v] of this.views) v.man.setBackpack?.(game.objective === 'bomb' && b.state === 'carried' && b.carrier === id && id !== hiddenId);
+    // (Not while it's in their hands.)
+    const carrier = game.objective === 'bomb' && b.state === 'carried' ? game.getPlayer(b.carrier) : null;
+    const packOn = carrier && carrier.id !== hiddenId && carrier.active !== 'c4' ? carrier.id : null;
+    for (const [id, v] of this.views) v.man.setBackpack?.(id === packOn);
 
     const seen = new Set();
     for (const h of game.hostages) {
@@ -524,8 +527,6 @@ export class GameView {
       if (c.t >= CORPSE_TIME) { this.hideCorpse(c); continue; }
       // Still falling: keep animating. Lying still: nothing to do.
       if (c.t < 1.5) c.man.poseDead(c.kind, c.t, c.side, c.duck);
-      const sink = (c.t - (CORPSE_TIME - CORPSE_SINK)) / CORPSE_SINK;
-      c.man.root.position.y = c.y - Math.max(0, sink) * 0.35;
     }
   }
 
