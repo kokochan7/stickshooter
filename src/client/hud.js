@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS = {
   touchSens: 1, // look speed for touch controls
   mode: 'ffa', // 'ffa' or 'teams', for practice and online
   map: 'yard', // see src/maps/index.js
-  version: 6,
+  version: 7,
 };
 
 // Sensitivity uses CS units (0.022 degrees per mouse count per point).
@@ -65,6 +65,17 @@ export function loadSettings() {
     s.touchSens = clamp(+s.touchSens || DEFAULT_SETTINGS.touchSens, 0.3, 3);
     s.binds = { ...DEFAULT_BINDS, ...(saved.binds ?? {}) };
     delete s.binds.thirdPerson; // third person was removed
+    delete s.binds.duckAlt; // the second crouch key (C) was removed
+    // v7 made Shift crouch and C walk (was Ctrl / Shift). Saves store every
+    // bind, so move keys still on the old defaults to the new ones.
+    // A key the player already gave to another action stays where it was.
+    if ((saved.version ?? 1) < 7) {
+      const b = s.binds, old = { duck: 'ControlLeft', walk: 'ShiftLeft' };
+      for (const a of ['duck', 'walk']) if (b[a] === old[a]) b[a] = DEFAULT_BINDS[a];
+      for (const a of ['duck', 'walk']) {
+        if (b[a] === DEFAULT_BINDS[a] && Object.entries(b).some(([o, k]) => o !== a && k === b[a])) b[a] = old[a];
+      }
+    }
     s.bots = clamp(Math.round(+s.bots) || 0, 0, MAX_BOTS);
     if (s.mode !== 'teams') s.mode = 'ffa';
     if (typeof s.map !== 'string') s.map = DEFAULT_SETTINGS.map; // unknown ids fall back in getMap

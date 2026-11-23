@@ -6,7 +6,7 @@ const DEG = Math.PI / 180;
 
 export const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
-  jump: 'Space', duck: 'ControlLeft', duckAlt: 'KeyC', walk: 'ShiftLeft',
+  jump: 'Space', duck: 'ShiftLeft', walk: 'KeyC',
   reload: 'KeyR', primary: 'Digit1', secondary: 'Digit2', melee: 'Digit3', grenade: 'Digit4', lastWeapon: 'KeyQ',
   drop: 'KeyG', buy: 'KeyB', buyAmmo: 'KeyN', rebuy: 'F1', scores: 'Tab', switchTeam: 'KeyM', use: 'KeyE',
 };
@@ -14,7 +14,7 @@ export const DEFAULT_BINDS = {
 // Rebindable actions in the order the Controls tab lists them.
 export const BIND_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
-  jump: 'Jump', duck: 'Crouch', duckAlt: 'Crouch (alt)', walk: 'Walk',
+  jump: 'Jump', duck: 'Crouch', walk: 'Walk',
   reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', melee: 'Knife / bomb', grenade: 'HE grenade', lastWeapon: 'Last weapon',
   drop: 'Drop / pick up gun', buy: 'Buy menu', buyAmmo: 'Buy ammo', rebuy: 'Re-buy last purchase', scores: 'Scoreboard', switchTeam: 'Switch team',
   use: 'Use (plant, defuse, hostages, take over a bot)',
@@ -80,8 +80,8 @@ export class Input {
       }
       if (e.code === this.binds.scores || e.code === 'Tab' || (e.code === 'Space' && this.locked) || (e.code === 'Backspace' && this.menuKeys)) e.preventDefault();
       // In a match, keep browser shortcuts from firing: Ctrl+S, Ctrl+D, F5,
-      // Alt+Left and so on. Crouch is Ctrl, so Ctrl+W/A/S/D happen all the
-      // time. Ctrl+W, Ctrl+T and Ctrl+N can't be stopped this way; the
+      // Alt+Left and so on. Players who bind crouch to Ctrl hit Ctrl+W/A/S/D
+      // all the time. Ctrl+W, Ctrl+T and Ctrl+N can't be stopped this way; the
       // Keyboard Lock in fullscreen (main.js) handles those where supported.
       if (this.inMatch && !isTyping(e) && blockedShortcut(e)) e.preventDefault();
       if (e.repeat) return;
@@ -196,8 +196,8 @@ export class Input {
       cmd.side = Math.max(-1, Math.min(1, (this.has(b.right) ? 1 : 0) - (this.has(b.left) ? 1 : 0) + t.side));
       // Holding jump keeps bunny hopping.
       cmd.jump = this.has(b.jump) || this.pending.jump || t.jump;
-      cmd.duck = this.has(b.duck) || this.has(b.duckAlt) || this.has('ControlRight') || t.duck;
-      cmd.walk = this.has(b.walk) || this.has('ShiftRight') || ((t.fwd || t.side) && t.walk);
+      cmd.duck = this.has(b.duck) || this.has('ShiftRight') || t.duck;
+      cmd.walk = this.has(b.walk) || ((t.fwd || t.side) && t.walk);
       // A click shorter than one tick still fires once.
       cmd.fire = this.mouse.left || this.pending.fire || t.fire;
       cmd.alt = this.mouse.right || this.pending.alt;

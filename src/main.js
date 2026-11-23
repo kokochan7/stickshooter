@@ -1226,8 +1226,8 @@ function updateView(dt, alpha) {
     const axis = (pos, neg) => (keys && input.has(pos) ? 1 : 0) - (keys && input.has(neg) ? 1 : 0);
     const fwd = Math.max(-1, Math.min(1, axis(b.forward, b.back) + t.fwd));
     const side = Math.max(-1, Math.min(1, axis(b.right, b.left) + t.side));
-    const down = keys && (input.has(b.duck) || input.has(b.duckAlt)) || t.duck ? 1 : 0;
-    const slow = keys && (input.has(b.walk) || input.has('ShiftRight'));
+    const down = keys && (input.has(b.duck) || input.has('ShiftRight')) || t.duck ? 1 : 0;
+    const slow = keys && input.has(b.walk);
     if (spec.boundsFor !== game.world) { spec.bounds = worldBounds(game.world); spec.boundsFor = game.world; }
     const [fx, fy, fz] = spec.fly(dt, input.yaw, input.pitch, fwd, side, down, slow);
     cam.position.set(fx, fy, fz);
