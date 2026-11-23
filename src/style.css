@@ -349,7 +349,7 @@ body.touch .pause-hint { display: none; }
 .btn.map-open small { font-size: 10px; letter-spacing: .6px; color: var(--muted); }
 #maps .map-btn { padding: 12px 4px 10px; font-size: 13px; }
 #maps .map-btn i { height: 40px; }
-@media (max-width: 520px) { #maps .map-pick { grid-template-columns: repeat(3, 1fr); } }
+#maps .map-pick { grid-template-columns: repeat(3, 1fr); } /* six maps: two rows of three */
 .map-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 0 0 4px; }
 .map-btn {
   position: relative; padding: 7px 4px 6px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.04);

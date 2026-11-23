@@ -474,7 +474,7 @@ for (const id of ['canal', 'dunes']) {
   });
 }
 
-for (const id of ['harbor', 'frost']) {
+for (const id of ['harbor', 'frost', 'depot']) {
   test(`a lone Blue bot leads hostages out on ${id}`, () => {
     const g = botsOnly(MAPS[id], ['blue'], ROUND_FREEZE + ROUND_TIME.hostage, (g) => g.hostages.some((h) => h.state === 'rescued'));
     assert.ok(g.hostages.some((h) => h.state === 'rescued'), `hostages: ${g.hostages.map((h) => h.state)}`);
@@ -550,4 +550,45 @@ test('bomb site and rescue paint lies on the floor, not on crates or roofs', () 
       assert.ok(z.label.r >= 2.5, `${map.id} ${name} letter sits on open floor (r ${z.label.r})`);
     }
   }
+});
+
+// ---------- Depot: the fire escape, roof hatch and vent ----------
+
+test('Depot: the fire escape, roof hatch and crawl vent lead into the cold store', () => {
+  const D = (x, y, z) => [x * 1.5, y, z * 1.5];
+  const g = new Game(MAPS.depot, { seed: 3 });
+  const a = g.addPlayer({ name: 'A' });
+  g.spawn(a);
+  // From the landing at the top of the fire escape, jump east onto the roof.
+  place(a, ...D(-27.8, 5.4, -17.5)); a.yaw = -Math.PI / 2;
+  run(g, 1.5, (p, i) => hold(p, { fwd: 1, jump: i % 20 === 0 }));
+  assert.ok(a.pos[1] > 6.2 && a.pos[0] > -26 * 1.5, `on the roof (${a.pos.map((v) => v.toFixed(1))})`);
+  // Step into the hatch: down the shaft to the duct floor.
+  place(a, ...D(-21.3, 6.25, -11.9));
+  run(g, 1.5, (p) => hold(p, { duck: true }));
+  assert.ok(Math.abs(a.pos[1] - 3.3) < 0.05, `in the duct (${a.pos[1].toFixed(2)})`);
+  // Crawl north (crouched) to the end, onto the cold store roof and down
+  // through the opening.
+  a.yaw = 0;
+  run(g, 9, (p) => hold(p, { fwd: 1, duck: true }));
+  const [x, y, z] = a.pos;
+  assert.ok(y < 0.05 && x > -25.7 * 1.5 && x < -12.15 * 1.5 && z > -33.7 * 1.5 && z < -24.15 * 1.5,
+    `dropped into the cold store (${a.pos.map((v) => v.toFixed(1))})`);
+  // You can't stand up in the duct.
+  place(a, ...D(-21.3, 3.3, -18)); a.ducked = true;
+  run(g, 0.5, (p) => hold(p));
+  assert.ok(a.ducked, 'still crouched under the duct ceiling');
+});
+
+test('Depot: bots keep to the ground; the roof is off their map', () => {
+  const nav = new Game(MAPS.depot).nav;
+  const [i, j] = nav.cellOf(0, -20 * 1.5);
+  assert.equal(nav.floorAt(0, -20 * 1.5), 0, 'the warehouse floor, not its roof');
+  assert.ok(nav.isMain(i, j));
+  // The landing at the top of the fire escape and the roof edge aren't
+  // reachable on foot (it takes a jump).
+  const roof = nav.cellOf(-26.1 * 1.5, -17.5 * 1.5);
+  assert.ok(!nav.isMain(...roof) || nav.floorAt(-26.1 * 1.5, -17.5 * 1.5) < 6);
+  const blue = MAPS.depot.teamSpawns.blue[0].pos, h = MAPS.depot.hostages[0];
+  for (const [x, z] of nav.findPath(blue[0], blue[2], h[0], h[2])) assert.ok(nav.floorAt(x, z) < 0.5, `path stays on the ground at ${x},${z}`);
 });

@@ -186,7 +186,7 @@ function loadMap(id) {
 // ---------- Screens ----------
 
 // Map cards on the menu. Each shows a little two-tone swatch of the map.
-const MAP_SWATCH = { yard: ['#d9d1c1', '#8d9aa8'], canal: ['#3f93c4', '#dcb88f'], dunes: ['#e2cc9a', '#c99d62'], harbor: ['#9aa4ad', '#3f93c4'], frost: ['#eef2f6', '#2f6b4a'] };
+const MAP_SWATCH = { yard: ['#d9d1c1', '#8d9aa8'], canal: ['#3f93c4', '#dcb88f'], dunes: ['#e2cc9a', '#c99d62'], harbor: ['#9aa4ad', '#3f93c4'], frost: ['#eef2f6', '#2f6b4a'], depot: ['#a4573a', '#8f8f8a'] };
 const mapPick = document.querySelector('.map-pick');
 mapPick.innerHTML = MAP_LIST.map((m) => {
   const [a, b] = MAP_SWATCH[m.id] ?? ['#888', '#555'];
