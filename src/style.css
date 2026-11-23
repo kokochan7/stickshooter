@@ -135,7 +135,14 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 
 #vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, rgba(255,0,0,0) 45%, rgba(200,0,0,.55) 100%); transition: opacity .25s; }
 #dmg-indicators { position: absolute; left: 50%; top: 50%; }
-.dmg-ind { position: absolute; left: -60px; top: -60px; width: 120px; height: 120px; border-radius: 50%; border: 5px solid transparent; border-top-color: rgba(255, 70, 70, .9); filter: drop-shadow(0 0 4px rgba(255,0,0,.6)); transition: opacity 1s; }
+/* CS 1.6 damage direction: four red arcs around the crosshair (front = top);
+   the sides facing whoever hit you light up and fade over about a second. */
+.dmg-ind { position: absolute; left: -17vmin; top: -17vmin; width: 34vmin; height: 34vmin; border-radius: 50%; border: 1.6vmin solid transparent; opacity: 0;
+  -webkit-mask: conic-gradient(from -32deg, #000 0 64deg, transparent 64deg); mask: conic-gradient(from -32deg, #000 0 64deg, transparent 64deg);
+  border-top-color: rgba(230, 20, 20, .85); filter: drop-shadow(0 0 .6vmin rgba(255, 0, 0, .7)); }
+.dmg-ind.r { transform: rotate(90deg); }
+.dmg-ind.b { transform: rotate(180deg); }
+.dmg-ind.l { transform: rotate(270deg); }
 
 #hud-frame { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: center; }
 

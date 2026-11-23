@@ -96,6 +96,70 @@ export function teamColor(team) {
 
 const THIGH = 0.47, SHIN = 0.47, UPPER_ARM = 0.32, FOREARM = 0.32;
 
+// CS 1.6-style death animations, as keyframes of the body chain seen from
+// the side. Angles are from vertical (+ leans back, - leans forward):
+// shin (foot to knee), thigh (knee to hip), torso (hip to chest), then the
+// head tilt on top of the torso, then where the hands go: out to the side,
+// along the torso (up = towards the head), off its front. The last field is
+// how the segment into that key eases: 'o' out (a jolt), 'i' in (falling,
+// fastest when it lands), 's' smooth.
+//   back:     hit from the front: jolts, knees give, falls flat on its back.
+//   headshot: head snaps back and the body topples over stiff.
+//   forward:  hit from behind: lurches, drops to its knees, falls on its face.
+//   crumple:  doubles over holding its gut, kneels, then falls forward.
+const DEATHS = {
+  back: [
+    [0.12, -0.25, 0.3, 0.3, 0.35, 0.3, -0.1, 0.25, 'o'],
+    [0.4, -0.7, 0.9, 0.55, 0.25, 0.35, 0.05, 0.1, 's'],
+    [0.78, 1.36, 1.5, 1.5, 0.05, 0.55, 0.15, 0, 'i'],
+    [0.95, 1.43, 1.46, 1.47, 0, 0.56, 0.2, -0.02, 'o'],
+  ],
+  headshot: [
+    [0.07, -0.15, 0.2, 0.22, 0.9, 0.2, -0.35, 0.15, 'o'],
+    [0.25, -0.1, 0.25, 0.35, 0.8, 0.28, -0.4, 0.05, 's'],
+    [0.68, 1.4, 1.5, 1.52, 0.4, 0.45, -0.1, 0, 'i'],
+    [0.82, 1.45, 1.47, 1.47, 0.3, 0.48, -0.05, 0, 'o'],
+  ],
+  forward: [
+    [0.1, -0.3, -0.05, -0.3, -0.2, 0.15, -0.2, 0.15, 'o'],
+    [0.4, -1.1, -0.2, -0.6, -0.3, 0.2, 0, 0.3, 's'],
+    [0.74, -1.45, -1.44, -1.5, 0.2, 0.35, 0.35, 0, 'i'],
+    [0.9, -1.48, -1.41, -1.47, 0.25, 0.38, 0.4, -0.02, 'o'],
+  ],
+  crumple: [
+    [0.16, -0.4, 0.5, -0.35, -0.3, 0.06, -0.3, 0.2, 'o'],
+    [0.55, -1.4, 0.15, -0.25, -0.4, 0.08, -0.3, 0.18, 's'],
+    [0.95, -1.47, -1.3, -1.5, 0.3, 0.3, 0.3, -0.05, 'i'],
+    [1.1, -1.48, -1.36, -1.47, 0.3, 0.32, 0.32, -0.05, 'o'],
+  ],
+};
+export const DEATH_KINDS = Object.keys(DEATHS);
+const EASE = {
+  s: (t) => t * t * (3 - 2 * t),
+  i: (t) => t * t,
+  o: (t) => 1 - (1 - t) * (1 - t),
+};
+const _key = new Array(8).fill(0);
+function deathKey(kind, t, duck) {
+  const keys = DEATHS[kind] ?? DEATHS.back;
+  // Starting pose: standing (or crouched) with the hands up holding a gun.
+  let prev = [0, -0.2 - 0.7 * duck, 0.2 + 0.7 * duck, 0.1 * duck, 0, 0.12, -0.3, 0.3];
+  for (const k of keys) {
+    if (t <= k[0]) {
+      const e = EASE[k[8]]((t - prev[0]) / (k[0] - prev[0]));
+      for (let i = 1; i < 8; i++) _key[i] = prev[i] + (k[i] - prev[i]) * e;
+      return _key;
+    }
+    prev = k;
+  }
+  for (let i = 1; i < 8; i++) _key[i] = prev[i];
+  return _key;
+}
+// Point along angle a in the body's side plane (forward is -z).
+function sideDir(a, out) {
+  return out.set(0, Math.cos(a), Math.sin(a));
+}
+
 export class Stickman {
   constructor({ body = 0xffffff, eyes = 0x111111, outline = 0x1a1a1a, glowEyes = false } = {}) {
     this.root = new THREE.Group();
@@ -305,6 +369,60 @@ export class Stickman {
       this.body.rotation.x = e * 1.45;
       this.body.rotation.z = e * 0.25 * this.deathDir;
       this.body.position.y = -e * 0.02;
+    }
+  }
+
+  // Dead body: plays one of the DEATHS keyframe sets; t counts up from 0.
+  // side (+1/-1) leans and twists it a little to one side.
+  poseDead(kind, t, side, duck = 0) {
+    const [, a1, a2, a3, headTilt, sx, hu, hf] = deathKey(kind, t, duck);
+    const v = this._v;
+    const fall = Math.min(1, t / 0.8);
+    this.body.rotation.set(0, side * 0.25 * fall, -side * 0.1 * fall);
+    this.body.position.set(0, 0, 0);
+    const foot = v[0].set(0, 0.045, 0);
+    const knee = v[1].copy(foot).addScaledVector(sideDir(a1, _a), SHIN);
+    const hip = this.tmp.hip.copy(knee).addScaledVector(sideDir(a2, _a), THIGH);
+    const up = sideDir(a3, v[2]);
+    const front = sideDir(a3 - Math.PI / 2, v[3]);
+    const chest = this.tmp.chest.copy(hip).addScaledVector(up, 0.5);
+    this.hip.set(hip);
+    this.chest.set(chest);
+    this.torso.set(hip, chest);
+    if (this.pack) this.pack.visible = false;
+    const head = this.tmp.head.copy(chest).addScaledVector(sideDir(a3 + headTilt * 0.5, _a), 0.19);
+    this.head.position.copy(head);
+    this.head.rotation.set(a3 + headTilt, 0, 0);
+    _b.copy(chest).addScaledVector(up, 0.04);
+    this.neck.set(_b, head);
+
+    // Legs: feet stay put (one slides out a little), knees bend forward.
+    for (const [s, sgn] of [['L', -1], ['R', 1]]) {
+      const hipJ = v[4].set(sgn * 0.09, hip.y, hip.z);
+      const spread = 0.12 + (sgn === side ? 0.1 : 0.03) * fall;
+      const f = v[5].set(sgn * spread, 0.045, sgn === side ? -0.06 * fall : 0);
+      const k = solveIK(hipJ, f, THIGH, SHIN, v[6].set(sgn * 0.15, 0, -1), v[7]);
+      this.limbs['thigh' + s].set(hipJ, k);
+      this.limbs['shin' + s].set(k, f);
+      this.limbs['knee' + s].set(k);
+      this.limbs['foot' + s].set(f);
+    }
+
+    // Arms.
+    for (const [s, sgn] of [['L', -1], ['R', 1]]) {
+      const shoulder = v[4].copy(chest).addScaledVector(up, -0.03);
+      shoulder.x += sgn * 0.17;
+      // The arm on the side it falls towards flops out further.
+      const out = sx * (sgn === side ? 1.15 : 0.9);
+      const hand = v[5].copy(shoulder).addScaledVector(up, hu).addScaledVector(front, hf);
+      hand.x += sgn * out;
+      const pole = v[6].set(sgn * 0.9, 0.2, 0).addScaledVector(up, -0.8);
+      const elbow = solveIK(shoulder, hand, UPPER_ARM, FOREARM, pole, v[7]);
+      this.limbs['shoulder' + s].set(shoulder);
+      this.limbs['upper' + s].set(shoulder, elbow);
+      this.limbs['fore' + s].set(elbow, hand);
+      this.limbs['elbow' + s].set(elbow);
+      this.limbs['hand' + s].set(hand);
     }
   }
 

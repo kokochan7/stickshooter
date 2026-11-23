@@ -2,6 +2,11 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Stickman } from './stickman.js';
+
+// Dead bodies lie where they fell for CORPSE_TIME seconds, sinking into the
+// floor over the last CORPSE_SINK. At most MAX_CORPSES at once (oldest go).
+export const CORPSE_TIME = 5;
+const CORPSE_SINK = 0.4, MAX_CORPSES = 24;
 import { Effects } from './effects.js';
 import { ViewModel } from './viewmodel.js';
 import { buildGun } from './gunModels.js';
@@ -320,6 +325,7 @@ export class GameView {
       });
     }
     for (const id of [...this.hostageViews.keys()]) this.removeHostage(id);
+    this.clearCorpses();
     const grp = new THREE.Group();
     this.mapGroup = grp;
     this.scene.add(grp);
@@ -481,6 +487,50 @@ export class GameView {
       this.views.set(p.id, v);
     }
     return v;
+  }
+
+  // A body that plays its death animation where someone died (see
+  // Stickman.poseDead). Pooled: stickmen are reused once their body is gone.
+  corpse({ x, y, z, yaw, team, kind, side, duck = 0 }) {
+    this.corpses ??= [];
+    this.corpsePool ??= [];
+    if (this.corpses.length >= MAX_CORPSES) this.hideCorpse(this.corpses[0]);
+    let man = this.corpsePool.pop();
+    if (!man) {
+      man = new Stickman({ body: 0xffffff, eyes: 0x15171a, outline: 0x22252b });
+      this.scene.add(man.root);
+    }
+    man.setWeapon(null);
+    man.setTeam(team);
+    man.root.visible = true;
+    man.root.position.set(x, y, z);
+    man.root.rotation.set(0, yaw, 0);
+    const c = { man, kind, side, duck, t: 0, y };
+    man.poseDead(kind, 0, side, duck);
+    this.corpses.push(c);
+  }
+
+  hideCorpse(c) {
+    c.man.root.visible = false;
+    this.corpses.splice(this.corpses.indexOf(c), 1);
+    this.corpsePool.push(c.man);
+  }
+
+  updateCorpses(dt) {
+    if (!this.corpses) return;
+    for (let i = this.corpses.length - 1; i >= 0; i--) {
+      const c = this.corpses[i];
+      c.t += dt;
+      if (c.t >= CORPSE_TIME) { this.hideCorpse(c); continue; }
+      // Still falling: keep animating. Lying still: nothing to do.
+      if (c.t < 1.5) c.man.poseDead(c.kind, c.t, c.side, c.duck);
+      const sink = (c.t - (CORPSE_TIME - CORPSE_SINK)) / CORPSE_SINK;
+      c.man.root.position.y = c.y - Math.max(0, sink) * 0.35;
+    }
+  }
+
+  clearCorpses() {
+    while (this.corpses?.length) this.hideCorpse(this.corpses[0]);
   }
 
   removeView(id) {
