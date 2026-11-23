@@ -18,7 +18,7 @@ import {
   BUY_TIME, SMOKE_HEIGHT,
   BOT_NAMES,
 } from './sim/constants.js';
-import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
+import { canPlant, canDefuse, hostageInReach, siteAt, bombBeepInterval } from './sim/objective.js';
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
 import { GameView } from './client/scene.js';
 import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, DEPLOY_SOUNDS, STEP_SOUNDS, speak } from './client/audio.js';
@@ -1428,15 +1428,16 @@ function spectatePrompt() {
   return `${who}${SPEC_LABELS[spec.mode]}${take}<br><span class="spec-help">${help}</span>`;
 }
 
-// The planted bomb beeps faster and faster, like the real thing.
+// The planted bomb beeps faster and faster, like the real thing: one single
+// beep each time, a touch higher in the last few seconds.
 function bombBeeps() {
   const b = game.bomb;
   if (mode === 'menu' || game.objective !== 'bomb' || b.state !== 'planted') return;
   if (game.time < nextBeep) return;
   const left = Math.max(0, b.explodeAt - game.time);
-  nextBeep = game.time + 0.1 + 0.9 * Math.min(1, left / 35);
-  const stage = left > 20 ? 1 : left > 10 ? 2 : left > 5 ? 3 : left > 2 ? 4 : 5;
-  audio.play('bombBeep' + stage, { pos: b.pos, volume: 0.55, jitter: 0, alt: 'bombBeep' });
+  nextBeep = game.time + bombBeepInterval(left);
+  const rate = left > 5 ? 1 : 1 + 0.03 * (5 - left);
+  audio.play('bombBeep', { pos: b.pos, volume: 0.55, jitter: 0, rate });
 }
 
 // "Hold E to plant" and friends.

@@ -168,3 +168,20 @@ test('if the bot\'s body dies while you play it, the death is the bot\'s', () =>
   assert.equal(bot.money, 2000);
   assert.ok(!bot.alive);
 });
+
+test('planted bomb beeps once at a time, faster as the timer runs out', async () => {
+  const { bombBeepInterval } = await import('../src/sim/objective.js');
+  const { BOMB_TIMER } = await import('../src/sim/constants.js');
+  let prev = Infinity;
+  for (let left = BOMB_TIMER; left >= 0; left -= 0.5) {
+    const iv = bombBeepInterval(left);
+    assert.ok(iv <= prev, `interval grows at ${left}s left`);
+    prev = iv;
+  }
+  assert.ok(bombBeepInterval(BOMB_TIMER) > 1.2, 'slow right after the plant');
+  assert.ok(bombBeepInterval(1) < 0.15, 'rapid beeping at the very end');
+  // About how many beeps a full timer gives (CS 1.6 is in the same range).
+  let n = 0;
+  for (let t = 0; t < BOMB_TIMER; t += bombBeepInterval(BOMB_TIMER - t)) n++;
+  assert.ok(n > 40 && n < 120, `${n} beeps`);
+});

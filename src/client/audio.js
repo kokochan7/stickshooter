@@ -459,6 +459,23 @@ function tone(freq, len) {
   return d;
 }
 
+// The planted bomb's beep: one short, bright electronic chirp (square-ish
+// 2.2 kHz, softened by a low-pass) with a hard start and quick fade, so it
+// stays crisp even when the beeps come rapid-fire at the end.
+function bombBeep() {
+  const len = 0.075;
+  const n = Math.floor(SR * len);
+  const d = new Float32Array(n);
+  const f = 2200;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const w = Math.sin(2 * Math.PI * f * t) + 0.3 * Math.sin(6 * Math.PI * f * t) + 0.12 * Math.sin(10 * Math.PI * f * t);
+    const env = Math.min(1, t / 0.002) * Math.min(1, (len - t) / 0.012);
+    d[i] = w * 0.45 * env;
+  }
+  return biquad(d, 'lp', 7000);
+}
+
 // Every buffer the game plays, by name.
 export function buildAll() {
   const b = {};
@@ -490,7 +507,7 @@ export function buildAll() {
   b.splash = [0, 1, 2, 3].map(splash);
   b.swim = [0, 1, 2, 3].map(swimStroke);
   b.plunge = plunge();
-  b.bombBeep = tone(1760, 0.09);
+  b.bombBeep = bombBeep();
   b.keypad0 = keypad(1180);
   b.keypad1 = keypad(1320);
   b.keypad2 = keypad(1480);
@@ -634,8 +651,6 @@ const GROUPS = {
   bombDisarm: ['c4_disarm'],
   defused: ['c4_disarmed'],
   explode: ['c4_explode1'],
-  // The planted bomb's beep, higher and more urgent as it runs out (1 -> 5).
-  ...Object.fromEntries([1, 2, 3, 4, 5].map((i) => ['bombBeep' + i, ['c4_beep' + i]])),
 };
 
 // Reload parts, played on the beat of the viewmodel animation: weapon ->
