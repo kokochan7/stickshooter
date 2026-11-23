@@ -296,6 +296,13 @@ export class Hud {
       this.hitTime -= dt;
       this.hitmarker.style.opacity = String(Math.max(0, this.hitTime / 0.25));
     }
+    if (this.attack) {
+      for (let i = 0; i < 4; i++) {
+        if (this.attack[i] <= 0) continue;
+        this.attack[i] = Math.max(0, this.attack[i] - dt);
+        this.dmgEls[i].style.opacity = this.attack[i].toFixed(2);
+      }
+    }
     if (this.vigTime > 0) {
       this.vigTime -= dt;
       if (this.vigTime <= 0) this.vignette.style.opacity = '0';
@@ -308,15 +315,18 @@ export class Hud {
     this.hitmarker.style.opacity = '1';
   }
 
+  // Taking damage, CS 1.6 style (CHudHealth::CalcDamageDirection): each of
+  // the four arcs (front, right, back, left) lights up by how much the hit
+  // came from its side, and they fade out over a second. angleRad: 0 = from
+  // straight ahead, positive = from the right.
   hurt(angleRad, damage) {
-    this.vignette.style.opacity = String(Math.min(0.9, 0.3 + damage / 80));
-    this.vigTime = 0.25;
-    const d = document.createElement('div');
-    d.className = 'dmg-ind';
-    d.style.transform = `rotate(${angleRad}rad)`;
-    this.indicators.appendChild(d);
-    requestAnimationFrame(() => { d.style.opacity = '0'; });
-    setTimeout(() => d.remove(), 1100);
+    this.vignette.style.opacity = String(Math.min(0.6, 0.15 + damage / 120));
+    this.vigTime = 0.2;
+    const f = Math.cos(angleRad), r = Math.sin(angleRad);
+    const a = this.attack ??= [0, 0, 0, 0];
+    const sides = [f, r, -f, -r];
+    for (let i = 0; i < 4; i++) if (sides[i] > 0.3) a[i] = Math.max(a[i], Math.min(1, 0.5 + sides[i] * 0.5));
+    this.dmgEls ??= [...this.indicators.children];
   }
 
   kill({ attacker, victim, weapon, headshot, wallbang, mine, cause }) {

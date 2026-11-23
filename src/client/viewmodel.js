@@ -97,6 +97,8 @@ export class ViewModel {
     this.motion = 1;
     this._v = Array.from({ length: 6 }, () => new THREE.Vector3());
     this._m = new THREE.Matrix4();
+    this._pR = new THREE.Vector3();
+    this._pL = new THREE.Vector3();
   }
 
   setAspect(a) {
@@ -142,7 +144,7 @@ export class ViewModel {
   melee(kind) {
     this.meleeKind = kind;
     this.meleeT = 0;
-    this.meleeDur = kind === 'stab' ? 0.55 : 0.3;
+    this.meleeDur = kind === 'stab' ? 0.85 : 0.34;
     if (kind === 'slash') this.slashSide = -this.slashSide;
   }
 
@@ -231,10 +233,22 @@ export class ViewModel {
     fore.z += pump;
     if (rp.hand) fore.lerp(rp.hand, rp.handW);
     if (mp.handW) fore.lerp(mp.hand, mp.handW);
-    const shoulderR = this._v[2].set(0.24, -0.4, 0.0).sub(this.rig.position).applyEuler(invEuler(this.rig.rotation));
-    const shoulderL = this._v[3].set(-0.2, -0.42, -0.06).sub(this.rig.position).applyEuler(invEuler(this.rig.rotation));
-    this.limb('R', shoulderR, grip, new THREE.Vector3(0.6, -1, 0.2));
-    this.limb('L', shoulderL, fore, new THREE.Vector3(-0.8, -1, 0));
+    // Shoulders (and, for the knife, the left hand) are fixed in view space;
+    // the limbs live in the rig, so bring them into its space.
+    this.rig.updateMatrix();
+    const inv = this._m.copy(this.rig.matrix).invert();
+    const shoulderR = this._v[2].set(0.24, -0.4, 0.0).applyMatrix4(inv);
+    const shoulderL = this._v[3].set(-0.2, -0.42, -0.06).applyMatrix4(inv);
+    if (this.gun.spec.hold === 'knife') {
+      // Knife, like CS 1.6: only the right hand swings. The left hand rests
+      // low on the left and doesn't follow the slash or stab, only the walk.
+      fore.set(-0.25 + bobX, -0.26 + bobY - drop * 0.4, -0.42).applyMatrix4(inv);
+      this.limb('R', shoulderR, grip, this._pR.set(0.6, -1, 0.2).transformDirection(inv));
+      this.limb('L', shoulderL, fore, this._pL.set(-0.8, -1, 0).transformDirection(inv));
+    } else {
+      this.limb('R', shoulderR, grip, this._pR.set(0.6, -1, 0.2));
+      this.limb('L', shoulderL, fore, this._pL.set(-0.8, -1, 0));
+    }
 
     if (this.flashTime > 0) {
       this.flashTime -= dt;
@@ -339,7 +353,11 @@ export class ViewModel {
     return rp;
   }
 
-  // Knife rest pose (blade tipped up and in) plus the slash / stab motion.
+  // Knife rest pose (blade tipped up and in) plus the slash / stab motion,
+  // after CS 1.6's v_knife: a slash winds up to one side and sweeps the
+  // blade flat across the screen (the next one comes back the other way);
+  // the stab lifts the knife up and back, drives it forward and down, holds
+  // a moment and comes back.
   meleePose(dt) {
     const mp = this._mp ??= { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0 };
     mp.x = mp.y = mp.z = mp.pitch = mp.yaw = mp.roll = 0;
@@ -349,28 +367,9 @@ export class ViewModel {
     this.meleeT += dt;
     const u = Math.min(1, this.meleeT / this.meleeDur);
     if (u >= 1) { this.meleeT = -1; return mp; }
-    if (this.meleeKind === 'slash') {
-      // Wind up to one side, sweep across, settle back.
-      const s = this.slashSide;
-      const sweep = u < 0.15 ? smooth(u / 0.15) : 1 - 2 * smooth((u - 0.15) / 0.45);
-      const back = smooth((u - 0.6) / 0.4);
-      const a = sweep * (1 - back);
-      mp.x += a * 0.12 * s;
-      mp.y += Math.abs(a) * 0.02;
-      mp.z -= Math.sin(u * Math.PI) * 0.06;
-      mp.yaw += a * 0.9 * s;
-      mp.roll += a * 0.7 * s - Math.sin(u * Math.PI) * 0.6;
-      mp.pitch -= Math.sin(u * Math.PI) * 0.5;
-    } else {
-      // Pull back, then a hard forward stab, then recover.
-      const pull = smooth(u / 0.3) * (1 - smooth((u - 0.3) / 0.12));
-      const thrust = smooth((u - 0.3) / 0.12) * (1 - smooth((u - 0.55) / 0.45));
-      mp.z += pull * 0.06 - thrust * 0.2;
-      mp.y += pull * 0.03 - thrust * 0.01;
-      mp.x -= thrust * 0.06;
-      mp.pitch += pull * 0.2 - thrust * 0.75;
-      mp.yaw -= thrust * 0.2;
-    }
+    const k = keyAt(this.meleeKind === 'stab' ? STAB_KEYS : this.slashSide > 0 ? SLASH_KEYS : BACKHAND_KEYS, u);
+    mp.x += k[1]; mp.y += k[2]; mp.z += k[3];
+    mp.pitch += k[4]; mp.yaw += k[5]; mp.roll += k[6];
     return mp;
   }
 
@@ -432,15 +431,48 @@ export class ViewModel {
   }
 }
 
+// Knife keyframes as offsets from the rest pose:
+// [fraction of the swing, x, y, z, pitch, yaw, roll, ease into it].
+// Slash, right to left.
+const SLASH_KEYS = [
+  [0, 0, 0, 0, 0, 0, 0],
+  [0.22, 0.07, 0.05, 0.03, 0.25, -0.55, 0.35, 'o'], // wind up, blade cocked back on the right
+  [0.5, -0.17, -0.05, -0.1, -0.5, 1.0, -0.9, 'i'], // whip across, edge first
+  [0.62, -0.19, -0.07, -0.08, -0.55, 1.1, -1.0, 'o'], // follow through
+  [1, 0, 0, 0, 0, 0, 0, 's'],
+];
+// The next slash comes back backhand, left to right.
+const BACKHAND_KEYS = [
+  [0, 0, 0, 0, 0, 0, 0],
+  [0.22, -0.16, 0.03, 0, 0.1, 0.7, -0.5, 'o'], // wind up across the body, blade pointing left
+  [0.5, -0.05, -0.05, -0.1, -0.45, -1.2, 0.7, 'i'], // sweep back to the right
+  [0.62, -0.04, -0.07, -0.08, -0.5, -1.3, 0.8, 'o'], // follow through
+  [1, 0, 0, 0, 0, 0, 0, 's'],
+];
+const STAB_KEYS = [
+  [0, 0, 0, 0, 0, 0, 0],
+  [0.28, 0.02, 0.09, 0.08, 0.6, -0.15, 0.2, 'o'], // lift up and back, point raised
+  [0.42, -0.05, -0.03, -0.24, -0.55, 0.15, -0.1, 'i'], // drive it forward and down
+  [0.6, -0.05, -0.035, -0.25, -0.6, 0.15, -0.1, 'o'], // hold
+  [1, 0, 0, 0, 0, 0, 0, 's'],
+];
+const EASE = { s: smooth, i: (t) => t * t, o: (t) => 1 - (1 - t) * (1 - t) };
+const _k = new Array(7).fill(0);
+function keyAt(keys, u) {
+  for (let i = 1; i < keys.length; i++) {
+    const b = keys[i];
+    if (u > b[0] && i < keys.length - 1) continue;
+    const a = keys[i - 1];
+    const e = EASE[b[7]](Math.max(0, Math.min(1, (u - a[0]) / (b[0] - a[0]))));
+    for (let j = 1; j < 7; j++) _k[j] = a[j] + (b[j] - a[j]) * e;
+    return _k;
+  }
+  return _k;
+}
+
 function smooth(x) {
   const t = Math.max(0, Math.min(1, x));
   return t * t * (3 - 2 * t);
-}
-
-const _ie = new THREE.Euler();
-function invEuler(e) {
-  // Approximate inverse for small rig rotations.
-  return _ie.set(-e.x, -e.y, -e.z, 'ZYX');
 }
 
 let flashTex = null;

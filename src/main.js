@@ -124,6 +124,7 @@ $('m-diff').addEventListener('change', () => { settings.difficulty = $('m-diff')
 function setupBots() {
   for (const id of brains.keys()) { game.removePlayer(id); view.removeView(id); }
   brains.clear();
+  view.clearCorpses();
   game.setMode(settings.mode);
   for (let i = 0; i < settings.bots; i++) addBot(game.mode === 'teams' ? (i % 2 ? 'red' : 'blue') : 'ffa');
   // Start them playing behind the menu (objective rounds need a round going).
@@ -318,6 +319,7 @@ function startPlaying() {
 function clearPlayers() {
   for (const p of [...game.players]) { game.removePlayer(p.id); view.removeView(p.id); }
   brains.clear();
+  view.clearCorpses();
   stepState.clear();
   game.drops = [];
   me = null;
@@ -788,8 +790,9 @@ function handleEvent(e) {
       const victim = game.getPlayer(e.victim);
       if (!victim) break;
       hud.kill({ attacker, victim, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, cause: e.cause, mine: me && (e.attacker === me.id || e.victim === me.id) });
-      // The stickman vanishes in a puff; its gun is left on the ground.
-      if (victim !== me && victim.pos[1] > -10) view.effects.poof([victim.pos[0], victim.pos[1] + 1.0, victim.pos[2]]);
+      // The stickman falls down dead (CS 1.6 style) and the body stays a few
+      // seconds; its gun is left on the ground.
+      if (victim.pos[1] > -10) dropBody(victim, e);
       if (me && e.attacker === me.id && e.victim !== me.id) {
         audio.play('killConfirm', { volume: 0.5 });
         if (e.reward) hud.moneyPop(e.reward);
@@ -1071,6 +1074,25 @@ function footsteps(p, dt, x, z) {
   }
 }
 
+// Which way a body falls, like CS 1.6's death animations: a headshot
+// snaps the head back and topples it, a shot in the back drops it on its
+// face, otherwise it falls on its back or doubles over and crumples.
+function dropBody(victim, e) {
+  const v = view.views.get(victim.id);
+  const shown = victim !== me && v?.man.root.visible;
+  const pos = shown ? v.man.root.position : { x: victim.pos[0], y: victim.pos[1], z: victim.pos[2] };
+  const yaw = shown ? v.man.root.rotation.y : victim === me ? input.yaw : victim.yaw;
+  const d = e.dir;
+  let kind = 'crumple', side = Math.random() < 0.5 ? -1 : 1;
+  if (d && (d[0] || d[2])) {
+    const fwd = -Math.sin(yaw) * d[0] - Math.cos(yaw) * d[2]; // > 0: shot from behind
+    const lat = Math.cos(yaw) * d[0] - Math.sin(yaw) * d[2];
+    if (Math.abs(lat) > 0.2) side = Math.sign(lat);
+    kind = fwd > 0.35 ? 'forward' : e.headshot ? 'headshot' : Math.random() < 0.35 ? 'crumple' : 'back';
+  }
+  view.corpse({ x: pos.x, y: pos.y, z: pos.z, yaw, team: victim.team, kind, side, duck: victim.duckAmount ?? 0 });
+}
+
 function updateView(dt, alpha) {
   // The buy menu closes when the buy time runs out.
   if (buyMenu.open && me && !game.canBuy(me)) { setBuyMenu(false); buyTimeOver(); }
@@ -1101,6 +1123,7 @@ function updateView(dt, alpha) {
     }, dt);
     v.shadow.position.set(x, view.groundBelow(x, y, z) + 0.01, z);
   }
+  view.updateCorpses(dt);
   view.syncDrops(game.drops, game.time);
   view.syncNades(game.nades, net ? 1 : alpha, game.time);
   view.syncObjective(game, alpha, dt, me?.alive ? me.id : null);
@@ -1359,12 +1382,12 @@ function centerMessage() {
   const t = game.time, m = game.match;
   if (m.state === 'over') {
     // The winner goes on top of the final scoreboard, which stays up until
-    // the next match.
+    // everyone goes back to the main menu (matchOverToMenu).
     const secs = Math.max(0, Math.ceil(m.endsAt - t));
     const who = m.winnerTeam
       ? `<span class="win team-${m.winnerTeam}">${m.winnerTeam === 'red' ? 'RED' : 'BLUE'} TEAM WINS</span>`
       : `<span class="win">${m.winner === me.id ? 'YOU WIN!' : `${escapeHtml(m.winnerName).toUpperCase()} WINS`}</span>`;
-    const title = `${who}<small>Next match in ${secs}</small>`;
+    const title = `${who}<small>Back to the main menu in ${secs}</small>`;
     if (scoresForced !== title) { scoresForced = title; showScoreboard(true, title); }
     return '';
   }
@@ -1474,6 +1497,27 @@ function stepNades(dt) {
   }
 }
 
+// When a match is won, the winner and final scoreboard show for
+// MATCH_OVER_TIME, then everyone goes back to the main menu. We leave just
+// before the game (or the server, online) would start the next match.
+let matchOverSeen = false;
+function matchOverToMenu() {
+  if (!me || mode === 'menu') { matchOverSeen = false; return; }
+  const m = game.match;
+  if (m.state === 'over') matchOverSeen = true;
+  if (!matchOverSeen || (m.state === 'over' && game.time < m.endsAt - 0.25)) return;
+  matchOverSeen = false;
+  const status = m.winnerTeam ? `${m.winnerTeam === 'red' ? 'Red' : 'Blue'} team won the match`
+    : m.winner === me.id ? 'You won the match!' : m.winnerName ? `${m.winnerName} won the match` : 'Match over';
+  if (scoresForced !== null) { scoresForced = null; showScoreboard(false); }
+  if (net) return leaveOnline(status);
+  game.removePlayer(me.id);
+  view.removeView(me.id);
+  me = null;
+  killInfo = null;
+  showMenu(status);
+}
+
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
@@ -1498,6 +1542,7 @@ function frame(now) {
       if (++steps >= 24) { acc = 0; break; } // tab was in background
     }
   }
+  matchOverToMenu();
   updateView(dt, Math.min(1, acc / TICK_DT));
   view.render();
   requestAnimationFrame(frame);

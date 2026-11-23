@@ -519,8 +519,8 @@ Slot 3, always carried, never dropped or bought. CS 1.6 `wpn_knife` numbers:
 
 | | Damage | Reach | Next attack (hit / miss) |
 |---|---|---|---|
-| Slash (Mouse 1) | 20 first swing, 15 in a quick combo | 48 u | 0.4 / 0.35 s (stab 0.5 s) |
-| Stab (Mouse 2) | 65, x3 from behind (195) | 32 u | 1.1 / 1.0 s |
+| Slash (Mouse 1) | 20 first swing, 15 in a quick combo | 72 u (CS 48) | 0.4 / 0.35 s (stab 0.5 s) |
+| Stab (Mouse 2) | 65, x3 from behind (195) | 56 u (CS 32) | 1.1 / 1.0 s |
 
 Hitgroup multipliers and armor (armorRatio 1.0) apply as for bullets. The
 trace is a center ray plus a small fan standing in for CS's hull trace. A
@@ -732,7 +732,9 @@ can't see) and stat-based flagging.
    spawns, `M` to switch team, first team to 50 kills wins (`TEAM_KILL_LIMIT`).
 
 Both modes: the winner and final scoreboard show for 8 s
-(`MATCH_OVER_TIME`) with everyone frozen, then a new match starts. Every
+(`MATCH_OVER_TIME`) with everyone frozen, then every player goes back to the
+main menu (the client leaves just before the server would start a new match;
+practice bots carry on behind the menu). Every
 match start, and every join (PRACTICE, PLAY ONLINE, or joining a room in
 progress), freezes you for 3 s (`START_DELAY`) with a 3-2-1 countdown: you
 can look around and buy but not move, shoot or be hurt. The first person

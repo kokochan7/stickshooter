@@ -115,6 +115,17 @@ test('the knife slashes for 20 then 15, and stabs hit 3x from behind', () => {
   assert.equal(g.drops.length, 1, 'and drops the USP');
 });
 
+test('the knife reaches 1.5x CS 1.6: a slash connects at 1.9 m, a stab at 1.5 m', () => {
+  for (const [gap, kind] of [[1.9, 'fire'], [1.5, 'alt']]) {
+    const { g, a, b } = duel('ffa', gap);
+    g.switchTo(a, 'melee', true);
+    const aim = (extra) => (p) => (p === a ? { ...emptyCmd(), yaw: 0, pitch: -0.3, ...extra } : { ...emptyCmd(), yaw: Math.PI });
+    run(g, 1.2, aim({}));
+    run(g, TICK_DT, aim({ [kind]: true }));
+    assert.ok(b.health < 100, `${kind === 'fire' ? 'slash' : 'stab'} at ${gap} m`);
+  }
+});
+
 test('bots pick up a better gun lying nearby', () => {
   const g = new Game(YARD, { seed: 5 });
   const nav = new NavGrid(g.world, YARD.bounds);

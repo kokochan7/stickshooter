@@ -2,7 +2,7 @@
 // would send. Bots never touch game state directly except to buy on spawn.
 import { emptyCmd } from './game.js';
 import { WEAPONS, GEAR, weaponValue } from './weapons.js';
-import { STAND_EYE, DUCK_EYE } from './constants.js';
+import { STAND_EYE, DUCK_EYE, U } from './constants.js';
 import { forwardVec, rightVec } from './movement.js';
 import { isEnemy } from './combat.js';
 import { siteAt, canPlant, canDefuse, hostageInReach } from './objective.js';
@@ -276,7 +276,7 @@ export class BotBrain {
       }
 
       if (def?.melee) {
-        wantFire = t >= this.reactionUntil && dist < 1.25;
+        wantFire = t >= this.reactionUntil && dist < def.melee.slash.range * U + 0.05;
       } else if (ready && w && w.clip > 0 && !p.reloading) {
         if (def.auto && !def.pellets && !def.zoomLevels) {
           if (t >= this.burstPauseUntil) {
