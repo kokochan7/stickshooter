@@ -1313,7 +1313,7 @@ export class Game {
     }
     if (restore) restore();
 
-    this.emit({ type: 'shot', pid: p.id, weapon: def.id, origin, dir: fwd, ends, impacts, side: def.dual ? p.shotSeed & 1 : undefined });
+    this.emit({ type: 'shot', pid: p.id, weapon: def.id, origin, dir: fwd, ends, impacts, side: def.dual ? p.shotSeed & 1 : undefined, burst: w?.burst ? true : undefined });
 
     // Only the server (or practice) decides hits.
     if (!this.predicting) {

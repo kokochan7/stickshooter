@@ -603,7 +603,9 @@ const GROUPS = {
   shot_m4a1: ['m4a1_unsil-1', 'm4a1_unsil-2'],
   shot_awp: ['awp1'],
   shot_minigun: ['m249-2'],
-  shot_glock18: ['glock18-1', 'glock18-2'],
+  // CS 1.6: glock18-2 is the single shot, glock18-1 the burst-fire shot.
+  shot_glock18: ['glock18-2'],
+  shot_glock18_burst: ['glock18-1'],
   shot_p228: ['p228-1'],
   shot_fiveseven: ['fiveseven-1'],
   shot_elites: ['elite_fire'],
