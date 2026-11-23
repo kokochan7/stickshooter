@@ -556,9 +556,10 @@ export function arenaVoice(ctx, input, out) {
   echoOut.connect(verb); // repeats feed the reverb too, so they sit in the room
 }
 
-// Announcer voice lines for multi-kills (original recordings, see README).
+// Announcer voice lines for multi-kills and "The bomb has been planted"
+// (original recordings, see README). A missing file just isn't loaded.
 const CLIPS = Object.fromEntries(
-  ['double', 'triple', 'multi', 'ultra', 'monster'].map((k) => [`announce_${k}`, `/audio/announcer/${k}.mp3`]),
+  ['double', 'triple', 'multi', 'ultra', 'monster', 'planted'].map((k) => [`announce_${k}`, `/audio/announcer/${k}.mp3`]),
 );
 
 // Recorded effects from the sound pack: game name -> file variants in
@@ -844,5 +845,26 @@ export class Audio {
     node.connect(voice ? this.voiceIn : this.sfx);
     src.start();
     return src;
+  }
+}
+
+// Fallback for a voice line with no recording: the browser's own speech
+// voice, deep and a little slow. It can't go through the reverb.
+export function speak(text, volume = 1) {
+  try {
+    const synth = globalThis.speechSynthesis;
+    if (!synth) return false;
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const voices = synth.getVoices();
+    u.voice = voices.find((v) => /^en(-|_)(US|GB)/i.test(v.lang) && /male|daniel|david|alex|george|google uk english male/i.test(v.name))
+      ?? voices.find((v) => /^en/i.test(v.lang)) ?? null;
+    u.rate = 0.92;
+    u.pitch = 0.7;
+    u.volume = volume;
+    synth.speak(u);
+    return true;
+  } catch {
+    return false;
   }
 }

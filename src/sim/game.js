@@ -182,6 +182,8 @@ export class Game {
 
   removePlayer(id) {
     const p = this.getPlayer(id);
+    if (p?.controlling) this.releaseBot(p, true);
+    if (p?.controlledBy) { const c = this.getPlayer(p.controlledBy); if (c) c.controlling = null; }
     if (p && this.objective) { Obj.dropBomb(this, p); Obj.releaseHostages(this, p); }
     this.players = this.players.filter((p) => p.id !== id);
   }
@@ -216,7 +218,10 @@ export class Game {
     this.hostages = [];
     this.drops = [];
     this.nades = [];
-    for (const p of this.players) { p.kills = 0; p.deaths = 0; p.headshots = 0; p.money = START_MONEY; }
+    for (const p of this.players) {
+      p.kills = 0; p.deaths = 0; p.headshots = 0; p.money = START_MONEY;
+      p.controlling = null; p.controlledBy = null; p.ownMoney = 0;
+    }
   }
 
   // A fresh match: scores reset and everyone respawns, frozen for START_DELAY
@@ -266,6 +271,7 @@ export class Game {
   // taken out without it counting as a death and respawns with the new team.
   setTeam(p, team) {
     if (this.mode !== 'teams' || !TEAMS.includes(team) || p.team === team) return false;
+    if (p.controlling) this.releaseBot(p, true); // the bot carries on in its body
     if (this.objective) { Obj.dropBomb(this, p); Obj.releaseHostages(this, p); p.task = null; }
     p.team = team;
     if (p.alive) {
@@ -471,14 +477,54 @@ export class Game {
     return n;
   }
 
-  // Teams: a dead player watching a living bot on their own team takes it
-  // over (E while spectating, like CS 1.6). They get its body where it
-  // stands, with its health, armor, guns and the bomb if it has it. The bot
-  // sits out until it would respawn (the next round in objective rounds);
-  // that doesn't count as a death for it.
+  // Objective rounds: a dead player watching a living bot on their own team
+  // takes it over (E while spectating, like CS 1.6). They play its body
+  // where it stands, with its health, armor, guns, money and the bomb if it
+  // has it. Kills and a death while in control count for the bot, not the
+  // player. When the round ends (or the body dies) the bot gets it all
+  // back, as it is then, and the player is back to their own score and
+  // money, starting over next round like anyone who died.
   canTakeOver(p, bot) {
-    return !!bot && this.mode === 'teams' && !p.isBot && !p.alive && bot.isBot && bot.alive &&
+    return !!bot && !!this.objective && !p.isBot && !p.alive && bot.isBot && bot.alive && !bot.controlledBy &&
       bot.team === p.team && bot !== p && this.match.state === 'live' && !this.frozen(bot);
+  }
+
+  // The player whose score a kill or death counts for: the bot when it's
+  // being played by someone.
+  scorer(p) {
+    return (p?.controlling && this.getPlayer(p.controlling)) || p;
+  }
+
+  // Give a taken-over bot back. At the end of the round (keepBody) the bot
+  // gets the body as it is: alive with its gear, or dead.
+  releaseBot(p, keepBody = false) {
+    if (!p.controlling) return;
+    const bot = this.getPlayer(p.controlling);
+    p.controlling = null;
+    if (bot) {
+      bot.controlledBy = null;
+      bot.money = p.money;
+      if (keepBody && p.alive) {
+        for (const k of TAKEOVER_FIELDS) {
+          const v = p[k];
+          bot[k] = Array.isArray(v) ? [...v] : v;
+        }
+        bot.weapons = { ...p.weapons };
+        bot.alive = true;
+        bot.task = null;
+        if (this.objective) {
+          if (this.bomb.state === 'carried' && this.bomb.carrier === p.id) this.bomb.carrier = bot.id;
+          if (this.bomb.defuser === p.id) this.bomb.defuser = null;
+          for (const h of this.hostages) if (h.leader === p.id) h.leader = bot.id;
+        }
+      }
+    }
+    p.money = p.ownMoney;
+    if (keepBody && p.alive) {
+      p.alive = false;
+      p.respawnAt = NEVER;
+      p.weapons = { primary: null, secondary: null, melee: null, grenade: null, c4: null };
+    }
   }
 
   takeOver(p, bot) {
@@ -496,6 +542,10 @@ export class Game {
     p.spawnedAt = this.time;
     p.frozenUntil = 0;
     p.roundKills = 0;
+    p.ownMoney = p.money;
+    p.money = bot.money;
+    p.controlling = bot.id;
+    bot.controlledBy = p.id;
     if (this.objective) {
       const b = this.bomb;
       if (bot.task?.kind === 'defuse' && b.defuser === bot.id) b.defuser = null;
@@ -1262,7 +1312,8 @@ export class Game {
   // cause: 'bomb' for the bomb going off.
   kill(victim, attacker, def, headshot, wallbang, cause = null) {
     victim.alive = false;
-    victim.deaths++;
+    // Someone playing a bot: the death is the bot's.
+    this.scorer(victim).deaths++;
     // Objective rounds: one life per round.
     victim.respawnAt = this.objective ? NEVER : this.time + RESPAWN_TIME;
     victim.reloading = false;
@@ -1276,9 +1327,10 @@ export class Game {
       Obj.releaseHostages(this, victim);
     }
     let reward = 0, multi = 0;
+    const credit = this.scorer(attacker);
     if (attacker && attacker !== victim) {
-      attacker.kills++;
-      if (headshot) attacker.headshots++;
+      credit.kills++;
+      if (headshot) credit.headshots++;
       reward = this.killReward(attacker);
       attacker.roundKills++;
       attacker.money = Math.min(MAX_MONEY, attacker.money + reward);
@@ -1288,12 +1340,15 @@ export class Game {
     }
     this.emit({
       type: 'kill', attacker: attacker?.id ?? null, victim: victim.id, weapon: def?.id ?? null,
+      as: credit && credit !== attacker ? credit.id : null, victimAs: victim.controlling ?? null,
       headshot, wallbang, dir: victim.lastHitDir, cause, reward, multi,
     });
     // The body vanishes and its best gun stays on the ground (CS drops the
     // primary, or the pistol if there's no primary).
     const slot = victim.weapons.primary ? 'primary' : victim.weapons.secondary ? 'secondary' : null;
     if (slot) this.dropWeapon(victim, slot, false);
+    // The bot's body died: it stays dead, and gets its money back.
+    if (victim.controlling) this.releaseBot(victim);
 
     if (attacker && attacker !== victim && this.match.state === 'live' && !this.objective) {
       if (this.mode === 'teams') {

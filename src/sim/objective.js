@@ -57,6 +57,8 @@ export function startRound(g) {
   r.reason = null;
   g.drops = [];
   g.nades = [];
+  // Taken-over bots get their bodies back (gear and all) before the round.
+  for (const p of g.players) if (p.controlling) g.releaseBot(p, true);
   for (const p of g.players) {
     g.spawn(p);
     p.frozenUntil = r.freezeEnd;

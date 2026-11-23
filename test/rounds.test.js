@@ -126,3 +126,45 @@ test('in objective rounds a dead player\'s gun stays until the round ends', () =
   run(g, 15);
   assert.ok(g.drops.includes(d) || g.round.state !== 'live', 'still there 15 s later');
 });
+
+test('playing a bot: kills and deaths are the bot\'s, and it gets its body back at round end', () => {
+  const { g, me, bot, enemy } = teamsGame();
+  const enemy2 = g.addPlayer({ name: 'Enemy 2', team: 'blue', isBot: true });
+  enemy2.alive = true; enemy2.pos = [...enemy.pos]; enemy2.prevPos = [...enemy.pos];
+  bot.money = 3000; me.money = 800;
+  bot.weapons.primary = { id: 'm4a1', clip: 30, reserve: 90 };
+  g.kill(me, enemy, null, false, false);
+  const myDeaths = me.deaths, botKills = bot.kills;
+  assert.ok(g.takeOver(me, bot));
+  assert.equal(me.money, 3000, 'you spend the bot\'s money');
+  g.kill(enemy2, me, null, true, false);
+  assert.equal(me.kills, 0, 'not your kill');
+  assert.equal(bot.kills, botKills + 1, 'the bot\'s kill');
+  assert.equal(bot.headshots, 1);
+  // The round ends with you alive in the bot: the bot keeps the body.
+  g.kill(enemy, me, null, false, false);
+  const money = me.money;
+  run(g, 6);
+  assert.equal(g.round.n, 2);
+  assert.equal(me.controlling, null);
+  assert.equal(bot.money, money, 'the bot gets its money back, kill rewards included');
+  assert.equal(me.money, 800, 'your own money again');
+  assert.equal(bot.weapons.primary?.id, 'm4a1', 'the bot keeps its gun');
+  assert.equal(me.weapons.primary, null, 'you start over with a pistol');
+  assert.equal(me.deaths, myDeaths);
+});
+
+test('if the bot\'s body dies while you play it, the death is the bot\'s', () => {
+  const { g, me, bot, enemy } = teamsGame();
+  g.kill(me, enemy, null, false, false);
+  const myDeaths = me.deaths, botDeaths = bot.deaths;
+  bot.money = 2000; me.money = 500;
+  assert.ok(g.takeOver(me, bot));
+  g.kill(me, enemy, null, false, false);
+  assert.equal(me.deaths, myDeaths);
+  assert.equal(bot.deaths, botDeaths + 1);
+  assert.equal(me.controlling, null);
+  assert.equal(me.money, 500);
+  assert.equal(bot.money, 2000);
+  assert.ok(!bot.alive);
+});

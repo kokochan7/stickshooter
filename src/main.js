@@ -21,7 +21,7 @@ import {
 import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
 import { GameView } from './client/scene.js';
-import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, DEPLOY_SOUNDS, STEP_SOUNDS } from './client/audio.js';
+import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, DEPLOY_SOUNDS, STEP_SOUNDS, speak } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
 import { TouchControls, isTouchDevice } from './client/touch.js';
@@ -584,6 +584,19 @@ function dropOrPickup() {
   pendingActions.push(d ? { type: 'pickup', id: d.id } : { type: 'drop' });
 }
 
+// ---------- Announcer ----------
+
+// A global voice line everyone hears, like CS 1.6's radio "Bomb has been
+// planted". Uses the recorded clip (with reverb and echo) when there is
+// one, otherwise the browser's speech voice.
+function announce(clip, text) {
+  if (!audio.sfxOn) return;
+  try { announcer?.stop(); } catch { /* already ended */ }
+  announcer = audio.play('announce_' + clip, { volume: 1, jitter: 0, voice: true });
+  if (announcer) audio.duck(announcer.buffer.duration + 0.7);
+  else speak(text, settings.volume ?? 1);
+}
+
 // ---------- Multi-kill announcer ----------
 
 const MULTI_KILLS = [null, null, ['DOUBLE KILL', 'double'], ['TRIPLE KILL', 'triple'], ['MULTI KILL', 'multi'], ['ULTRA KILL', 'ultra'], ['MONSTER KILL', 'monster']];
@@ -808,7 +821,10 @@ function handleEvent(e) {
       const attacker = e.attacker ? game.getPlayer(e.attacker) : null;
       const victim = game.getPlayer(e.victim);
       if (!victim) break;
-      hud.kill({ attacker, victim, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, cause: e.cause, mine: me && (e.attacker === me.id || e.victim === me.id) });
+      // Someone playing a bot shows (and scores) as that bot.
+      const shownA = (e.as && game.getPlayer(e.as)) || attacker;
+      const shownV = (e.victimAs && game.getPlayer(e.victimAs)) || victim;
+      hud.kill({ attacker: shownA, victim: shownV, weapon: e.weapon, headshot: e.headshot, wallbang: e.wallbang, cause: e.cause, mine: me && (e.attacker === me.id || e.victim === me.id) });
       // The stickman falls down dead (CS 1.6 style) and the body stays a few
       // seconds; its gun is left on the ground.
       if (victim.pos[1] > -10) dropBody(victim, e);
@@ -977,6 +993,7 @@ function handleEvent(e) {
       audio.play('alert', { volume: 0.6 });
       if (game.bomb?.pos) audio.play('bombPlant', { pos: game.bomb.pos, volume: 0.6 });
       nextBeep = 0;
+      announce('planted', 'The bomb has been planted.');
       break;
     case 'defused':
       alertMsg = { html: '<span class="alert good">BOMB DEFUSED</span>', until: performance.now() + 2500 };
