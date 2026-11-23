@@ -8,8 +8,9 @@ import { CANAL } from './canal.js';
 import { DUNES } from './dunes.js';
 import { HARBOR } from './harbor.js';
 import { FROST } from './frost.js';
+import { DEPOT } from './depot.js';
 
-export const MAP_LIST = [YARD, CANAL, DUNES, HARBOR, FROST];
+export const MAP_LIST = [YARD, CANAL, DUNES, HARBOR, FROST, DEPOT];
 export const MAPS = Object.fromEntries(MAP_LIST.map((m) => [m.id, m]));
 export const DEFAULT_MAP = 'yard';
 
