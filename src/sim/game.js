@@ -11,7 +11,7 @@ import {
   NADE_FUSE, NADE_GRAVITY, NADE_PIN_TIME, NADE_SWITCH_TIME, NADE_BOUNCE, NADE_RADIUS,
   PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL, BUY_TIME, SMOKE_GROW, SMOKE_FADE, SMOKE_HEIGHT, SMOKE_MAX_WAIT,
 } from './constants.js';
-import { WEAPONS, GEAR, AMMO, NADE_SLOTS } from './weapons.js';
+import { WEAPONS, GEAR, AMMO, NADE_SLOTS, teamCanBuy } from './weapons.js';
 import { World } from './world.js';
 import { movePlayer, aimDir, forwardVec, rightVec, playerBox, hullTouches } from './movement.js';
 import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
@@ -428,6 +428,11 @@ export class Game {
     return Math.max(p.frozenUntil, p.spawnedAt) + BUY_TIME;
   }
 
+  // The team whose shop a player uses, or null in free-for-all.
+  buyTeam(p) {
+    return this.mode === 'teams' ? p.team : null;
+  }
+
   canBuy(p) {
     return p.alive && this.time <= this.buyDeadline(p);
   }
@@ -483,6 +488,7 @@ export class Game {
     }
     const def = WEAPONS[item];
     if (!def || def.bomb || def.melee) return false;
+    if (!teamCanBuy(item, this.buyTeam(p))) return false;
     const cur = p.weapons[def.slot];
     // Already have it: buying it again buys its ammo, or another grenade
     // up to as many as you can carry (two flashbangs).

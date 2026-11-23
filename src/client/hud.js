@@ -1,6 +1,6 @@
 // DOM HUD, buy menu, scoreboard and settings.
 import * as THREE from 'three';
-import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT, NADE_SLOTS } from '../sim/weapons.js';
+import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT, NADE_SLOTS, teamCanBuy } from '../sim/weapons.js';
 import { buildGun } from './gunModels.js';
 import { DEFAULT_BINDS, BIND_LABELS, keyName } from './input.js';
 import { MAX_BOTS } from '../sim/admin.js';
@@ -548,8 +548,8 @@ const FALL_ICON = '<svg class="kf-ic" viewBox="0 0 24 24" aria-label="Fell"><pat
 
 // CS 1.6 style buy menu: number keys pick a category, then a weapon.
 // B 4 3 buys an M4A1, the same muscle memory as CS.
-// With every CS 1.6 gun in the shop (for both teams), the snipers get a
-// page of their own so each page fits on the number keys.
+// The snipers get a page of their own so each page fits on the number keys.
+// In team modes each side only sees its own guns (TEAM_ONLY), like CS.
 const BUY_PAGES = [
   { label: 'Handguns', title: 'Buy Handguns (Secondary Weapon)', cats: ['Pistols'] },
   { label: 'Shotguns', title: 'Buy Shotguns (Primary Weapon)', cats: ['Shotguns'] },
@@ -576,6 +576,7 @@ export class BuyMenu {
     this.page = null; // index into BUY_PAGES, or null for the category list
     this.sel = 0;
     this.p = null;
+    this.team = null; // set by main.js: your team in team modes, else null
     this.list.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-n]');
       // Stop here: key() rebuilds the rows, so the detached target would look
@@ -594,6 +595,11 @@ export class BuyMenu {
     });
   }
 
+  // The page's items this player's shop offers.
+  items(pg) {
+    return pg.items.filter((id) => teamCanBuy(id, this.team));
+  }
+
   // A number key (0-9) or 'back'. Returns true if the key was used.
   key(n) {
     if (n === 'back') {
@@ -609,7 +615,7 @@ export class BuyMenu {
       this.render(this.p);
       return true;
     }
-    const id = BUY_PAGES[this.page].items[n - 1];
+    const id = this.items(BUY_PAGES[this.page])[n - 1];
     if (!id) return false;
     const state = this.itemState(id);
     if (state.cant) {
@@ -657,7 +663,7 @@ export class BuyMenu {
         rows += `<button class="buy-row ${i === this.sel ? 'sel' : ''}" data-n="${i + 1}"><b>${i + 1}</b> ${c.label}</button>`;
       });
     } else {
-      pg.items.forEach((id, i) => {
+      this.items(pg).forEach((id, i) => {
         const st = this.itemState(id);
         const name = (WEAPONS[id] ?? GEAR[id]).name;
         rows += `<button class="buy-row ${i === this.sel ? 'sel' : ''} ${st.cant ? 'cant' : ''} ${st.owned ? 'owned' : ''}" data-n="${i + 1}"><b>${i + 1}</b> ${name}<span class="pr">${st.owned ? 'OWNED' : `$${st.price}`}</span></button>`;
@@ -668,15 +674,16 @@ export class BuyMenu {
     } else {
       this.list.querySelectorAll('.buy-row[data-n]').forEach((b) => b.classList.toggle('sel', +b.dataset.n === this.sel + 1));
     }
-    this.info.innerHTML = pg ? this.itemInfo(pg.items[this.sel]) : this.pageInfo(BUY_PAGES[this.sel]);
+    this.info.innerHTML = pg ? this.itemInfo(this.items(pg)[this.sel]) : this.pageInfo(BUY_PAGES[this.sel]);
   }
 
   pageInfo(c) {
-    const rows = c.items.map((id) => {
+    const items = this.items(c);
+    const rows = items.map((id) => {
       const it = WEAPONS[id] ?? GEAR[id];
       return `<div class="kv"><span>${it.name}</span><span>$${it.price}</span></div>`;
     }).join('');
-    const pic = c.gear ? '' : `<div class="buy-pic"><img src="${this.icons[c.items[c.items.length - 1]]}" alt=""></div>`;
+    const pic = c.gear ? '' : `<div class="buy-pic"><img src="${this.icons[items[items.length - 1]]}" alt=""></div>`;
     return `${pic}<div class="buy-stats">${rows}</div><p class="buy-tip">Press a number to open a category. Backspace goes back, 0 or B closes.</p>`;
   }
 

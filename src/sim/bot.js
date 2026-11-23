@@ -1,7 +1,7 @@
 // Bot brain: looks at the game state and produces the same cmd a human client
 // would send. Bots never touch game state directly except to buy on spawn.
 import { emptyCmd, blindLevel } from './game.js';
-import { WEAPONS, GEAR, weaponValue } from './weapons.js';
+import { WEAPONS, GEAR, weaponValue, teamCanBuy } from './weapons.js';
 import { STAND_EYE, DUCK_EYE, U, GRAVITY, NADE_GRAVITY, NADE_PIN_TIME, NADE_FUSE } from './constants.js';
 import { forwardVec, rightVec, aimDir } from './movement.js';
 import { isEnemy } from './combat.js';
@@ -50,7 +50,7 @@ const ROLE = {
 };
 
 // What bots buy, weighted like a CS lobby: lots of AKs and M4s, the odd
-// sniper or machine gun. Both teams can buy everything here.
+// sniper or machine gun. In team modes each bot skips the other side's guns.
 const PRIMARY_POOL = [
   'ak47', 'ak47', 'ak47', 'm4a1', 'm4a1', 'm4a1', 'galil', 'famas', 'sg552', 'aug',
   'mp5', 'mp5', 'p90', 'ump45', 'uzi', 'mac10', 'tmp',
@@ -1409,15 +1409,18 @@ export class BotBrain {
     const wantArmor = rand() < this.skill.armor;
     const armorCost = p.armor >= 100 ? (p.helmet ? 0 : 350) : GEAR.kevlarHelmet.price;
     let boughtGun = false;
+    const team = g.buyTeam(p);
+    const pool = PRIMARY_POOL.filter((id) => teamCanBuy(id, team));
+    const pistols = PISTOL_POOL.filter((id) => teamCanBuy(id, team));
     // A bot that survived the last round keeps its gun, like everyone else.
     if (!p.weapons.primary) {
       const budget = p.money - (wantArmor ? armorCost : 0);
-      let pick = PRIMARY_POOL[Math.floor(rand() * PRIMARY_POOL.length)];
+      let pick = pool[Math.floor(rand() * pool.length)];
       if (WEAPONS[pick].price > budget) {
         // Can't have that one: the best we can afford that leaves armor money,
         // or failing that anything we can afford at all.
-        let ok = PRIMARY_POOL.filter((id) => WEAPONS[id].price <= budget);
-        if (!ok.length && !wantArmor) ok = PRIMARY_POOL.filter((id) => WEAPONS[id].price <= p.money);
+        let ok = pool.filter((id) => WEAPONS[id].price <= budget);
+        if (!ok.length && !wantArmor) ok = pool.filter((id) => WEAPONS[id].price <= p.money);
         pick = ok.length ? ok[Math.floor(rand() * ok.length)] : null;
       }
       if (pick) boughtGun = g.buy(p, pick, true);
@@ -1425,7 +1428,7 @@ export class BotBrain {
     else if (p.weapons.primary) g.buyAmmo(p, 'primary', true); // kept gun: top up its ammo
     if (wantArmor && !g.buy(p, 'kevlarHelmet', true) && p.armor < 100) g.buy(p, 'kevlar', true);
     if (g.objective === 'bomb' && p.team === 'blue') g.buy(p, 'defuser', true);
-    const pistol = PISTOL_POOL[Math.floor(rand() * PISTOL_POOL.length)];
+    const pistol = pistols[Math.floor(rand() * pistols.length)];
     if (boughtGun && p.weapons.secondary?.id !== pistol && rand() < 0.3 && p.money >= WEAPONS[pistol].price + 500) {
       g.buy(p, pistol, true);
       g.switchTo(p, 'primary', true);

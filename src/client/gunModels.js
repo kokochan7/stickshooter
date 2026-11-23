@@ -32,6 +32,28 @@ const MATS = {
   lcd: [0x7fd45a, 0.6],
 };
 
+// Each gun's paint job, so guns are bright and easy to tell apart. The main
+// color replaces the furniture (polymer, anodized aluminium, wood and the AWP
+// green) and tints the blued steel; grips stay dark with a hint of it, and
+// bare metal, bores, glass and brass keep their real finish.
+const PAINTS = {
+  usp: 0x2f6fe0, glock18: 0xe0383e, p228: 0x16b39a, deagle: 0xe8b830, fiveseven: 0x7ad13a, elites: 0xb04ce0,
+  uzi: 0xff7a1a, tmp: 0x35c6f0, mac10: 0xff3d8b, mp5: 0x3b55e6, ump45: 0x9b6cff, p90: 0xf2d22e,
+  shotgun: 0xc4562a, autoshotgun: 0x22b3a8,
+  galil: 0xf0902a, famas: 0x4a9cff, ak47: 0xe0461f, m4a1: 0x18c08a, sg552: 0xff5a5a, aug: 0x6fd13a,
+  scout: 0xe04fd0, awp: 0x4fbf3a, g3sg1: 0xc9372c, sg550: 0x2a7bd8,
+  m249: 0xe6a21e, minigun: 0xff4d2e,
+};
+// How far each finish moves toward the paint (1 = all the way), and a
+// brightness factor so wood keeps its light and dark grain.
+const PAINT_MIX = {
+  poly: [1, 1], dark: [1, 0.9], green: [1, 1], olive: [1, 1], tan: [1, 1.1],
+  wood: [1, 1], woodL: [1, 1.15], woodD: [1, 0.75],
+  steel: [0.4, 0.7], black: [0.2, 1], rubber: [0.12, 1],
+};
+let paint = null; // a THREE.Color while building a painted gun
+const _paintC = new THREE.Color();
+
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _c = new THREE.Color();
 const _one = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3();
 
@@ -46,6 +68,8 @@ function finish(geo, mat) {
   const n = geo.attributes.position.count;
   const col = new Float32Array(n * 3), spec = new Float32Array(n);
   _c.setHex(hex);
+  const mix = paint && PAINT_MIX[mat];
+  if (mix) _c.lerp(_paintC.copy(paint).multiplyScalar(mix[1]), mix[0]);
   const nor = geo.attributes.normal.array;
   for (let i = 0; i < n; i++) {
     // Faces pointing down are a little darker, like ambient occlusion.
@@ -1143,8 +1167,10 @@ export function buildGun(id, lod = false) {
   let cached = geoCache.get(key);
   if (!cached) {
     LOD = lod;
+    paint = PAINTS[id] !== undefined ? new THREE.Color(PAINTS[id]) : null;
     const spec = SPECS[id]();
     LOD = false;
+    paint = null;
     const geo = merge(spec.parts, lod);
     const spinGeo = spec.spin ? merge(spec.spin, lod) : null;
     const magGeo = spec.mag ? merge(spec.mag, lod) : null;

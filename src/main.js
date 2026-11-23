@@ -544,6 +544,7 @@ function setBuyMenu(open) {
   if (!me || !me.alive) open = false;
   if (open && !game.canBuy(me)) { buyTimeOver(); open = false; }
   buyMenu.kitAllowed = game.objective === 'bomb' && me?.team === 'blue';
+  buyMenu.team = me ? game.buyTeam(me) : null;
   buyMenu.show(open, me);
   input.menuKeys = open;
   // Without pointer lock the real mouse cursor already works on the menu.
