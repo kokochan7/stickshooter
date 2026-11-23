@@ -263,8 +263,10 @@ FAMAS, AUG, SG550, TMP and Five-SeveN. Everything else is for both. The buy
 menu hides the other side's guns and bots buy from their own list.
 Free-for-all sells everything, and picking up a dropped gun ignores teams.
 
-Each gun model has its own paint color (`PAINTS` in `gunModels.js`), so guns
-are bright and easy to tell apart at a glance.
+Each gun model has its real-life finish (`FINISHES` in `gunModels.js`): wood
+on the AK47 and Galil, olive on the AUG and M249, drab on the FAMAS, stainless
+on the Desert Eagle, and black polymer with blued, parkerized or gunmetal
+steel elsewhere, so guns look real but still differ.
 
 Gear:
 

@@ -32,27 +32,43 @@ const MATS = {
   lcd: [0x7fd45a, 0.6],
 };
 
-// Each gun's paint job, so guns are bright and easy to tell apart. The main
-// color replaces the furniture (polymer, anodized aluminium, wood and the AWP
-// green) and tints the blued steel; grips stay dark with a hint of it, and
-// bare metal, bores, glass and brass keep their real finish.
-const PAINTS = {
-  usp: 0x2f6fe0, glock18: 0xe0383e, p228: 0x16b39a, deagle: 0xe8b830, fiveseven: 0x7ad13a, elites: 0xb04ce0,
-  uzi: 0xff7a1a, tmp: 0x35c6f0, mac10: 0xff3d8b, mp5: 0x3b55e6, ump45: 0x9b6cff, p90: 0xf2d22e,
-  shotgun: 0xc4562a, autoshotgun: 0x22b3a8,
-  galil: 0xf0902a, famas: 0x4a9cff, ak47: 0xe0461f, m4a1: 0x18c08a, sg552: 0xff5a5a, aug: 0x6fd13a,
-  scout: 0xe04fd0, awp: 0x4fbf3a, g3sg1: 0xc9372c, sg550: 0x2a7bd8,
-  m249: 0xe6a21e, minigun: 0xff4d2e,
+// Each gun's real-life finish, so guns look like the real thing but still
+// differ: matte black polymer, blued or parkerized steel in a few shades,
+// stainless, wood, olive drab and tan. An entry swaps a finish name for
+// [color, shine] on that gun only; anything not listed keeps MATS.
+const GUNMETAL = [0x3b3f45, 0.8]; // lighter machined steel, reads two-tone against black
+const PARK = [0x34363a, 0.35]; // grey parkerized steel, matte
+const WOOD_AK = [0x6b3a1c, 0.35], WOOD_AK_L = [0x7d4521, 0.35], WOOD_AK_D = [0x4a2814, 0.3];
+const OD = [0x4b5136, 0.22]; // olive drab polymer
+const FINISHES = {
+  usp: { steel: [0x2a2c30, 0.7] },
+  glock18: { dark: [0x2c2e31, 0.45], poly: [0x1e1f22, 0.12] },
+  p228: { steel: [0x26282c, 0.75] },
+  deagle: { steel: [0x9aa0a8, 0.95], silver: [0xb9bec5, 1.0] }, // stainless
+  fiveseven: { poly: [0x3a3c3f, 0.15], steel: [0x2b2d31, 0.6] }, // grey frame, black slide
+  elites: {}, // stainless Berettas with black grips
+  uzi: { steel: PARK, dark: PARK },
+  tmp: { poly: [0x1c1d20, 0.12] },
+  mac10: { steel: PARK, dark: [0x2e3034, 0.4] },
+  mp5: { steel: [0x26282c, 0.6] },
+  ump45: { poly: [0x2a2c2f, 0.12] },
+  p90: { poly: [0x2b2d30, 0.14] },
+  shotgun: { steel: [0x2d3034, 0.8] },
+  autoshotgun: { steel: GUNMETAL },
+  galil: { poly: WOOD_AK, dark: [0x2e3034, 0.45] }, // wooden handguard on a dark receiver
+  famas: { poly: [0x55553f, 0.2], black: [0x3b3c30, 0.15] }, // drab green-grey
+  ak47: { wood: WOOD_AK, woodL: WOOD_AK_L, woodD: WOOD_AK_D },
+  m4a1: { dark: [0x2b2d31, 0.5] },
+  sg552: { olive: [0x232528, 0.12], dark: GUNMETAL },
+  aug: { olive: OD, dark: OD }, // olive Steyr stock
+  scout: { poly: [0x3a3f36, 0.18], dark: [0x3a3f36, 0.2] },
+  awp: { green: [0x3f4e2e, 0.22] },
+  g3sg1: { poly: [0x1f2023, 0.12], steel: GUNMETAL },
+  sg550: { olive: [0x3f4246, 0.15], dark: [0x3f4246, 0.2] },
+  m249: { olive: OD, poly: OD, steel: PARK },
+  minigun: { steel: GUNMETAL },
 };
-// How far each finish moves toward the paint (1 = all the way), and a
-// brightness factor so wood keeps its light and dark grain.
-const PAINT_MIX = {
-  poly: [1, 1], dark: [1, 0.9], green: [1, 1], olive: [1, 1], tan: [1, 1.1],
-  wood: [1, 1], woodL: [1, 1.15], woodD: [1, 0.75],
-  steel: [0.4, 0.7], black: [0.2, 1], rubber: [0.12, 1],
-};
-let paint = null; // a THREE.Color while building a painted gun
-const _paintC = new THREE.Color();
+let finishes = null; // the gun's FINISHES entry while it's being built
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _c = new THREE.Color();
 const _one = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3();
@@ -64,12 +80,10 @@ const seg = (n) => (LOD ? Math.max(6, Math.round(n * 0.5)) : n);
 
 function finish(geo, mat) {
   if (geo.index) geo = geo.toNonIndexed();
-  const [hex, shine] = MATS[mat];
+  const [hex, shine] = finishes?.[mat] ?? MATS[mat];
   const n = geo.attributes.position.count;
   const col = new Float32Array(n * 3), spec = new Float32Array(n);
   _c.setHex(hex);
-  const mix = paint && PAINT_MIX[mat];
-  if (mix) _c.lerp(_paintC.copy(paint).multiplyScalar(mix[1]), mix[0]);
   const nor = geo.attributes.normal.array;
   for (let i = 0; i < n; i++) {
     // Faces pointing down are a little darker, like ambient occlusion.
@@ -1167,10 +1181,10 @@ export function buildGun(id, lod = false) {
   let cached = geoCache.get(key);
   if (!cached) {
     LOD = lod;
-    paint = PAINTS[id] !== undefined ? new THREE.Color(PAINTS[id]) : null;
+    finishes = FINISHES[id] ?? null;
     const spec = SPECS[id]();
     LOD = false;
-    paint = null;
+    finishes = null;
     const geo = merge(spec.parts, lod);
     const spinGeo = spec.spin ? merge(spec.spin, lod) : null;
     const magGeo = spec.mag ? merge(spec.mag, lod) : null;
