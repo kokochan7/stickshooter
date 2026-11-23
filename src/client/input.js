@@ -92,7 +92,7 @@ export class Input {
       if (e.code === b.primary) this.pending.slot = 'primary';
       if (e.code === b.secondary) this.pending.slot = 'secondary';
       if (e.code === b.melee) this.pending.slot = 'melee';
-      if (e.code === b.grenade) this.pending.slot = 'grenade';
+      if (e.code === b.grenade) this.pending.slot = 'nade'; // next grenade you carry
       if (e.code === b.lastWeapon) this.pending.lastWeapon = true;
       if (e.code === b.jump) this.pending.jump = true;
       this.emit('key', e.code);

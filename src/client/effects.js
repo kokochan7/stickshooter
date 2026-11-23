@@ -48,6 +48,72 @@ const MAX_TRACERS = 48;
 const MAX_HOLES = 160;
 const MAX_SHELLS = 48;
 const MAX_FLASHES = 12;
+const SMOKE_PUFFS = 22;
+const MAX_SMOKE = SMOKE_PUFFS * 16;
+
+// A soft, lumpy round puff for the smoke clouds.
+function puffTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 7; i++) {
+    const x = 20 + Math.random() * 24, y = 20 + Math.random() * 24, r = 14 + Math.random() * 14;
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+  }
+  const grad = g.createRadialGradient(32, 32, 8, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,1)');
+  g.globalCompositeOperation = 'destination-out';
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+function makeSmokeMesh() {
+  const quad = new THREE.PlaneGeometry(1, 1);
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.index = quad.index;
+  geo.setAttribute('position', quad.attributes.position);
+  geo.setAttribute('uv', quad.attributes.uv);
+  const pos = new Float32Array(MAX_SMOKE * 3), size = new Float32Array(MAX_SMOKE), alpha = new Float32Array(MAX_SMOKE);
+  const shade = new Float32Array(MAX_SMOKE), rot = new Float32Array(MAX_SMOKE);
+  const add = (name, arr, n) => geo.setAttribute(name, new THREE.InstancedBufferAttribute(arr, n).setUsage(THREE.DynamicDrawUsage));
+  add('iPos', pos, 3); add('iSize', size, 1); add('iAlpha', alpha, 1); add('iShade', shade, 1); add('iRot', rot, 1);
+  geo.instanceCount = 0;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { map: { value: puffTexture() } },
+    vertexShader: `
+      attribute vec3 iPos; attribute float iSize; attribute float iAlpha; attribute float iShade; attribute float iRot;
+      varying vec2 vUv; varying float vA; varying float vShade;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(iPos, 1.0);
+        float c = cos(iRot), s = sin(iRot);
+        mv.xy += mat2(c, s, -s, c) * position.xy * iSize;
+        // Puffs right in front of the camera fade out instead of popping.
+        vA = iAlpha * clamp((-mv.z - 0.3) / 1.2, 0.0, 1.0);
+        vUv = uv; vShade = iShade;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform sampler2D map; varying vec2 vUv; varying float vA; varying float vShade;
+      void main() {
+        float a = texture2D(map, vUv).a * vA;
+        if (a < 0.01) discard;
+        gl_FragColor = vec4(vec3(vShade), a);
+      }`,
+    transparent: true,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  mesh.renderOrder = 2;
+  return { mesh, pos, size, alpha, shade, rot };
+}
 
 export class Effects {
   constructor(scene, world) {
@@ -148,6 +214,39 @@ export class Effects {
     this._z = new THREE.Vector3(0, 0, 1);
     this.hide = new THREE.Matrix4().makeScale(0, 0, 0);
     for (let i = 0; i < MAX_SHELLS; i++) this.shellMesh.setMatrixAt(i, this.hide);
+
+    // Smoke grenade clouds: camera-facing puffs, all of them one instanced
+    // draw call.
+    this.smoke = makeSmokeMesh();
+    scene.add(this.smoke.mesh);
+  }
+
+  // Draw the smoke clouds. amount(s): how much of cloud s is there, 0..1.
+  syncSmokes(smokes, time, amount, height) {
+    const { mesh, pos, size, alpha, shade, rot } = this.smoke;
+    let n = 0;
+    for (const s of smokes) {
+      const k = amount(s, time);
+      if (k <= 0) continue;
+      let seed = s.id * 7919;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      const r = s.radius * (0.45 + 0.55 * Math.min(1, k * 1.4));
+      const age = time - s.start;
+      for (let i = 0; i < SMOKE_PUFFS && n < MAX_SMOKE; i++, n++) {
+        const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 0.75, h = rnd();
+        pos[n * 3] = s.pos[0] + Math.cos(a + age * 0.02) * d * r;
+        pos[n * 3 + 1] = s.pos[1] + 0.3 + h * height * 0.75 * Math.min(1, 0.4 + k) + age * 0.01;
+        pos[n * 3 + 2] = s.pos[2] + Math.sin(a + age * 0.02) * d * r;
+        size[n] = r * (0.9 + rnd() * 0.6);
+        alpha[n] = 0.8 * k;
+        shade[n] = 0.6 + rnd() * 0.16;
+        rot[n] = rnd() * 6.28 + age * (rnd() - 0.5) * 0.15;
+      }
+    }
+    const g = mesh.geometry;
+    g.instanceCount = n;
+    mesh.visible = n > 0;
+    for (const k of ['iPos', 'iSize', 'iAlpha', 'iShade', 'iRot']) g.attributes[k].needsUpdate = true;
   }
 
   spawnParticle(x, y, z, vx, vy, vz, col, life, size, grav = 1, grow = 0) {
@@ -239,6 +338,23 @@ export class Effects {
       const g = 0.35 + R() * 0.25;
       this.spawnParticle(x + Math.cos(a) * R() * 1.2, y + 0.3 + R() * 1.2, z + Math.sin(a) * R() * 1.2,
         Math.cos(a) * s, 0.6 + R() * 1.4, Math.sin(a) * s, [g, g, g * 0.97], 1.4 + R() * 1.2, 0.5 + R() * 0.4, -0.04, 1.6);
+    }
+  }
+
+  // Flashbang going off: a white-hot pop and a few sparks, no fire.
+  flashBang(pos, water = false) {
+    const [x, y, z] = pos;
+    const R = Math.random;
+    if (water) { this.splash(pos, 0.6); return; }
+    this.spawnParticle(x, y + 0.1, z, 0, 0, 0, [1, 1, 1], 0.18, 3.2, 0, 2);
+    this.spawnParticle(x, y + 0.1, z, 0, 0, 0, [1, 0.98, 0.9], 0.35, 1.2, 0, 0.5);
+    for (let i = 0; i < 16; i++) {
+      const a = R() * Math.PI * 2, s = 3 + R() * 5;
+      this.spawnParticle(x, y + 0.1, z, Math.cos(a) * s, 1 + R() * 4, Math.sin(a) * s, [1, 0.95, 0.8], 0.3 + R() * 0.3, 0.03, 1.4);
+    }
+    for (let i = 0; i < 6; i++) {
+      const g = 0.75 + R() * 0.15;
+      this.spawnParticle(x, y + 0.2, z, (R() - 0.5), 0.4 + R() * 0.5, (R() - 0.5), [g, g, g], 0.8 + R() * 0.6, 0.25, -0.05, 0.8);
     }
   }
 

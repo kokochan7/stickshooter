@@ -8,14 +8,14 @@
 // interpolates player positions between ticks. Mouse look is applied every
 // frame for the lowest possible input latency.
 import * as THREE from 'three';
-import { Game, emptyCmd } from './sim/game.js';
+import { Game, emptyCmd, blindLevel, nextNadeSlot } from './sim/game.js';
 import { BotBrain } from './sim/bot.js';
-import { WEAPONS } from './sim/weapons.js';
+import { WEAPONS, NADE_SLOTS } from './sim/weapons.js';
 import { runAdmin, MAX_BOTS } from './sim/admin.js';
 import {
   TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT,
   FOOTSTEP_RANGE, ROUND_WIN_LIMIT, GRAVITY, NADE_GRAVITY,
-  BUY_TIME,
+  BUY_TIME, SMOKE_HEIGHT,
   BOT_NAMES,
 } from './sim/constants.js';
 import { canPlant, canDefuse, hostageInReach, siteAt } from './sim/objective.js';
@@ -67,8 +67,12 @@ const touch = TOUCH ? new TouchControls(input, settings, {
   spectate: (id) => spectateButton(id),
   knife: () => { input.pending.slot = me?.active === 'melee' ? (me.weapons.primary ? 'primary' : 'secondary') : 'melee'; },
   nade: () => {
-    if (me?.active === 'grenade') input.pending.slot = me.weapons.primary ? 'primary' : 'secondary';
-    else if (me?.weapons.grenade) input.pending.slot = 'grenade';
+    // Next grenade you carry; past the last one, back to your gun.
+    if (!me) return;
+    const next = nextNadeSlot(me);
+    if (NADE_SLOTS.includes(me.active) && (!next || next === me.active || NADE_SLOTS.indexOf(next) < NADE_SLOTS.indexOf(me.active))) {
+      input.pending.slot = me.weapons.primary ? 'primary' : 'secondary';
+    } else if (next) input.pending.slot = 'nade';
   },
   cycle: () => {
     // primary -> pistol -> knife -> primary, skipping empty slots.
@@ -103,6 +107,9 @@ let lastBuys = [];
 const spec = new Spectator(); // who/how we watch while dead in a round
 const timers = [];
 const underwaterEl = $('underwater');
+const smokeEl = $('smoke-screen');
+const flashEl = $('flash-screen');
+let smokeShown = 0, flashShown = 0;
 const stepState = new Map();
 
 // ---------- Setup ----------
@@ -766,11 +773,15 @@ function handleEvent(e) {
   switch (e.type) {
     case 'shot': {
       const def = WEAPONS[e.weapon];
-      // Kept well under the announcer (voice lines play at 1).
-      const vol = def.id === 'awp' ? 0.55 : def.pellets || def.id === 'deagle' ? 0.5 : 0.42;
+      // Kept well under the announcer (voice lines play at 1). Snipers and
+      // the Deagle are louder, the silenced TMP much quieter and only heard
+      // close by.
+      const sniper = def.accuracy.type === 'sniper' || def.accuracy.type === 'autosniper';
+      const vol = def.silenced ? 0.3 : sniper ? 0.55 : def.pellets || def.id === 'deagle' ? 0.5 : 0.42;
+      const range = def.silenced ? 20 : undefined;
       let muzzle;
       if (isFirstPerson(p)) {
-        view.viewModel.fire(def.pellets ? 1.6 : def.id === 'awp' || def.id === 'deagle' ? 1.4 : 1);
+        view.viewModel.fire(def.pellets ? 1.6 : sniper || def.id === 'deagle' ? 1.4 : 1, { side: e.side ?? 0, flash: !def.silenced });
         audio.play('shot_' + def.id, { volume: vol });
         view.camera.updateMatrixWorld();
         muzzle = viewToWorld(view.viewModel.muzzleView(_v));
@@ -786,8 +797,8 @@ function handleEvent(e) {
         if (!v) break;
         v.man.kick = 1;
         muzzle = v.man.muzzleWorld(_v);
-        view.effects.muzzleFlash(muzzle, _v2.set(e.dir[0], e.dir[1], e.dir[2]));
-        audio.play('shot_' + def.id, { pos: e.origin, volume: vol });
+        if (!def.silenced) view.effects.muzzleFlash(muzzle, _v2.set(e.dir[0], e.dir[1], e.dir[2]));
+        audio.play('shot_' + def.id, { pos: e.origin, volume: vol, range });
       }
       const tracerChance = def.pellets ? 0.35 : isFirstPerson(p) ? 0.5 : 0.8;
       for (const end of e.ends) {
@@ -904,7 +915,20 @@ function handleEvent(e) {
       }
       break;
     case 'nadeBounce':
-      audio.play('heBounce', { pos: e.pos, volume: 0.6, jitter: 0.08 });
+      audio.play(e.weapon && e.weapon !== 'hegrenade' ? 'nadeBounceSoft' : 'heBounce', { pos: e.pos, volume: 0.6, jitter: 0.08 });
+      break;
+    case 'flashPop':
+      audio.play('flashPop', { pos: e.pos, volume: 0.9, jitter: 0.03, alt: 'explode' });
+      view.effects.flashBang(e.pos, e.water);
+      break;
+    case 'smokePop':
+      audio.play('smokePop', { pos: e.pos, volume: 0.7, jitter: 0.04 });
+      break;
+    case 'burstMode':
+      if (p === me) {
+        audio.play('zoom', { volume: 0.4 });
+        alertMsg = { html: `<span class="alert">${e.on ? 'SWITCHED TO BURST-FIRE MODE' : 'SWITCHED TO SEMI-AUTOMATIC'}</span>`, until: performance.now() + 1500 };
+      }
       break;
     case 'nadeExplode': {
       audio.play('heExplode', { pos: e.pos, volume: 1, jitter: 0.03, alt: 'explode' });
@@ -1185,6 +1209,7 @@ function updateView(dt, alpha) {
   view.updateCorpses(dt);
   view.syncDrops(game.drops, game.time);
   view.syncNades(game.nades, net ? 1 : alpha, game.time);
+  view.effects.syncSmokes(game.smokes, game.time, (s, t) => game.smokeAmount(s, t), SMOKE_HEIGHT);
   view.syncObjective(game, alpha, dt, me?.alive ? me.id : null);
   bombBeeps();
 
@@ -1216,7 +1241,8 @@ function updateView(dt, alpha) {
       const h = def.zoomLevels[me.zoom - 1] * DEG;
       fov = (2 * Math.atan(Math.tan(h / 2) * 0.75)) / DEG;
     }
-    showVm = me.zoom === 0;
+    // A sniper scope fills the screen; the AUG and SG 552 just zoom.
+    showVm = me.zoom === 0 || !def?.scope;
     audio.setListener(px, py, pz, input.yaw);
     underwater = game.underwater(px, py, pz);
   } else if (specOn && spec.mode === 'free') {
@@ -1280,7 +1306,12 @@ function updateView(dt, alpha) {
   view.setUnderwater(underwater);
   audio.setUnderwater(underwater);
   if (underwaterEl.classList.contains('on') !== underwater) underwaterEl.classList.toggle('on', underwater);
-  touch?.setHasNade(!!me?.alive && !!me.weapons.grenade);
+  // Standing in smoke greys the screen out; a flashbang whites it out.
+  const smokeK = mode === 'menu' ? 0 : smokeInside(cam.position);
+  if (Math.abs(smokeK - smokeShown) > 0.01) { smokeShown = smokeK; smokeEl.style.opacity = smokeK.toFixed(2); }
+  const blindK = me?.alive && mode !== 'menu' ? blindLevel(me, game.time) : 0;
+  if (Math.abs(blindK - flashShown) > 0.005 || (blindK === 0 && flashShown !== 0)) { flashShown = blindK; flashEl.style.opacity = blindK.toFixed(3); }
+  touch?.setHasNade(!!me?.alive && NADE_SLOTS.some((s) => me.weapons[s]?.clip > 0));
 
   // Viewmodel.
   const [mdx, mdy] = input.takeFrameDelta();
@@ -1312,7 +1343,7 @@ function updateView(dt, alpha) {
     // moves the crosshair, so it still marks where the next bullet goes.
     const f = (innerHeight / 2) / Math.tan((fov * DEG) / 2);
     const chOffset = me.alive ? [-Math.tan(punchY - shakeY) * f, -Math.tan(punchP - shakeP) * f] : null;
-    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0, chOffset });
+    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 && !!def?.scope, chOffset });
     hud.top({ mode: game.mode, myTeam: me.team, scores: game.objective ? game.rounds : game.teamKills, players: game.players, meId: me.id });
     hud.goal(goalText());
     hud.message(centerMessage());
@@ -1550,6 +1581,22 @@ function netFrame(dt) {
     hud.ping(net.rtt);
     hud.room(game.mode, game.players.filter((p) => !p.isBot).length);
   }
+}
+
+// How deep in a smoke cloud the camera is: 0 outside, up to ~0.95 in the
+// middle of a full cloud.
+function smokeInside(c) {
+  let k = 0;
+  for (const s of game.smokes) {
+    const a = game.smokeAmount(s);
+    if (a <= 0) continue;
+    const r = s.radius * (0.45 + 0.55 * Math.min(1, a * 1.4));
+    const dx = (c.x - s.pos[0]) / r, dz = (c.z - s.pos[2]) / r;
+    const dy = (c.y - s.pos[1] - SMOKE_HEIGHT * 0.4) / (SMOKE_HEIGHT * 0.6);
+    const d = Math.hypot(dx, dy, dz);
+    if (d < 1) k = Math.max(k, a * Math.min(0.95, (1 - d) * 2.2));
+  }
+  return k;
 }
 
 // Online: grenades arrive with each snapshot (32 Hz); in between, fly them

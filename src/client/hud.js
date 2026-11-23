@@ -1,6 +1,6 @@
 // DOM HUD, buy menu, scoreboard and settings.
 import * as THREE from 'three';
-import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT } from '../sim/weapons.js';
+import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT, NADE_SLOTS } from '../sim/weapons.js';
 import { buildGun } from './gunModels.js';
 import { DEFAULT_BINDS, BIND_LABELS, keyName } from './input.js';
 import { MAX_BOTS } from '../sim/admin.js';
@@ -119,7 +119,7 @@ export function renderGunIcons(renderer) {
   const prevColor = renderer.getClearColor(new THREE.Color());
   const prevAlpha = renderer.getClearAlpha();
   renderer.setClearColor(0x000000, 0);
-  for (const id of [...SHOP_ORDER, 'knife', 'hegrenade']) {
+  for (const id of [...SHOP_ORDER, 'knife', 'hegrenade', 'flashbang', 'smokegrenade']) {
     const gun = buildGun(id);
     const box = new THREE.Box3().setFromObject(gun.group);
     const size = box.getSize(new THREE.Vector3());
@@ -269,8 +269,8 @@ export class Hud {
     }
     // A grenade on your belt shows next to the ammo on touch screens (key 4
     // is in the weapon list on the right otherwise).
-    const nade = p.weapons?.grenade;
-    $('nade-chip').classList.toggle('hidden', !nade || nade.clip <= 0 || p.active === 'grenade');
+    const hasNade = NADE_SLOTS.some((s) => p.weapons?.[s]?.clip > 0);
+    $('nade-chip').classList.toggle('hidden', !hasNade || NADE_SLOTS.includes(p.active));
     this.slots(p);
     const rb = $('reload-bar');
     rb.style.opacity = reloadFrac !== null ? '1' : '0';
@@ -282,7 +282,7 @@ export class Hud {
       const key = `${cs.chSize},${cs.chGap},${cs.chThick},${cs.chDot},${cs.chOutline},${cs.chDynamic},${cs.chDynamic ? Math.round(spreadPx) : 0}`;
       if (this.last.ch !== key) { this.last.ch = key; styleCrosshair(this.crosshair, cs, spreadPx); }
     }
-    this.crosshair.style.display = scoped || !p.alive || def?.zoomLevels ? 'none' : '';
+    this.crosshair.style.display = scoped || !p.alive || def?.scope ? 'none' : '';
     // Recoil the camera doesn't show moves the crosshair instead.
     const ox = Math.round(chOffset?.[0] ?? 0), oy = Math.round(chOffset?.[1] ?? 0);
     const chKey = `${ox},${oy}`;
@@ -420,17 +420,17 @@ export class Hud {
   }
 
   // Weapon list on the right: 1 primary, 2 pistol, 3 knife (and the bomb,
-  // which 3 swaps to), 4 grenade. The gun in hand is bright, the rest dim.
+  // which 3 swaps to), 4 grenades (HE, flash, smoke). The gun in hand is
+  // bright, the rest dim.
   slots(p) {
     const w = p.weapons ?? {};
-    const nade = w.grenade && w.grenade.clip > 0 ? w.grenade : null;
     const rows = [
       ['primary', 1, w.primary?.id],
       ['secondary', 2, w.secondary?.id],
       ['melee', 3, w.melee?.id],
-      ['grenade', 4, nade?.id],
+      ...NADE_SLOTS.map((s) => [s, 4, w[s]?.clip > 0 ? w[s].id : null]),
     ];
-    const key = `${p.alive}|${p.active}|${rows.map((r) => r[2] ?? '').join(',')}|${nade?.clip ?? 0}|${w.c4 ? 1 : 0}`;
+    const key = `${p.alive}|${p.active}|${rows.map((r) => r[2] ? r[2] + (w[r[0]].clip ?? '') : '').join(',')}|${w.c4 ? 1 : 0}`;
     if (this.last.slots === key) return;
     this.last.slots = key;
     let html = '';
@@ -438,7 +438,7 @@ export class Hud {
       if (!id || !p.alive) continue;
       const g = this.glyphs[id];
       const pic = g ? `<i class="g" style="--g:url(${g})"></i>` : `<em>${esc(WEAPONS[id]?.name ?? id)}</em>`;
-      const count = slot === 'grenade' && nade.clip > 1 ? `<small class="cnt">×${nade.clip}</small>` : '';
+      const count = NADE_SLOTS.includes(slot) && w[slot].clip > 1 ? `<small class="cnt">×${w[slot].clip}</small>` : '';
       html += `<div class="slot ${p.active === slot ? 'on' : ''} s-${slot}"><sup>${n}</sup>${pic}${count}</div>`;
     }
     if (w.c4 && p.alive) html += `<div class="slot s-bomb ${p.active === 'c4' ? 'on' : ''}"><sup>3</sup>${C4_ICON}</div>`;
@@ -537,11 +537,14 @@ const FALL_ICON = '<svg class="kf-ic" viewBox="0 0 24 24" aria-label="Fell"><pat
 
 // CS 1.6 style buy menu: number keys pick a category, then a weapon.
 // B 4 3 buys an M4A1, the same muscle memory as CS.
+// With every CS 1.6 gun in the shop (for both teams), the snipers get a
+// page of their own so each page fits on the number keys.
 const BUY_PAGES = [
   { label: 'Handguns', title: 'Buy Handguns (Secondary Weapon)', cats: ['Pistols'] },
   { label: 'Shotguns', title: 'Buy Shotguns (Primary Weapon)', cats: ['Shotguns'] },
   { label: 'Sub-Machine Guns', title: 'Buy Sub-Machine Guns (Primary Weapon)', cats: ['SMGs'] },
-  { label: 'Rifles', title: 'Buy Rifles (Primary Weapon)', cats: ['Rifles', 'Snipers'] },
+  { label: 'Rifles', title: 'Buy Rifles (Primary Weapon)', cats: ['Rifles'] },
+  { label: 'Sniper Rifles', title: 'Buy Sniper Rifles (Primary Weapon)', cats: ['Snipers'] },
   { label: 'Machine Guns', title: 'Buy Machine Guns (Primary Weapon)', cats: ['Heavy'] },
   { label: 'Equipment', title: 'Buy Equipment', gear: true },
 ].map((pg) => ({
@@ -625,8 +628,10 @@ export class BuyMenu {
       return { owned, price, cant: !owned && p.money < price };
     }
     const w = WEAPONS[id];
-    const owned = p.weapons[w.slot]?.id === id && (!w.grenade || p.weapons[w.slot].clip > 0);
-    return { owned, price: w.price, cant: !owned && p.money < w.price };
+    const cur = p.weapons[w.slot];
+    // A grenade counts as owned once you carry as many as you can.
+    const owned = cur?.id === id && (!w.grenade || cur.clip >= w.clip);
+    return { owned, price: w.price, cant: !owned && p.money < w.price, count: w.grenade && cur?.id === id ? cur.clip : 0 };
   }
 
   render(p, rebuildList = true) {
@@ -687,17 +692,22 @@ export class BuyMenu {
     const w = WEAPONS[id];
     const st = this.itemState(id);
     if (w.grenade) {
-      const kv = [
-        ['Price', `$${w.price}${st.owned ? ' (you have one)' : ''}`],
-        ['Slot', `Grenade (key 4), carry ${w.clip}`],
-        ['Damage', `Up to ${w.damage}, less with distance`],
-        ['Blast radius', `${Math.round(w.grenade.radius * 0.025)} m`],
-        ['Fuse', '1.5 seconds after the throw'],
-        ['Throw', 'Hold fire to pull the pin, let go to throw. Mouse 2 lobs it.'],
-      ];
+      const g = w.grenade;
+      const have = st.count ? ` (you have ${st.count})` : '';
+      const kv = [['Price', `$${w.price}${have}`], ['Slot', `Grenade (key 4 cycles them), carry ${w.clip}`]];
+      if (g.kind === 'flash') {
+        kv.push(['Effect', 'Blinds everyone who can see it, you and your team too'], ['Reach', `${Math.round(g.radius * 0.025)} m, worse if you look away`]);
+      } else if (g.kind === 'smoke') {
+        kv.push(['Effect', 'A cloud nobody can see through, bots included'], ['Lasts', `${g.duration} seconds`]);
+      } else {
+        kv.push(['Damage', `Up to ${w.damage}, less with distance`], ['Blast radius', `${Math.round(g.radius * 0.025)} m`]);
+      }
+      kv.push(['Fuse', g.kind === 'smoke' ? 'Goes off once it stops rolling' : '1.5 seconds after the throw'],
+        ['Throw', 'Hold fire to pull the pin, let go to throw. Mouse 2 lobs it.']);
       return `<div class="buy-pic"><img src="${this.icons[id]}" alt=""></div>${statsHtml(kv)}`;
     }
-    const mode = w.accuracy.type === 'sniper' ? 'Bolt action' : w.pellets ? (w.cycle > 0.5 ? 'Pump action' : 'Semi-automatic') : w.auto ? 'Automatic' : 'Semi-automatic';
+    const mode = w.bolt ? 'Bolt action' : w.burst ? 'Semi-auto, Mouse 2 for 3-round burst'
+      : w.pellets ? (w.cycle > 0.5 ? 'Pump action' : 'Semi-automatic') : w.auto ? 'Automatic' : 'Semi-automatic';
     const kv = [
       ['Price', `$${w.price}${st.owned ? ' (owned, buy again to refill ammo)' : ''}`],
       ['Slot', w.slot === 'primary' ? 'Primary' : 'Secondary'],
@@ -709,6 +719,9 @@ export class BuyMenu {
       ['Wall Penetration', PEN_NAMES[w.penetration] ?? 'Heavy'],
       ['Move Speed', `${Math.round((w.speed / 250) * 100)}%`],
     ];
+    if (w.zoomLevels) kv.push(['Scope', w.scope ? `${w.zoomLevels.length}-level sniper scope (Mouse 2)` : 'Zooms in (Mouse 2)']);
+    if (w.silenced) kv.push(['Silenced', 'Quiet, no muzzle flash']);
+    if (w.dual) kv.push(['Note', 'One pistol in each hand, firing in turn']);
     return `<div class="buy-pic"><img src="${this.icons[id]}" alt=""></div>${statsHtml(kv)}`;
   }
 

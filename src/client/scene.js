@@ -572,7 +572,7 @@ export class GameView {
       seen.add(n.id);
       let g = this.nadeViews.get(n.id);
       if (!g) {
-        g = buildGun('hegrenade').group;
+        g = buildGun(n.weapon ?? 'hegrenade').group;
         g.scale.setScalar(1.3);
         this.scene.add(g);
         this.nadeViews.set(n.id, g);

@@ -149,12 +149,16 @@ export class ViewModel {
     if (kind === 'slash') this.slashSide = -this.slashSide;
   }
 
-  fire(kickScale = 1) {
+  // side: which of the Dual Berettas fired (1 = the left one). flash:
+  // false for a silenced gun.
+  fire(kickScale = 1, { side = 0, flash = true } = {}) {
     kickScale *= this.motion;
     const heavy = this.gun?.spec.hold === 'heavy';
+    this.fireSide = this.gun?.spec.dual ? side : 0;
     this.kickBack.v += (heavy ? 0.6 : 1.4) * kickScale;
     this.kickRot.v += (heavy ? 1.5 : 7) * kickScale;
-    this.kickSide.v += (Math.random() - 0.5) * 2 * kickScale;
+    this.kickSide.v += (this.gun?.spec.dual ? (side ? -1.5 : 1.5) : (Math.random() - 0.5) * 2) * kickScale;
+    if (!flash) { if (this.gun?.spec.pump) this.pumpT = 0.12; return; }
     this.flashTime = 0.045;
     this.flash.visible = true;
     this.flash.rotation.z = Math.random() * Math.PI;
@@ -260,8 +264,15 @@ export class ViewModel {
       this.flashTime -= dt;
       if (this.flashTime <= 0) this.flash.visible = false;
     }
-    this.flash.position.copy(this.gun.muzzle);
+    this.flash.position.copy(this.muzzlePoint());
     this.flash.position.z -= 0.04;
+  }
+
+  // The muzzle that fired last (the left pistol of the Dual Berettas, or
+  // the gun's only one).
+  muzzlePoint() {
+    const d = this.gun.spec.dual;
+    return d && this.fireSide ? (this._dualMuzzle ??= new THREE.Vector3()).set(...d) : this.gun.muzzle;
   }
 
   // Reload animation by weapon type, as offsets for the rig plus where the
@@ -339,7 +350,7 @@ export class ViewModel {
     if (t < 0.6) {
       rp.hand.copy(magGrip);
       rp.handW = smooth(t / 0.1) * b;
-    } else if (hold === 'rifle' && this.gunId !== 'awp') {
+    } else if (hold === 'rifle' && !g.spec.boltAction) {
       // Bolt release: hand to the side of the receiver, slap it forward.
       const handle = this._v[4].set(-0.04, g.muzzle.y - 0.015, -0.03);
       const pull = smooth((t - 0.72) / 0.06) * (1 - smooth((t - 0.8) / 0.03));
@@ -467,7 +478,7 @@ export class ViewModel {
   // Muzzle and shell-ejection points in view space.
   muzzleView(out) {
     this.rig.updateMatrixWorld(true);
-    return out.copy(this.gun.muzzle).applyMatrix4(this.rig.matrixWorld);
+    return out.copy(this.muzzlePoint()).applyMatrix4(this.rig.matrixWorld);
   }
   ejectView(out) {
     this.rig.updateMatrixWorld(true);

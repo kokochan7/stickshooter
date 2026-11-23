@@ -156,6 +156,14 @@ export const NADE_PIN_TIME = 0.35; // pulling the pin before it can leave your h
 export const NADE_SWITCH_TIME = 0.5; // after a throw, the hand comes back with your gun
 export const NADE_BOUNCE = 0.45; // restitution off walls and floors
 export const NADE_RADIUS = 0.06; // meters (for collision)
+// Smoke grenade cloud: grows to full size over SMOKE_GROW seconds, thins out
+// over the last SMOKE_FADE seconds of its life, SMOKE_HEIGHT meters tall.
+// A smoke grenade still rolling when its fuse is up waits up to
+// SMOKE_MAX_WAIT seconds more to stop.
+export const SMOKE_GROW = 1.5;
+export const SMOKE_FADE = 3;
+export const SMOKE_HEIGHT = 3.6;
+export const SMOKE_MAX_WAIT = 3;
 // Other players' footsteps fade out completely at this distance (meters).
 export const FOOTSTEP_RANGE = 32;
 

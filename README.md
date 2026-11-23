@@ -27,8 +27,9 @@ no launcher.
 ## Features
 
 **🎯 Gunplay that rewards skill**
-- 13 guns at launch, from the USP to the AWP and a spin-up Mini Gun, plus a
-  knife and HE grenades. Every number (damage, fire rate, magazine, price)
+- Every CS 1.6 gun (Glock-18 with burst fire, Dual Berettas, scoped AUG and
+  SG 552, Scout, both auto snipers, M249 and the rest) plus the UZI and a
+  spin-up Mini Gun, a knife, and HE, flash and smoke grenades. Every number (damage, fire rate, magazine, price)
   matches CS 1.6.
 - **Hitboxes**: headshots do 4× damage, stomach 1.25×, legs 0.75×.
 - **Armor**: kevlar and helmet, with per-gun armor penetration (the AK lets
@@ -95,8 +96,8 @@ and cover to fight around.
 | Ctrl or C | Crouch |
 | Shift | Walk (silent, more accurate) |
 | R | Reload |
-| 1 / 2 / 3 / 4 / Q | Primary / pistol / knife (or the bomb when you carry it) / grenade / last weapon |
-| B | Buy menu (number keys: B 4 3 = M4A1) |
+| 1 / 2 / 3 / 4 / Q | Primary / pistol / knife (or the bomb when you carry it) / grenade (press again to cycle HE, flash, smoke) / last weapon |
+| B | Buy menu (number keys: B 4 4 = M4A1, B 7 6 = defuse kit) |
 | N | Buy ammo |
 | F1 | Re-buy what you bought last round |
 | G | Drop or pick up a gun |
