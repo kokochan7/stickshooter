@@ -254,6 +254,8 @@ function signSpot(world, cells, y, cx, cz) {
 
 export class GameView {
   constructor(canvas, map, world, settings) {
+    this.bombFlashAt = -1; // planted bomb LED: lit from this game time ...
+    this.bombFlashLen = 0; // ... for this long (see flashBomb)
     this.settings = settings;
     this.map = map;
     this.world = world;
@@ -400,6 +402,12 @@ export class GameView {
     for (const r of map.rescue ?? []) decal(r, 'RESCUE', '#3fbf5f', false);
   }
 
+  // Light the planted bomb's LED for `len` seconds from game time `at`.
+  flashBomb(at, len) {
+    this.bombFlashAt = at;
+    this.bombFlashLen = len;
+  }
+
   // Bomb and hostages, every frame.
   syncObjective(game, alpha, dt, hiddenId) {
     const b = game.bomb;
@@ -407,10 +415,10 @@ export class GameView {
     if (game.objective === 'bomb' && b.pos && (b.state === 'dropped' || b.state === 'planted' || b.state === 'defused')) {
       m.visible = true;
       m.position.set(b.pos[0], b.pos[1] + 0.01, b.pos[2]);
-      // The light blinks faster as the timer runs down.
-      const left = b.explodeAt - game.time;
-      const rate = b.state === 'planted' ? 1 + 8 * (1 - Math.max(0, left) / 35) : 0;
-      m.userData.light.material.color.setHex(b.state === 'planted' && Math.sin(game.time * rate * Math.PI * 2) > 0 ? 0xff2020 : b.state === 'defused' ? 0x20d040 : 0x501010);
+      // The light flashes with each beep (main.js calls flashBomb), so it
+      // speeds up with the beeps as the timer runs down.
+      const lit = b.state === 'planted' && game.time >= this.bombFlashAt && game.time < this.bombFlashAt + this.bombFlashLen;
+      m.userData.light.material.color.setHex(lit ? 0xff2020 : b.state === 'defused' ? 0x20d040 : 0x501010);
     } else {
       m.visible = false;
     }
