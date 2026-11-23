@@ -425,6 +425,18 @@ for (const [id, w] of Object.entries(W)) {
 export const WEAPONS = W;
 
 // Every gun in the shop. The buy menu sorts each page by price.
+// Team-only guns in team modes, like CS 1.6's T and CT shops. Free-for-all
+// keeps everything open, and anyone can pick up a dropped gun.
+export const TEAM_ONLY = {
+  glock18: 'red', ak47: 'red', galil: 'red', g3sg1: 'red', sg552: 'red', mac10: 'red',
+  usp: 'blue', m4a1: 'blue', famas: 'blue', aug: 'blue', tmp: 'blue', sg550: 'blue', fiveseven: 'blue',
+};
+
+// Whether a player on `team` may buy `id`; team is null outside team modes.
+export function teamCanBuy(id, team) {
+  return !team || !TEAM_ONLY[id] || TEAM_ONLY[id] === team;
+}
+
 export const SHOP_ORDER = [
   'glock18', 'usp', 'p228', 'deagle', 'fiveseven', 'elites',
   'shotgun', 'autoshotgun',

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Game, emptyCmd } from '../src/sim/game.js';
 import { BotBrain, ROLES } from '../src/sim/bot.js';
 import { TICK_DT } from '../src/sim/constants.js';
-import { WEAPONS } from '../src/sim/weapons.js';
+import { WEAPONS, teamCanBuy } from '../src/sim/weapons.js';
 import { YARD } from '../src/maps/yard.js';
 
 function place(p, x, z, yaw) {
@@ -228,4 +228,21 @@ test('bots ease into turns instead of snapping', () => {
   const d = b.steer([0, 1], TICK_DT); // a 90 degree turn
   const turned = Math.atan2(d[1], d[0]);
   assert.ok(turned > 0 && turned < 0.1, `turned ${turned.toFixed(3)} rad in one tick`);
+});
+
+test('bots only buy their own team guns in team modes', () => {
+  for (const team of ['red', 'blue']) {
+    for (let i = 0; i < 40; i++) {
+      const g = new Game(YARD, { seed: i, mode: 'teams' });
+      const p = g.addPlayer({ name: 'b', team, isBot: true });
+      const b = new BotBrain(g, p, null, 'hard');
+      g.spawn(p);
+      p.money = 16000;
+      b.buyLoadout(() => (i + 0.5) / 40);
+      for (const s of ['primary', 'secondary']) {
+        const id = p.weapons[s]?.id;
+        assert.ok(!id || teamCanBuy(id, team), `${team} bot has ${id}`);
+      }
+    }
+  }
 });

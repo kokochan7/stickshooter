@@ -256,6 +256,16 @@ Notes on the non-CS guns:
   55%.
 - **Shotgun** is the M3, **Auto Shotgun** is the XM1014.
 
+Team shops (`TEAM_ONLY` in `weapons.js`): in team modes Red starts with the
+Glock-18 and is the only side that can buy the AK47, Galil, SG 552, G3SG1 and
+MAC-10. Blue starts with the USP and is the only side that can buy the M4A1,
+FAMAS, AUG, SG550, TMP and Five-SeveN. Everything else is for both. The buy
+menu hides the other side's guns and bots buy from their own list.
+Free-for-all sells everything, and picking up a dropped gun ignores teams.
+
+Each gun model has its own paint color (`PAINTS` in `gunModels.js`), so guns
+are bright and easy to tell apart at a glance.
+
 Gear:
 
 | Item | Price | Effect |

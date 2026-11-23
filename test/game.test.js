@@ -196,3 +196,19 @@ test('buying closes 10 seconds after you spawn (or after the start freeze)', () 
   g.spawn(a);
   assert.ok(g.canBuy(a));
 });
+
+test('team modes: each side starts with its pistol and only buys its own team guns', () => {
+  const { g, a, b } = duel('teams');
+  assert.equal(a.weapons.secondary.id, 'glock18'); // Red
+  assert.equal(b.weapons.secondary.id, 'usp'); // Blue
+  a.money = b.money = 16000;
+  for (const id of ['m4a1', 'famas', 'aug', 'tmp', 'sg550', 'fiveseven']) assert.equal(g.buy(a, id), false, `Red can't buy ${id}`);
+  for (const id of ['ak47', 'galil', 'sg552', 'g3sg1', 'mac10']) assert.equal(g.buy(b, id), false, `Blue can't buy ${id}`);
+  assert.ok(g.buy(a, 'ak47'));
+  assert.ok(g.buy(b, 'm4a1'));
+  assert.ok(g.buy(a, 'awp') && g.buy(b, 'deagle'), 'shared guns stay open to both');
+  // Free-for-all keeps every gun open.
+  const f = duel('ffa');
+  f.a.money = 16000;
+  assert.ok(f.g.buy(f.a, 'm4a1') && f.g.buy(f.a, 'ak47'));
+});
