@@ -30,7 +30,7 @@ no launcher.
 - Every CS 1.6 gun (Glock-18 with burst fire, Dual Berettas, scoped AUG and
   SG 552, Scout, both auto snipers, M249 and the rest) plus the UZI and a
   spin-up Mini Gun, a knife, and HE, flash and smoke grenades. Every number (damage, fire rate, magazine, price)
-  matches CS 1.6. Each gun has its own bright paint job.
+  matches CS 1.6. Each gun has its real-life finish (wood, olive, stainless, black and gunmetal).
 - **Team shops**: in team modes Red starts with the Glock-18 and alone buys
   the AK47, Galil, SG 552, G3SG1 and MAC-10; Blue starts with the USP and
   alone buys the M4A1, FAMAS, AUG, SG550, TMP and Five-SeveN. Free-for-all
