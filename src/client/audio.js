@@ -142,6 +142,13 @@ const GUN_SOUNDS = {
   awp:         { crack: 1.0, crackHz: 2400, crackDecay: 0.035, body: 1.0, bodyHz: 420, bodyQ: 0.9, bodyDecay: 0.16, boom: 1.0, boomHz: 52, drive: 4.0, room: 0.85, tail: 0.95, mech: 0 },
   minigun:     { crack: 0.45, crackHz: 3400, crackDecay: 0.008, body: 0.85, bodyHz: 820, bodyQ: 1.4, bodyDecay: 0.03, boom: 0.5, boomHz: 120, drive: 3.0, room: 0.25, tail: 0.14, mech: 0 },
 };
+// The rest borrow the nearest gun's recipe (only heard if a sample fails to load).
+Object.assign(GUN_SOUNDS, {
+  glock18: GUN_SOUNDS.usp, p228: GUN_SOUNDS.usp, fiveseven: GUN_SOUNDS.usp, elites: GUN_SOUNDS.usp,
+  mac10: GUN_SOUNDS.uzi, tmp: { ...GUN_SOUNDS.mp5, crack: 0.15, boom: 0.15, drive: 1.4, room: 0.15, tail: 0.08 },
+  galil: GUN_SOUNDS.ak47, sg552: GUN_SOUNDS.m4a1, aug: GUN_SOUNDS.m4a1,
+  scout: { ...GUN_SOUNDS.awp, boomHz: 70, tail: 0.7 }, g3sg1: GUN_SOUNDS.ak47, sg550: GUN_SOUNDS.m4a1, m249: GUN_SOUNDS.minigun,
+});
 
 function gunshot(r) {
   const n = Math.floor(SR * (0.12 + r.tail * 1.4));
@@ -579,6 +586,19 @@ const GROUPS = {
   shot_m4a1: ['m4a1_unsil-1', 'm4a1_unsil-2'],
   shot_awp: ['awp1'],
   shot_minigun: ['m249-2'],
+  shot_glock18: ['glock18-1', 'glock18-2'],
+  shot_p228: ['p228-1'],
+  shot_fiveseven: ['fiveseven-1'],
+  shot_elites: ['elite_fire'],
+  shot_mac10: ['mac10-1'],
+  shot_tmp: ['tmp-1', 'tmp-2'],
+  shot_galil: ['galil-2'],
+  shot_sg552: ['sg552-1', 'sg552-2'],
+  shot_aug: ['aug-1'],
+  shot_scout: ['scout_fire-1'],
+  shot_g3sg1: ['g3sg1-1'],
+  shot_sg550: ['sg550-1'],
+  shot_m249: ['m249-2'],
   magOut: ['clipout1'],
   magIn: ['clipin1'],
   dryPistol: ['dryfire_pistol'],
@@ -603,6 +623,9 @@ const GROUPS = {
   pinpull: ['pinpull'],
   heBounce: ['he_bounce-1'],
   heExplode: ['hegrenade-2'],
+  flashPop: ['flashbang-1', 'flashbang-2'],
+  smokePop: ['sg_explode'],
+  nadeBounceSoft: ['grenade_hit1', 'grenade_hit2', 'grenade_hit3'],
   zoom: ['zoom'],
   keypad0: ['c4_click'],
   keypad1: ['c4_click'],
@@ -630,10 +653,26 @@ export const RELOAD_SOUNDS = {
   m4a1: [[0.14, 'm4a1_clipout', 0.6], [0.6, 'm4a1_clipin', 0.65], [0.8, 'm4a1_boltpull', 0.55]],
   awp: [[0.14, 'awp_clipout', 0.6], [0.6, 'awp_clipin', 0.65]],
   minigun: [[0.08, 'm249_coverup', 0.55], [0.25, 'm249_boxout', 0.6], [0.5, 'm249_boxin', 0.65], [0.66, 'm249_chain', 0.55], [0.85, 'm249_coverdown', 0.6]],
+  m249: [[0.08, 'm249_coverup', 0.55], [0.25, 'm249_boxout', 0.6], [0.5, 'm249_boxin', 0.65], [0.66, 'm249_chain', 0.55], [0.85, 'm249_coverdown', 0.6]],
+  glock18: [[0.14, 'clipout1', 0.6], [0.6, 'clipin1', 0.65], [0.69, 'p228_sliderelease', 0.55]],
+  p228: [[0.14, 'p228_clipout', 0.6], [0.6, 'p228_clipin', 0.65], [0.69, 'p228_sliderelease', 0.55]],
+  fiveseven: [[0.14, 'fiveseven_clipout', 0.6], [0.6, 'fiveseven_clipin', 0.65], [0.69, 'fiveseven_slidepull', 0.55]],
+  elites: [[0.05, 'elite_reloadstart', 0.5], [0.14, 'elite_clipout', 0.6], [0.45, 'elite_leftclipin', 0.65], [0.62, 'elite_rightclipin', 0.65], [0.8, 'elite_sliderelease', 0.55]],
+  mac10: [[0.14, 'mac10_clipout', 0.6], [0.6, 'mac10_clipin', 0.65], [0.8, 'mac10_boltpull', 0.55]],
+  tmp: [[0.14, 'clipout1', 0.6], [0.6, 'clipin1', 0.65], [0.8, 'mp5_slideback', 0.5]],
+  galil: [[0.14, 'galil_clipout', 0.6], [0.6, 'galil_clipin', 0.65], [0.8, 'galil_boltpull', 0.55]],
+  sg552: [[0.14, 'sg552_clipout', 0.6], [0.6, 'sg552_clipin', 0.65], [0.8, 'sg552_boltpull', 0.55]],
+  aug: [[0.14, 'aug_clipout', 0.6], [0.6, 'aug_clipin', 0.65], [0.8, 'aug_boltpull', 0.55]],
+  scout: [[0.14, 'scout_clipout', 0.6], [0.6, 'scout_clipin', 0.65]],
+  g3sg1: [[0.14, 'g3sg1_clipout', 0.6], [0.6, 'g3sg1_clipin', 0.65], [0.8, 'g3sg1_slide', 0.55]],
+  sg550: [[0.14, 'sg550_clipout', 0.6], [0.6, 'sg550_clipin', 0.65], [0.8, 'sg550_boltpull', 0.55]],
 };
 export const SHELL_SOUNDS = { shotgun: 'm3_insertshell', autoshotgun: 'xm1014_insertshell' };
-export const RELOADED_SOUNDS = { awp: 'scout_bolt', shotgun: 'm3_pump' };
-export const DEPLOY_SOUNDS = { awp: 'awp_deploy', m4a1: 'm4a1_deploy', deagle: 'de_deploy' };
+export const RELOADED_SOUNDS = { awp: 'scout_bolt', scout: 'scout_bolt', shotgun: 'm3_pump' };
+export const DEPLOY_SOUNDS = {
+  awp: 'awp_deploy', scout: 'awp_deploy', m4a1: 'm4a1_deploy', deagle: 'de_deploy', elites: 'elite_deploy',
+  p228: 'p228_slidepull', fiveseven: 'fiveseven_sliderelease', aug: 'aug_forearm',
+};
 
 // Surface under the feet -> footstep sound. Wood has no file in the pack,
 // so it uses the plain concrete steps.

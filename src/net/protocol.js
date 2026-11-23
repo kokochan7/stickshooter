@@ -17,14 +17,15 @@
 //     obj = Game.objectiveInfo(): rounds, the bomb and the hostages (null outside objective rounds)
 //     match = Game.matchInfo(): state 'live' | 'over', endsAt, winner, winnerTeam, teamKills
 //     drops = guns on the ground: { id, w, pos, yaw, exp }
-//     nades = grenades in flight: { id, pos, vel, rest }
+//     nades = grenades in flight: { id, w, pos, vel, rest }
+//     smokes = smoke clouds: { id, pos, start, end, radius }
 //   { t: 'pong', c, time }
 //   { t: 'full' }  room is full
 //   { t: 'admin', ok, lines: [string], auth }  admin console reply
 //   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 14;
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -64,7 +65,8 @@ const OWN = [
   'shotSeed', 'recoilDir', 'delayFire', 'decreaseShotsAt', 'fireHeld', 'altHeld', 'reloadHeld',
   'shellNext', 'resumeZoom', 'resumeZoomAt',
   'nextStab', 'frozenUntil', 'spawnedAt', 'life', 'task', 'defuser', 'useHeld',
-  'nadePin', 'swimming', 'waterJump', 'wjDir',
+  'nadePin', 'nadeRedrawAt', 'swimming', 'waterJump', 'wjDir', 'burstLeft', 'burstNext',
+  'blindStart', 'blindHold', 'blindFade', 'blindAlpha',
 ];
 // What other clients need to draw, interpolate and list someone.
 const OTHER = [
@@ -87,7 +89,12 @@ export function packDrops(drops) {
 
 // Grenades in flight. Clients carry them forward between snapshots.
 export function packNades(nades) {
-  return nades.map((n) => ({ id: n.id, pos: n.pos, vel: n.vel, rest: n.rest }));
+  return nades.map((n) => ({ id: n.id, w: n.weapon, pos: n.pos, vel: n.vel, rest: n.rest }));
+}
+
+// Smoke clouds (sent whole; there are only ever a few).
+export function packSmokes(smokes) {
+  return smokes.map((s) => ({ id: s.id, pos: s.pos, start: s.start, end: s.end, radius: s.radius }));
 }
 
 export function packOther(p) {
@@ -101,7 +108,7 @@ export function packOther(p) {
 // Cmd fields the server accepts; anything else a client sends is dropped.
 export function sanitizeCmd(c) {
   const num = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : 0);
-  const slot = ['primary', 'secondary', 'melee', 'grenade', 'c4'].includes(c.slot) ? c.slot : null;
+  const slot = ['primary', 'secondary', 'melee', 'grenade', 'flash', 'smoke', 'nade', 'c4'].includes(c.slot) ? c.slot : null;
   let actions = null;
   if (Array.isArray(c.actions)) {
     actions = c.actions.slice(0, 4).map(cleanAction).filter(Boolean);

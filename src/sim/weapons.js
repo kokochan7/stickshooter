@@ -12,6 +12,7 @@ export const BULLETS = {
   '9mm': { power: 21, penDist: 800 },
   '45acp': { power: 15, penDist: 500 },
   '50ae': { power: 30, penDist: 1000 },
+  '357sig': { power: 25, penDist: 800 },
   '57mm': { power: 30, penDist: 2000 },
   '556': { power: 35, penDist: 4000 },
   '762': { power: 39, penDist: 5000 },
@@ -39,6 +40,46 @@ W.deagle = {
   kick: { punch: [2, 2] },
 };
 
+W.glock18 = {
+  name: 'Glock-18', slot: 'secondary', category: 'Pistols', price: 400,
+  damage: 25, rangeMod: 0.75, range: 8192, bullet: '9mm', penetration: 1, armorRatio: 1.05,
+  cycle: 0.15, auto: false, clip: 20, reserve: 120, reload: 2.2, deploy: 0.6, speed: 250,
+  accuracy: { type: 'pistol', start: 0.9, min: 0.6, window: 0.325, loss: 0.275 },
+  spread: { air: [0, 1.0], run: [0, 0.165], duck: [0, 0.075], stand: [0, 0.1] },
+  // Mouse 2 toggles a three-round burst: 0.1 s between the rounds, 0.5 s
+  // before the next burst, and looser spread while it's on (CS GLOCK18Fire).
+  burst: { shots: 3, gap: 0.1, cycle: 0.5, spread: { air: [0, 1.2], run: [0, 0.185], duck: [0, 0.095], stand: [0, 0.3] } },
+  kick: { punch: [2, 2] },
+};
+
+W.p228 = {
+  name: 'P228', slot: 'secondary', category: 'Pistols', price: 600,
+  damage: 32, rangeMod: 0.8, range: 4096, bullet: '357sig', penetration: 1, armorRatio: 1.25,
+  cycle: 0.15, auto: false, clip: 13, reserve: 52, reload: 2.7, deploy: 0.6, speed: 250,
+  accuracy: { type: 'pistol', start: 0.9, min: 0.6, window: 0.325, loss: 0.3 },
+  spread: { air: [0, 1.5], run: [0, 0.255], duck: [0, 0.075], stand: [0, 0.15] },
+  kick: { punch: [2, 2] },
+};
+
+W.elites = {
+  name: 'Dual Berettas', slot: 'secondary', category: 'Pistols', price: 800,
+  damage: 36, rangeMod: 0.75, range: 8192, bullet: '9mm', penetration: 1, armorRatio: 1.05,
+  cycle: 0.12, auto: false, clip: 30, reserve: 120, reload: 4.5, deploy: 1.1, speed: 250,
+  accuracy: { type: 'pistol', start: 0.88, min: 0.55, window: 0.325, loss: 0.275 },
+  spread: { air: [0, 1.3], run: [0, 0.175], duck: [0, 0.08], stand: [0, 0.1] },
+  kick: { punch: [2, 2] },
+  dual: true, // fires the left and right pistol in turn
+};
+
+W.fiveseven = {
+  name: 'Five-SeveN', slot: 'secondary', category: 'Pistols', price: 750,
+  damage: 20, rangeMod: 0.885, range: 4096, bullet: '57mm', penetration: 1, armorRatio: 1.5,
+  cycle: 0.15, auto: false, clip: 20, reserve: 100, reload: 2.7, deploy: 0.6, speed: 250,
+  accuracy: { type: 'pistol', start: 0.92, min: 0.725, window: 0.275, loss: 0.25 },
+  spread: { air: [0, 1.5], run: [0, 0.255], duck: [0, 0.075], stand: [0, 0.15] },
+  kick: { punch: [2, 2] },
+};
+
 W.uzi = {
   name: 'UZI', slot: 'primary', category: 'SMGs', price: 1250,
   damage: 27, rangeMod: 0.84, range: 4096, bullet: '9mm', penetration: 1, armorRatio: 0.95,
@@ -51,6 +92,35 @@ W.uzi = {
     duck: [0.75, 0.4, 0.175, 0.03, 2.75, 2.5, 10],
     stand: [0.775, 0.425, 0.2, 0.03, 3, 2.75, 9],
   },
+};
+
+W.mac10 = {
+  name: 'MAC-10', slot: 'primary', category: 'SMGs', price: 1400,
+  damage: 29, rangeMod: 0.82, range: 8192, bullet: '45acp', penetration: 1, armorRatio: 0.95,
+  cycle: 0.07, auto: true, clip: 30, reserve: 100, reload: 3.15, deploy: 0.75, speed: 250,
+  accuracy: { type: 'rifle', pow: 3, div: 200, offset: 0.6, max: 1.65 },
+  spread: { air: [0, 0.375], run: [0, 0.03], duck: [0, 0.03], stand: [0, 0.03] },
+  kick: {
+    air: [1.3, 0.55, 0.4, 0.05, 4.75, 3.75, 5],
+    run: [0.9, 0.45, 0.25, 0.035, 3.5, 2.75, 7],
+    duck: [0.75, 0.4, 0.175, 0.03, 2.75, 2.5, 10],
+    stand: [0.775, 0.425, 0.2, 0.03, 3, 2.75, 9],
+  },
+};
+
+W.tmp = {
+  name: 'TMP', slot: 'primary', category: 'SMGs', price: 1250,
+  damage: 20, rangeMod: 0.85, range: 4096, bullet: '9mm', penetration: 1, armorRatio: 1.0,
+  cycle: 0.07, auto: true, clip: 30, reserve: 120, reload: 2.12, deploy: 0.75, speed: 250,
+  accuracy: { type: 'rifle', pow: 2, div: 200, offset: 0.55, max: 1.4 },
+  spread: { air: [0, 0.25], run: [0, 0.03], duck: [0, 0.03], stand: [0, 0.03] },
+  kick: {
+    air: [1.1, 0.5, 0.35, 0.045, 4.5, 3.5, 6],
+    run: [0.8, 0.4, 0.2, 0.03, 3, 2.5, 7],
+    duck: [0.7, 0.35, 0.125, 0.025, 2.5, 2, 10],
+    stand: [0.725, 0.375, 0.15, 0.025, 2.75, 2.25, 9],
+  },
+  silenced: true, // quiet, no muzzle flash, heard from much closer
 };
 
 W.mp5 = {
@@ -116,6 +186,20 @@ W.autoshotgun = {
   kick: { punch: [3, 5], airPunch: [7, 10] },
 };
 
+W.galil = {
+  name: 'Galil', slot: 'primary', category: 'Rifles', price: 2000,
+  damage: 30, rangeMod: 0.98, range: 8192, bullet: '556', penetration: 2, armorRatio: 1.55,
+  cycle: 0.0875, auto: true, clip: 35, reserve: 90, reload: 2.45, deploy: 0.75, speed: 240,
+  accuracy: { type: 'rifle', pow: 3, div: 200, offset: 0.35, max: 1.25 },
+  spread: { air: [0.04, 0.3], run: [0.04, 0.07], duck: [0, 0.0375], stand: [0, 0.0375] },
+  kick: {
+    air: [2, 1, 0.5, 0.35, 9, 6, 5],
+    run: [1.2, 0.5, 0.23, 0.15, 5.5, 3.5, 6],
+    duck: [0.6, 0.3, 0.2, 0.0125, 4, 2.25, 7],
+    stand: [0.65, 0.35, 0.25, 0.015, 3.5, 2.25, 7],
+  },
+};
+
 W.famas = {
   name: 'FAMAS', slot: 'primary', category: 'Rifles', price: 2250,
   damage: 30, rangeMod: 0.96, range: 8192, bullet: '556', penetration: 2, armorRatio: 1.4,
@@ -158,15 +242,96 @@ W.m4a1 = {
   },
 };
 
+// The two scoped rifles zoom once (CS 55 degree FOV, no scope overlay) and
+// fire slower while zoomed. The SG 552 also slows you down when zoomed.
+W.sg552 = {
+  name: 'SG 552', slot: 'primary', category: 'Rifles', price: 3500,
+  damage: 33, rangeMod: 0.955, range: 8192, bullet: '556', penetration: 2, armorRatio: 1.4,
+  cycle: 0.0825, scopedCycle: 0.135, auto: true, clip: 30, reserve: 90, reload: 3.0, deploy: 0.75, speed: 235,
+  scopedSpeed: 200, zoomLevels: [55],
+  accuracy: { type: 'rifle', pow: 3, div: 220, offset: 0.3, max: 1 },
+  spread: { air: [0.035, 0.45], run: [0.035, 0.075], duck: [0, 0.02], stand: [0, 0.02] },
+  kick: {
+    air: [1.25, 0.45, 0.22, 0.18, 6, 4, 5],
+    run: [1, 0.45, 0.28, 0.04, 4.25, 2.5, 7],
+    duck: [0.6, 0.35, 0.2, 0.0125, 3.7, 2, 10],
+    stand: [0.625, 0.375, 0.25, 0.0125, 4, 2.25, 9],
+  },
+};
+
+W.aug = {
+  name: 'AUG', slot: 'primary', category: 'Rifles', price: 3500,
+  damage: 32, rangeMod: 0.96, range: 8192, bullet: '556', penetration: 2, armorRatio: 1.4,
+  cycle: 0.0825, scopedCycle: 0.135, auto: true, clip: 30, reserve: 90, reload: 3.3, deploy: 0.75, speed: 240,
+  zoomLevels: [55],
+  accuracy: { type: 'rifle', pow: 3, div: 215, offset: 0.3, max: 1 },
+  spread: { air: [0.035, 0.4], run: [0.035, 0.07], duck: [0, 0.02], stand: [0, 0.02] },
+  kick: {
+    air: [1, 0.45, 0.275, 0.05, 4, 2.5, 7],
+    run: [1.25, 0.45, 0.22, 0.18, 5.5, 4, 5],
+    duck: [0.575, 0.325, 0.2, 0.011, 3.25, 2, 8],
+    stand: [0.625, 0.375, 0.25, 0.0125, 3.5, 2.25, 8],
+  },
+};
+
+W.scout = {
+  name: 'Scout', slot: 'primary', category: 'Snipers', price: 2750,
+  damage: 75, rangeMod: 0.98, range: 8192, bullet: '762', penetration: 3, armorRatio: 1.7,
+  cycle: 1.25, auto: true, clip: 10, reserve: 90, reload: 2.0, deploy: 1.0, speed: 260,
+  scopedSpeed: 220, zoomLevels: [40, 15], bolt: true, scope: true,
+  accuracy: { type: 'sniper' },
+  // CS: in the air 0.2, running (>170) 0.075, crouched 0, else 0.007.
+  sniperSpread: { air: 0.2, run: 0.075, runSpeed: 170, duck: 0, stand: 0.007, unscoped: 0.025 },
+  kick: { punch: [2, 2] },
+};
+
 W.awp = {
   name: 'AWP', slot: 'primary', category: 'Snipers', price: 4750,
   damage: 115, rangeMod: 0.99, range: 8192, bullet: '338', penetration: 3, armorRatio: 1.95,
   cycle: 1.45, auto: true, clip: 10, reserve: 30, reload: 2.5, deploy: 1.1, speed: 210,
-  scopedSpeed: 150, zoomLevels: [40, 10], runThreshold: 140,
+  scopedSpeed: 150, zoomLevels: [40, 10], runThreshold: 140, bolt: true, scope: true,
   accuracy: { type: 'sniper' },
   // [air, run (>140), walk (>10), duck, stand], unscoped adds 0.08
   sniperSpread: { air: 0.85, run: 0.25, walk: 0.1, duck: 0, stand: 0.001, unscoped: 0.08 },
   kick: { punch: [2, 2] },
+};
+
+// Auto snipers: semi-automatic, two zoom levels, and accuracy that comes
+// back with the time since the last shot (CS: G3SG1 0.55 + 0.3 per second,
+// SG550 0.65 + 0.35, capped at 0.98). Spread is k * (1 - accuracy) in the
+// air, crouched or standing, and a flat 0.15 while moving.
+W.g3sg1 = {
+  name: 'G3SG1', slot: 'primary', category: 'Snipers', price: 5000,
+  damage: 80, rangeMod: 0.98, range: 8192, bullet: '762', penetration: 3, armorRatio: 1.65,
+  cycle: 0.25, auto: false, clip: 20, reserve: 90, reload: 3.5, deploy: 1.0, speed: 210,
+  scopedSpeed: 150, zoomLevels: [40, 15], scope: true,
+  accuracy: { type: 'autosniper', base: 0.55, rate: 0.3 },
+  autoSpread: { air: 0.45, run: 0.15, duck: 0.035, stand: 0.055, unscoped: 0.025 },
+  kick: { punch: [0.75, 1.75], punchCarry: 0.25, punchSide: 0.75 },
+};
+
+W.sg550 = {
+  name: 'SG550', slot: 'primary', category: 'Snipers', price: 4200,
+  damage: 70, rangeMod: 0.98, range: 8192, bullet: '556', penetration: 2, armorRatio: 1.45,
+  cycle: 0.25, auto: false, clip: 30, reserve: 90, reload: 3.35, deploy: 1.0, speed: 210,
+  scopedSpeed: 150, zoomLevels: [40, 15], scope: true,
+  accuracy: { type: 'autosniper', base: 0.65, rate: 0.35 },
+  autoSpread: { air: 0.45, run: 0.15, duck: 0.04, stand: 0.05, unscoped: 0.025 },
+  kick: { punch: [0.75, 1.25], punchCarry: 0.25, punchSide: 0.75 },
+};
+
+W.m249 = {
+  name: 'M249', slot: 'primary', category: 'Heavy', price: 5750,
+  damage: 32, rangeMod: 0.97, range: 8192, bullet: '556', penetration: 2, armorRatio: 1.5,
+  cycle: 0.1, auto: true, clip: 100, reserve: 200, reload: 4.7, deploy: 1.0, speed: 220,
+  accuracy: { type: 'rifle', pow: 3, div: 175, offset: 0.4, max: 0.9 },
+  spread: { air: [0.045, 0.5], run: [0.045, 0.095], duck: [0, 0.03], stand: [0, 0.03] },
+  kick: {
+    air: [1.8, 0.65, 0.45, 0.125, 5, 3.5, 8],
+    run: [1.1, 0.5, 0.3, 0.06, 4, 3, 8],
+    duck: [0.75, 0.325, 0.25, 0.025, 3.5, 2.5, 9],
+    stand: [0.8, 0.35, 0.3, 0.03, 3.75, 3, 9],
+  },
 };
 
 W.minigun = {
@@ -213,7 +378,32 @@ W.hegrenade = {
   damage: 100, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
   cycle: 0.5, auto: false, clip: 1, reserve: 0, deploy: 0.6, speed: 250,
   accuracy: { type: 'none' }, kick: { punch: [0, 0] },
-  grenade: { radius: 525, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
+  grenade: { kind: 'he', radius: 525, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
+};
+
+// CS 1.6 flashbang ($200, carry two). Goes off 1.5 s after the throw and
+// whites out everyone who can see it, teammates and the thrower included.
+// RadiusFlash: strength 4 falling off to 0 at 1500 units; looking at it
+// (dot >= 0.55) holds full white for strength / 1.5 s and fades over
+// strength * 3 s; side-on (>= 0.15) holds /3.5 and fades * 1.75; behind
+// you holds /4.5 and fades * 1. No damage.
+W.flashbang = {
+  name: 'Flashbang', slot: 'flash', category: 'Grenades', price: 200,
+  damage: 0, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
+  cycle: 0.5, auto: false, clip: 2, reserve: 0, deploy: 0.6, speed: 250,
+  accuracy: { type: 'none' }, kick: { punch: [0, 0] },
+  grenade: { kind: 'flash', radius: 1500, strength: 4, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
+};
+
+// CS 1.6 smoke grenade ($300, carry one). Once it has stopped (and the
+// 1.5 s fuse is up) it pours out a cloud that blocks sight, bots' too, for
+// about 20 seconds. Bullets still go through it.
+W.smokegrenade = {
+  name: 'Smoke Grenade', slot: 'smoke', category: 'Grenades', price: 300,
+  damage: 0, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
+  cycle: 0.5, auto: false, clip: 1, reserve: 0, deploy: 0.6, speed: 250,
+  accuracy: { type: 'none' }, kick: { punch: [0, 0] },
+  grenade: { kind: 'smoke', radius: 180, duration: 20, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
 };
 
 // The C4 bomb. Only the Red player carrying the bomb has it, in its own slot
@@ -234,15 +424,21 @@ for (const [id, w] of Object.entries(W)) {
 
 export const WEAPONS = W;
 
-// Order shown in the shop, matching the reference list.
+// Every gun in the shop. The buy menu sorts each page by price.
 export const SHOP_ORDER = [
-  'usp', 'uzi', 'deagle', 'mp5', 'shotgun', 'autoshotgun', 'ump45',
-  'famas', 'p90', 'ak47', 'm4a1', 'awp', 'minigun',
+  'glock18', 'usp', 'p228', 'deagle', 'fiveseven', 'elites',
+  'shotgun', 'autoshotgun',
+  'tmp', 'uzi', 'mac10', 'mp5', 'ump45', 'p90',
+  'galil', 'famas', 'ak47', 'scout', 'm4a1', 'sg552', 'aug', 'sg550', 'awp', 'g3sg1',
+  'm249', 'minigun',
 ];
+
+// Grenade slots. Key 4 cycles through the ones you carry (HE, flash, smoke).
+export const NADE_SLOTS = ['grenade', 'flash', 'smoke'];
 
 // Ammo packs per bullet type, CS 1.6 prices: [rounds per pack, price].
 export const AMMO = {
-  '9mm': [30, 20], '45acp': [12, 25], '50ae': [7, 40], '57mm': [50, 50],
+  '9mm': [30, 20], '45acp': [12, 25], '50ae': [7, 40], '357sig': [13, 50], '57mm': [50, 50],
   '556': [30, 60], '762': [30, 80], '338': [10, 125], buckshot: [8, 65],
 };
 
@@ -253,7 +449,7 @@ export const GEAR = {
 };
 
 // The buy menu's Equipment page, in CS 1.6 order (armor, grenades, kit).
-export const EQUIPMENT = ['kevlar', 'kevlarHelmet', 'hegrenade', 'defuser'];
+export const EQUIPMENT = ['kevlar', 'kevlarHelmet', 'flashbang', 'hegrenade', 'smokegrenade', 'defuser'];
 
 // Rough 0..1 ratings for the shop's stat bars.
 export function weaponRatings(w) {
@@ -261,7 +457,7 @@ export function weaponRatings(w) {
   return {
     damage: Math.min(1, dmg / 180),
     fireRate: Math.min(1, 0.066 / w.cycle),
-    accuracy: w.pellets ? 0.15 : w.accuracy.type === 'sniper' ? 1 : Math.max(0.1, 1 - (w.spread?.stand?.[1] ?? 0.05) * 6 - (w.kick.stand?.[0] ?? 0.4) * 0.3),
+    accuracy: w.pellets ? 0.15 : w.accuracy.type === 'sniper' || w.accuracy.type === 'autosniper' ? 1 : Math.max(0.1, 1 - (w.spread?.stand?.[1] ?? 0.05) * 6 - (w.kick.stand?.[0] ?? 0.4) * 0.3),
     range: w.pellets ? 0.15 : Math.pow(w.rangeMod, 6),
     mobility: (w.speed - 180) / 70,
   };

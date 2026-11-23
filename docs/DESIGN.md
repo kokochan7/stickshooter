@@ -232,6 +232,19 @@ time per shell.
 | AK47 | Rifle | $2,500 | 36 | 30 / 90 | 628 | Auto | 2.45 | 0.75 | 221 |
 | M4A1 | Rifle | $3,100 | 33 | 30 / 90 | 686 | Auto | 3.05 | 0.75 | 230 |
 | AWP | Sniper | $4,750 | 115 | 10 / 30 | 41 | Hold | 2.5 | 1.1 | 210 (150 scoped) |
+| Glock-18 | Pistol | $400 | 25 | 20 / 120 | 400 | Semi, Mouse 2 for 3-round burst | 2.2 | 0.6 | 250 |
+| P228 | Pistol | $600 | 32 | 13 / 52 | 400 | Semi | 2.7 | 0.6 | 250 |
+| Five-SeveN | Pistol | $750 | 20 | 20 / 100 | 400 | Semi | 2.7 | 0.6 | 250 |
+| Dual Berettas | Pistol | $800 | 36 | 30 / 120 | 500 | Semi, alternating hands | 4.5 | 1.1 | 250 |
+| TMP | SMG | $1,250 | 20 | 30 / 120 | 857 | Auto, silenced | 2.12 | 0.75 | 250 |
+| MAC-10 | SMG | $1,400 | 29 | 30 / 100 | 857 | Auto | 3.15 | 0.75 | 250 |
+| Galil | Rifle | $2,000 | 30 | 35 / 90 | 686 | Auto | 2.45 | 0.75 | 240 |
+| SG 552 | Rifle | $3,500 | 33 | 30 / 90 | 727 | Auto, zoom scope | 3.0 | 0.75 | 235 (200 scoped) |
+| AUG | Rifle | $3,500 | 32 | 30 / 90 | 727 | Auto, zoom scope | 3.3 | 0.75 | 240 |
+| Scout | Sniper | $2,750 | 75 | 10 / 90 | 48 | Hold, 2-level scope | 2.0 | 1.1 | 260 (220 scoped) |
+| SG550 | Sniper | $4,200 | 70 | 30 / 90 | 240 | Semi, 2-level scope | 3.35 | 1.1 | 210 (150 scoped) |
+| G3SG1 | Sniper | $5,000 | 80 | 20 / 90 | 240 | Semi, 2-level scope | 3.5 | 1.1 | 210 (150 scoped) |
+| M249 | Heavy | $5,750 | 32 | 100 / 200 | 600 | Auto | 4.7 | 1.2 | 220 |
 | Mini Gun | Heavy | $5,750 | 30 | 150 / 300 | 1,091 | Auto, 0.45 s spin-up | 5.0 | 1.2 | 190 (×0.85 while spinning) |
 
 Notes on the non-CS guns:
@@ -529,7 +542,7 @@ victim (CS: dot of line of sight and victim forward > 0.8).
 
 ### 5.10b HE grenade
 
-Slot 4 (key 4), bought from the Equipment page for $300, one at a time,
+Slot `grenade` (key 4), bought from the Equipment page for $300, one at a time,
 rebought on respawn with the rest of the loadout; it can't be dropped. CS 1.6
 `wpn_hegrenade` / `ggrenade.cpp` numbers:
 
@@ -544,9 +557,33 @@ rebought on respawn with the rest of the loadout; it can't be dropped. CS 1.6
   350 u, Kenny asked for a bigger blast),
   only to players the blast can see (body or head). It counts as a chest hit,
   so kevlar halves it. It hurts enemies and the thrower, never teammates.
-- Your last gun comes back 0.5 s after the throw. Bots don't use grenades yet.
-- Online, snapshots carry `nades` (position, velocity) and clients fly them
-  on between snapshots. Protocol v8.
+- Your last gun comes back 0.5 s after the throw, or the same grenade type if
+  you carry another.
+- Online, snapshots carry `nades` (position, velocity, weapon) and clients fly
+  them on between snapshots.
+
+### 5.10c Flashbang and smoke
+
+Each grenade type has its own slot (`grenade`, `flash`, `smoke`, listed in
+`NADE_SLOTS`). Key 4 draws the next one you carry, so pressing it again
+cycles HE, flash, smoke. All three throw the same way as the HE.
+
+- **Flashbang** ($200, carry 2): goes off 1.5 s after the throw. CS
+  `RadiusFlash` rules: anyone within 1500 u with line of sight to the blast
+  and not behind a smoke is blinded, fully if they face it (dot >= 0.55),
+  partly if it's off to the side (>= 0.15), not at all if it's behind them.
+  It blinds you and your team too. The screen goes white and fades out
+  (`blindLevel`). A bot that is more than half blind can't see anyone.
+- **Smoke** ($300, carry 1): goes off once it stops rolling (or after 3 s),
+  grows a cloud over 1.5 s that lasts 20 s, then fades over 3 s. The cloud is
+  a squashed sphere (radius 180 u, 3.6 m tall) that blocks sight for bots
+  and for flashbangs. It's drawn as 22 instanced billboard puffs per cloud,
+  one draw call for all clouds; inside it the screen goes grey.
+- **Bots** buy grenades with spare money, throw HE and flashes at enemies they
+  know about behind cover (and look away from their own flash), and throw a
+  smoke when they retreat. They aim with a solved throw pitch.
+- Online, snapshots carry `smokes`, and own-player state carries the blind
+  and grenade fields. Protocol v14.
 
 ### 5.11 Dropped guns
 
@@ -804,7 +841,7 @@ Screen" right away.
   a mix of wallbang materials. Ideas: a rooftop map with long AWP sightlines,
   a small indoor map for SMGs and shotguns, a dust-style three-lane map for
   round mode.
-- **Weapons:** flash and smoke grenades (HE shipped), more pistols (Glock with burst, P228, Five-SeveN), Scout, M249.
+- **Weapons:** every CS 1.6 gun and grenade has shipped. FAMAS burst fire is still to do.
 - **Settings:** quality presets. (Key rebinding, crosshair editor,
   sensitivity, FOV and volume shipped in PRs #5 and #6.)
 

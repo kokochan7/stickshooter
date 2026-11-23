@@ -1,9 +1,9 @@
 // Bot brain: looks at the game state and produces the same cmd a human client
 // would send. Bots never touch game state directly except to buy on spawn.
-import { emptyCmd } from './game.js';
+import { emptyCmd, blindLevel } from './game.js';
 import { WEAPONS, GEAR, weaponValue } from './weapons.js';
-import { STAND_EYE, DUCK_EYE, U } from './constants.js';
-import { forwardVec, rightVec } from './movement.js';
+import { STAND_EYE, DUCK_EYE, U, GRAVITY, NADE_GRAVITY, NADE_PIN_TIME, NADE_FUSE } from './constants.js';
+import { forwardVec, rightVec, aimDir } from './movement.js';
 import { isEnemy } from './combat.js';
 import { siteAt, canPlant, canDefuse, hostageInReach } from './objective.js';
 import { teamPlan, mapMiddle } from './botplan.js';
@@ -49,7 +49,17 @@ const ROLE = {
   lurk: { curiosity: 0.35, detour: 0.7, hold: [2, 5], crouch: 0.4, chase: 4 },
 };
 
-const PRIMARY_POOL = ['ak47', 'ak47', 'm4a1', 'm4a1', 'famas', 'mp5', 'p90', 'ump45', 'uzi', 'shotgun', 'autoshotgun', 'awp', 'minigun'];
+// What bots buy, weighted like a CS lobby: lots of AKs and M4s, the odd
+// sniper or machine gun. Both teams can buy everything here.
+const PRIMARY_POOL = [
+  'ak47', 'ak47', 'ak47', 'm4a1', 'm4a1', 'm4a1', 'galil', 'famas', 'sg552', 'aug',
+  'mp5', 'mp5', 'p90', 'ump45', 'uzi', 'mac10', 'tmp',
+  'shotgun', 'autoshotgun', 'awp', 'scout', 'g3sg1', 'sg550', 'm249', 'minigun',
+];
+// Pistol upgrades a bot with money to spare might buy.
+const PISTOL_POOL = ['deagle', 'deagle', 'p228', 'fiveseven', 'elites'];
+// Grenades a bot might pick up with what's left: [id, chance].
+const NADE_BUYS = [['hegrenade', 0.45], ['flashbang', 0.4], ['flashbang', 0.15], ['smokegrenade', 0.3]];
 
 function wrapAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -189,6 +199,97 @@ export class BotBrain {
     this.escapeCheckAt = 0;
     this.enemiesSeen = 0;
     this.guardDuck = false;
+    this.nadeThrow = null; // { slot, aim: [x, y, z], phase, until }
+    this.nadeNextTry = 0;
+    this.avertUntil = 0; // looking away from our own flashbang
+    this.avertYaw = 0;
+    this.smokeTried = 0;
+  }
+
+  // Throw a grenade now and then: an HE or flashbang at someone at mid
+  // range, or at the spot an enemy just ducked out of sight.
+  considerNade(tgt, dist, lost) {
+    const g = this.game, p = this.p, t = g.time;
+    if (t < this.nadeNextTry || p.task || p.reloading || g.frozen(p)) return;
+    this.nadeNextTry = t + 1.5 + Math.random();
+    if (dist < 8 || dist > 26) return;
+    const he = p.weapons.grenade?.clip > 0, flash = p.weapons.flash?.clip > 0;
+    if (!he && !flash) return;
+    // A lost enemy is the classic grenade; in a straight fight it's rarer.
+    if (Math.random() > (lost ? 0.45 : 0.12)) return;
+    const pos = lost ? this.lastSeenPos : tgt.pos;
+    // Don't land it on teammates.
+    if (g.mode === 'teams' && this.allies().some((b) => Math.hypot(b.p.pos[0] - pos[0], b.p.pos[2] - pos[2]) < 6)) return;
+    const slot = he && (!flash || Math.random() < 0.55) ? 'grenade' : 'flash';
+    this.startNade(slot, [pos[0], pos[1], pos[2]]);
+  }
+
+  startNade(slot, aim) {
+    this.nadeThrow = { slot, aim, phase: 'draw', until: this.game.time + 2.5 };
+    this.nadeNextTry = this.game.time + 6 + Math.random() * 6;
+  }
+
+  // Draw the grenade, turn to the throwing angle, pull the pin, let go.
+  nadeStep(cmd, dt) {
+    const g = this.game, p = this.p, t = g.time;
+    const nt = this.nadeThrow;
+    if (!nt) {
+      // Our own flash is about to pop: look away until it has.
+      this.turnTowards(this.avertYaw, -0.3, dt, 1.5);
+      return;
+    }
+    const w = p.weapons[nt.slot];
+    if (t > nt.until || ((!w || w.clip <= 0) && nt.phase !== 'thrown')) { this.nadeThrow = null; return; }
+    const solve = this.throwAngles(nt.aim);
+    this.turnTowards(solve.yaw, solve.pitch, dt, 1.4);
+    if (nt.phase === 'draw') {
+      if (p.active !== nt.slot) { cmd.slot = nt.slot; return; }
+      if (t < p.deployEnd) return;
+      nt.phase = 'pin';
+    }
+    if (nt.phase === 'pin') {
+      const err = Math.hypot(wrapAngle(solve.yaw - this.yaw), solve.pitch - this.pitch);
+      if (!p.nadePin) { cmd.fire = true; return; }
+      if (t < p.nadePin + NADE_PIN_TIME || err > 0.06) { cmd.fire = true; return; }
+      // Let go: the throw happens this tick.
+      nt.phase = 'thrown';
+      if (nt.slot === 'flash') {
+        this.avertUntil = t + NADE_FUSE + 0.3;
+        this.avertYaw = wrapAngle(solve.yaw + Math.PI);
+      }
+      this.nadeThrow = null;
+    }
+  }
+
+  // Yaw and pitch that land a throw near aim (no walls considered): try a
+  // spread of pitches with the same throw speed rule as Game.throwGrenade
+  // and keep the one that comes down closest.
+  throwAngles(aim) {
+    const g = this.game, p = this.p;
+    const eye = g.eyePos(p);
+    const dx = aim[0] - eye[0], dz = aim[2] - eye[2];
+    const yaw = Math.atan2(-dx, -dz);
+    const want = Math.hypot(dx, dz);
+    const key = `${aim[0].toFixed(1)},${aim[2].toFixed(1)},${eye[0].toFixed(1)},${eye[2].toFixed(1)}`;
+    if (this._throwKey === key) return { yaw, pitch: this._throwPitch };
+    const grav = GRAVITY * NADE_GRAVITY;
+    const def = WEAPONS.hegrenade.grenade;
+    let best = 0, bestErr = Infinity;
+    for (let deg = -20; deg <= 60; deg += 2.5) {
+      let a = -deg;
+      a = a < 0 ? -10 + a * (80 / 90) : -10 + a * (100 / 90);
+      const speed = Math.min(def.maxSpeed, (90 - a) * def.throwMul) * U;
+      const d = aimDir(0, -a * DEG);
+      const vh = Math.hypot(d[0], d[2]) * speed, vy = d[1] * speed;
+      // Height relative to the target when it has flown `want` metres.
+      const tt = want / Math.max(0.1, vh);
+      const y = eye[1] + vy * tt - 0.5 * grav * tt * tt;
+      const err = Math.abs(y - (aim[1] + 0.2)) + (tt > 2.5 ? 5 : 0);
+      if (err < bestErr) { bestErr = err; best = deg; }
+    }
+    this._throwKey = key;
+    this._throwPitch = best * DEG;
+    return { yaw, pitch: this._throwPitch };
   }
 
   think(dt) {
@@ -274,16 +375,18 @@ export class BotBrain {
       const tolerance = Math.atan2(0.35, dist) + 0.01;
       const ready = t >= this.reactionUntil && err < tolerance * 1.5;
 
-      // Scope the AWP at range.
+      // Scope a sniper rifle at range; zoom the AUG / SG 552 only far out.
       if (def?.zoomLevels) {
-        if (p.zoom === 0 && dist > 6 && !p.resumeZoomAt && t >= p.deployEnd) cmd.alt = this.pressAlt();
+        const zoomAt = def.scope ? 6 : 28;
+        if (p.zoom === 0 && dist > zoomAt && !p.resumeZoomAt && t >= p.deployEnd) cmd.alt = this.pressAlt();
+        else if (!def.scope && p.zoom > 0 && dist < zoomAt - 6) cmd.alt = this.pressAlt();
         else this.altToggle = false;
       }
 
       if (def?.melee) {
         wantFire = t >= this.reactionUntil && dist < def.melee.slash.range * U + 0.05;
       } else if (ready && w && w.clip > 0 && !p.reloading) {
-        if (def.auto && !def.pellets && !def.zoomLevels) {
+        if (def.auto && !def.pellets && !def.scope) {
           if (t >= this.burstPauseUntil) {
             if (this.burstLeft <= 0) {
               const n = dist > 25 ? 2 + Math.random() * 2 : dist > 12 ? 4 + Math.random() * 4 : 8 + Math.random() * 8;
@@ -292,7 +395,7 @@ export class BotBrain {
             wantFire = true;
           }
         } else {
-          wantFire = def.zoomLevels ? (p.zoom > 0 || dist < 6) && err < tolerance : true;
+          wantFire = def.scope ? (p.zoom > 0 || dist < 6) && err < tolerance : true;
         }
       }
 
@@ -327,7 +430,7 @@ export class BotBrain {
       }
 
       // Movement in a fight: stop to shoot accurately, strafe in between.
-      const close = def?.pellets || def?.id === 'uzi' || def?.id === 'p90';
+      const close = def?.pellets || ['uzi', 'p90', 'mac10', 'tmp'].includes(def?.id);
       if (this.cover) {
         const cm = this.coverStep(cmd, true, w, def);
         moveDir = cm.moveDir;
@@ -507,13 +610,39 @@ export class BotBrain {
       if (def?.zoomLevels && p.zoom > 0) cmd.alt = this.pressAlt();
     }
 
+    // Grenades: maybe start a throw, and if one is under way it takes over
+    // the hands and the aim.
+    if (this.nadeThrow || this.avertUntil > t) {
+      wantFire = false;
+    } else if (tgt && tgt.alive && this.targetVisible && fightDist < Infinity) {
+      this.considerNade(tgt, fightDist, false);
+    } else if (this.lastSeenPos && t - this.lastSeenTime < 4 && t - this.lastSeenTime > 0.6) {
+      const d = Math.hypot(this.lastSeenPos[0] - p.pos[0], this.lastSeenPos[2] - p.pos[2]);
+      this.considerNade(null, d, true);
+    }
+    if (this.escapeUntil && !this.nadeThrow && p.weapons.smoke?.clip > 0 && tgt && this.smokeTried !== this.escapeUntil) {
+      // Breaking off: smoke the space between us and them.
+      this.smokeTried = this.escapeUntil;
+      const k = Math.min(0.5, 6 / Math.max(1, fightDist));
+      this.startNade('smoke', [p.pos[0] + (tgt.pos[0] - p.pos[0]) * k, p.pos[1], p.pos[2] + (tgt.pos[2] - p.pos[2]) * k]);
+    }
+    if (this.nadeThrow || this.avertUntil > t) {
+      this.nadeStep(cmd, dt);
+      if (this.nadeThrow?.phase === 'pin') moveDir = null;
+    } else if (def?.grenade) {
+      // A grenade in hand we didn't mean to throw (a second flashbang
+      // coming up after a throw): put a gun back in hand.
+      wantFire = false;
+      if (!p.nadeRedrawAt) cmd.slot = ['primary', 'secondary'].find((s) => weaponValue(p.weapons[s]) > 0) ?? 'melee';
+    }
+
     // In the air a gun is wildly inaccurate (CS air spread): hold fire until
     // we land, unless they're right in front of us.
     if (wantFire && !p.onGround && !p.swimming && !def?.melee && fightDist > 4) wantFire = false;
 
     // --- Fire control ---
     if (wantFire) {
-      if (def.auto && !def.pellets && !def.zoomLevels) {
+      if (def.auto && !def.pellets && !def.scope) {
         cmd.fire = true;
         if (p.fireHeld && p.lastFire >= t - 0.001) {
           this.burstLeft--;
@@ -815,7 +944,7 @@ export class BotBrain {
         let score = -r - Math.max(0, Math.cos(a) * ux + Math.sin(a) * uz) * r * 0.8;
         if (!low) score += 0.6;
         // Snipers like it far, shotguns like it close.
-        if (def?.zoomLevels) score += Math.min(de, 40) * 0.05;
+        if (def?.scope) score += Math.min(de, 40) * 0.05;
         if (def?.pellets) score -= de * 0.1;
         for (const o of taken) if (Math.hypot(o[0] - x, o[1] - z) < 2.5) score -= 6;
         if (score > bestScore) { bestScore = score; best = { spot: [x, z], peek, low }; }
@@ -1021,6 +1150,8 @@ export class BotBrain {
 
   scan(eye) {
     const g = this.game, p = this.p, t = g.time;
+    // Flashed: can't see a thing (but still hears).
+    const blind = blindLevel(p, t) > 0.5;
     const allies = this.allies();
     let best = null, bestScore = Infinity;
     let noise = null, noiseD = Infinity;
@@ -1033,12 +1164,14 @@ export class BotBrain {
       if (d > 90) continue;
       const inFov = (dx * f[0] + dz * f[2]) / (d || 1) > Math.cos(75 * DEG) || d < 5;
       const recentlyHurtBy = p.lastAttacker === o.id && t - p.lastHurtTime < 1.5;
-      const heard = t - o.lastFire < 0.3 && d < 30;
+      const quiet = WEAPONS[o.weapons?.[o.active]?.id]?.silenced;
+      const heard = t - o.lastFire < 0.3 && d < (quiet ? 8 : 30);
       if (!inFov && !recentlyHurtBy && !heard) continue;
       // Visible if head or chest is in line of sight.
       const oEye = o.ducked ? DUCK_EYE : STAND_EYE;
-      const vis = g.world.visible(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye, o.pos[2]) ||
-        g.world.visible(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye * 0.7, o.pos[2]);
+      const vis = !blind && (g.world.visible(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye, o.pos[2]) ||
+        g.world.visible(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye * 0.7, o.pos[2])) &&
+        !(g.smokes.length && g.smokeBlocks(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye * 0.8, o.pos[2]));
       if (vis && (inFov || recentlyHurtBy)) {
         seen++;
         // Score in metres: the nearest enemy wins unless someone else is
@@ -1292,9 +1425,14 @@ export class BotBrain {
     else if (p.weapons.primary) g.buyAmmo(p, 'primary', true); // kept gun: top up its ammo
     if (wantArmor && !g.buy(p, 'kevlarHelmet', true) && p.armor < 100) g.buy(p, 'kevlar', true);
     if (g.objective === 'bomb' && p.team === 'blue') g.buy(p, 'defuser', true);
-    if (boughtGun && p.weapons.secondary?.id !== 'deagle' && rand() < 0.3 && p.money >= WEAPONS.deagle.price + 500) {
-      g.buy(p, 'deagle', true);
+    const pistol = PISTOL_POOL[Math.floor(rand() * PISTOL_POOL.length)];
+    if (boughtGun && p.weapons.secondary?.id !== pistol && rand() < 0.3 && p.money >= WEAPONS[pistol].price + 500) {
+      g.buy(p, pistol, true);
       g.switchTo(p, 'primary', true);
+    }
+    // Grenades with what's left (CS bots buy them too).
+    for (const [id, chance] of NADE_BUYS) {
+      if (p.money >= WEAPONS[id].price + 200 && rand() < chance) g.buy(p, id, true);
     }
   }
 }

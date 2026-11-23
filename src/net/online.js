@@ -14,6 +14,7 @@
 import { SEND_EVERY, INTERP_DELAY, DEFAULT_ROOM, PROTOCOL_VERSION } from './protocol.js';
 import { applyObjectiveInfo } from '../sim/objective.js';
 import { TICK_DT } from '../sim/constants.js';
+import { emptyWeapons } from '../sim/game.js';
 
 const PING_EVERY = 2000;
 // Our own events the browser predicts. The server's copies are dropped when
@@ -175,7 +176,7 @@ export class OnlineSession {
       p.kills = s.kills; p.deaths = s.deaths; p.headshots = s.headshots;
       p.onGround = s.onGround; p.ducked = s.ducked; p.reloading = s.reloading; p.zoom = s.zoom; p.spin = s.spin;
       p.active = s.active; p.swimming = s.swimming;
-      p.weapons = { primary: null, secondary: null, melee: null, grenade: null, [s.active]: s.weapon ? { id: s.weapon, clip: 0, reserve: 0 } : null };
+      p.weapons = { ...emptyWeapons(), [s.active]: s.weapon ? { id: s.weapon, clip: 0, reserve: 0 } : null };
     }
     if (msg.match) {
       const { teamKills, ...match } = msg.match;
@@ -194,9 +195,10 @@ export class OnlineSession {
       const old = new Map(g.nades.map((n) => [n.id, n]));
       g.nades = msg.nades.map((n) => {
         const o = old.get(n.id);
-        return { id: n.id, pos: [...n.pos], prevPos: o ? o.pos : [...n.pos], vel: [...n.vel], rest: n.rest };
+        return { id: n.id, weapon: n.w, pos: [...n.pos], prevPos: o ? o.pos : [...n.pos], vel: [...n.vel], rest: n.rest };
       });
     }
+    if (msg.smokes) g.smokes = msg.smokes;
     this.snaps.push({ time: msg.time, players: states });
     g.collideStates = states;
     while (this.snaps.length > 2 && this.snaps[1].time < this.viewTime() - 0.5) this.snaps.shift();

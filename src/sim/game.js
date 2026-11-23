@@ -9,9 +9,9 @@ import {
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
   DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE, NEVER, WATER_SPEED_MUL,
   NADE_FUSE, NADE_GRAVITY, NADE_PIN_TIME, NADE_SWITCH_TIME, NADE_BOUNCE, NADE_RADIUS,
-  PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL, BUY_TIME,
+  PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL, BUY_TIME, SMOKE_GROW, SMOKE_FADE, SMOKE_HEIGHT, SMOKE_MAX_WAIT,
 } from './constants.js';
-import { WEAPONS, GEAR, AMMO } from './weapons.js';
+import { WEAPONS, GEAR, AMMO, NADE_SLOTS } from './weapons.js';
 import { World } from './world.js';
 import { movePlayer, aimDir, forwardVec, rightVec, playerBox, hullTouches } from './movement.js';
 import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
@@ -39,17 +39,43 @@ const TAKEOVER_FIELDS = [
   'pos', 'prevPos', 'vel', 'yaw', 'pitch', 'onGround', 'ducked', 'duckAmount', 'prevDuck', 'stepOffset',
   'stamina', 'health', 'armor', 'helmet', 'defuser', 'active', 'lastActive', 'nextAttack', 'deployEnd',
   'reloading', 'reloadEnd', 'shellNext', 'shotsFired', 'pistolAcc', 'accuracy', 'zoom', 'spin', 'tagMul',
-  'swimming', 'waterJump', 'nadePin',
+  'swimming', 'waterJump', 'nadePin', 'nadeRedrawAt', 'burstLeft', 'burstNext',
+  'blindStart', 'blindHold', 'blindFade', 'blindAlpha',
 ];
 
+// A grenade comes one at a time (def.clip is how many you can carry).
 function makeWeapon(id) {
   const def = WEAPONS[id];
-  return { id, clip: def.clip, reserve: def.reserve };
+  return { id, clip: def.grenade ? 1 : def.clip, reserve: def.reserve };
 }
 
 // Slots in the order the number keys use them: 1 primary, 2 pistol, 3 knife,
-// 4 grenade. The bomb carrier also has the C4, which key 3 swaps to.
-export const SLOTS = ['primary', 'secondary', 'melee', 'grenade', 'c4'];
+// 4 grenades (HE, flash, smoke; 4 again picks the next one). The bomb
+// carrier also has the C4, which key 3 swaps to.
+export const SLOTS = ['primary', 'secondary', 'melee', 'grenade', 'flash', 'smoke', 'c4'];
+
+export function emptyWeapons() {
+  return { primary: null, secondary: null, melee: null, grenade: null, flash: null, smoke: null, c4: null };
+}
+
+// The grenade slot key 4 switches to: the next one you carry after the one
+// in your hand, or the first one you carry.
+export function nextNadeSlot(p) {
+  const owned = NADE_SLOTS.filter((s) => p.weapons[s]?.clip > 0);
+  if (!owned.length) return null;
+  const i = owned.indexOf(p.active);
+  return owned[(i + 1) % owned.length];
+}
+
+// How white a flashbang has left p's screen at time t, 0..1 (1 = fully
+// blind): the hold at full strength, then a linear fade.
+export function blindLevel(p, t) {
+  if (!p.blindAlpha) return 0;
+  const e = t - p.blindStart;
+  if (e < 0) return 0;
+  if (e <= p.blindHold) return p.blindAlpha;
+  return Math.max(0, p.blindAlpha * (1 - (e - p.blindHold) / Math.max(0.01, p.blindFade)));
+}
 
 // Small seeded RNG.
 function mulberry32(seed) {
@@ -89,8 +115,10 @@ export class Game {
     // yaw, rest, expiresAt, noPickup: { pid, until } }.
     this.drops = [];
     this.nextDropId = 1;
-    // Grenades in flight: { id, owner, team, pos, prevPos, vel, explodeAt, rest, lastBounce }.
+    // Grenades in flight: { id, owner, team, weapon, pos, prevPos, vel, explodeAt, rest, lastBounce }.
     this.nades = [];
+    // Smoke clouds: { id, pos, start, end, radius } (meters).
+    this.smokes = [];
     this.nextNadeId = 1;
     // 'live' while playing, 'over' while the winner is shown.
     this.match = { state: 'live', endsAt: 0, winner: null, winnerTeam: null, winnerName: '' };
@@ -110,6 +138,7 @@ export class Game {
     this._nav = null;
     this.drops = [];
     this.nades = [];
+    this.smokes = [];
     this.objective = Obj.objectiveFor(this.mode, map);
     if (this.round) { this.round = Obj.emptyRound(); this.bomb = Obj.emptyBomb(); this.hostages = []; }
   }
@@ -163,7 +192,7 @@ export class Game {
       stepOffset: 0, stamina: 0, jumpHeld: false,
       health: MAX_HEALTH, armor: 0, helmet: false,
       money: START_MONEY, kills: 0, deaths: 0, headshots: 0,
-      weapons: { primary: null, secondary: null, melee: null, grenade: null, c4: null }, active: 'secondary', lastActive: 'primary',
+      weapons: emptyWeapons(), active: 'secondary', lastActive: 'primary',
       nextAttack: 0, deployEnd: 0, reloading: false, reloadEnd: 0, shellNext: 0,
       shotsFired: 0, decreaseShotsAt: 0, delayFire: false, pistolAcc: 0.9, accuracy: 0.2, lastFire: -10,
       punch: [0, 0], prevPunch: [0, 0], recoilDir: 1, shotSeed: 0,
@@ -174,7 +203,9 @@ export class Game {
       task: null, useHeld: false, defuser: false,
       roundKills: 0, multi: 0, lastKillAt: -10, god: false,
       spawnedAt: 0,
-      nadePin: 0, nadeLob: false, swimming: false, waterJump: 0,
+      nadePin: 0, nadeLob: false, nadeRedrawAt: 0, swimming: false, waterJump: 0,
+      burstLeft: 0, burstNext: 0,
+      blindStart: 0, blindHold: 0, blindFade: 0, blindAlpha: 0,
     };
     this.players.push(p);
     return p;
@@ -218,6 +249,7 @@ export class Game {
     this.hostages = [];
     this.drops = [];
     this.nades = [];
+    this.smokes = [];
     for (const p of this.players) {
       p.kills = 0; p.deaths = 0; p.headshots = 0; p.money = START_MONEY;
       p.controlling = null; p.controlledBy = null; p.ownMoney = 0;
@@ -335,7 +367,8 @@ export class Game {
 
   // Survivors of an objective round keep their guns (with the ammo left in
   // them), grenades, armor, helmet and kit into the next round, like CS 1.6.
-  // Anyone who died starts again with a USP and a knife and buys by hand.
+  // Anyone who died starts again with a pistol and a knife and buys by hand:
+  // a Glock-18 on Red (CS's terrorists), a USP on Blue and in free for all.
   spawn(p) {
     const keepGear = p.alive && !!this.objective && this.round.n > 1;
     const enemies = this.players.filter((o) => o.alive && isEnemy(p, o));
@@ -368,7 +401,9 @@ export class Game {
     p.ducked = false; p.duckAmount = 0; p.onGround = true;
     if (!keepGear) {
       p.armor = 0; p.helmet = false; p.defuser = false;
-      p.weapons = { primary: null, secondary: makeWeapon('usp'), melee: makeWeapon('knife'), grenade: null, c4: null };
+      p.weapons = emptyWeapons();
+      p.weapons.secondary = makeWeapon(this.mode === 'teams' && p.team === 'red' ? 'glock18' : 'usp');
+      p.weapons.melee = makeWeapon('knife');
       p.active = 'secondary';
     } else {
       if (!p.weapons.melee) p.weapons.melee = makeWeapon('knife');
@@ -379,7 +414,8 @@ export class Game {
     p.punch = [0, 0]; p.prevPunch = [0, 0];
     p.zoom = 0; p.spin = 0; p.reloading = false; p.shotsFired = 0;
     p.tagMul = 1;
-    p.nadePin = 0; p.swimming = false; p.waterJump = 0;
+    p.nadePin = 0; p.nadeRedrawAt = 0; p.swimming = false; p.waterJump = 0;
+    p.burstLeft = 0; p.blindAlpha = 0;
     p.task = null;
     p.deployEnd = this.time + 0.3; p.nextAttack = this.time + 0.3; p.nextStab = this.time + 0.3;
     if (this.match.state === 'over') p.frozenUntil = this.match.endsAt + 1;
@@ -448,12 +484,14 @@ export class Game {
     const def = WEAPONS[item];
     if (!def || def.bomb || def.melee) return false;
     const cur = p.weapons[def.slot];
-    // Already have it: buying it again buys its ammo.
+    // Already have it: buying it again buys its ammo, or another grenade
+    // up to as many as you can carry (two flashbangs).
     if (cur && cur.id === item && !def.grenade) return this.buyAmmo(p, def.slot, silent);
-    if (cur && cur.id === item) return false;
+    if (cur && cur.id === item && cur.clip >= def.clip) return false;
     if (p.money < def.price) return false;
     p.money -= def.price;
-    p.weapons[def.slot] = makeWeapon(item);
+    if (cur && cur.id === item) cur.clip++;
+    else p.weapons[def.slot] = makeWeapon(item);
     // Buying a gun puts it in your hands; a grenade goes on your belt (4).
     if (!def.grenade) this.switchTo(p, def.slot, true);
     if (!silent) this.emit({ type: 'buy', pid: p.id, item });
@@ -469,7 +507,8 @@ export class Game {
     let n = 0;
     for (const item of items) {
       const def = WEAPONS[item];
-      if (def && p.weapons[def.slot]?.id === item) continue;
+      const cur = def && p.weapons[def.slot];
+      if (cur?.id === item && (!def.grenade || cur.clip >= def.clip)) continue;
       if (item === 'kevlar' && p.armor >= 100) continue;
       if (item === 'kevlarHelmet' && p.armor >= 100 && p.helmet) continue;
       if (this.buy(p, item)) n++;
@@ -523,7 +562,7 @@ export class Game {
     if (keepBody && p.alive) {
       p.alive = false;
       p.respawnAt = NEVER;
-      p.weapons = { primary: null, secondary: null, melee: null, grenade: null, c4: null };
+      p.weapons = emptyWeapons();
     }
   }
 
@@ -557,7 +596,7 @@ export class Game {
     bot.reloading = false;
     bot.zoom = 0;
     bot.nadePin = 0;
-    bot.weapons = { primary: null, secondary: null, melee: null, grenade: null, c4: null };
+    bot.weapons = emptyWeapons();
     bot.respawnAt = this.objective ? NEVER : this.time + RESPAWN_TIME;
     this.emit({ type: 'takeover', pid: p.id, bot: bot.id, yaw: p.yaw, pitch: p.pitch });
     return true;
@@ -603,6 +642,7 @@ export class Game {
     }
     this.updateDrops(dt);
     this.updateNades(dt);
+    this.updateSmokes();
     if (this.objective) Obj.update(this, dt);
   }
 
@@ -800,6 +840,8 @@ export class Game {
     p.shotsFired = 0;
     p.spin = 0;
     p.nadePin = 0; // switching away puts the pin back
+    p.nadeRedrawAt = 0;
+    p.burstLeft = 0;
     p.accuracy = 0.2;
     p.pistolAcc = def.accuracy.start ?? 0.9;
     this.emit({ type: 'deploy', pid: p.id, weapon: def.id });
@@ -819,6 +861,7 @@ export class Game {
     // to the knife.
     let slot = cmd.slot;
     if (slot === 'melee' && p.weapons.c4 && p.active !== 'c4') slot = 'c4';
+    if (slot === 'nade') slot = nextNadeSlot(p);
     if (slot && p.weapons[slot] && slot !== p.active) this.switchTo(p, slot);
     if (cmd.lastWeapon && p.weapons[p.lastActive]) this.switchTo(p, p.lastActive);
 
@@ -884,9 +927,13 @@ export class Game {
       this.emit({ type: 'reload', pid: p.id, weapon: def.id, duration: def.shellReload ? def.shellReload.start + def.shellReload.each * (def.clip - w.clip) : def.reload });
     }
 
-    // Scope.
+    // Scope, or the Glock's burst switch.
     const altPressed = cmd.alt && !p.altHeld;
     p.altHeld = !!cmd.alt;
+    if (def.burst && altPressed && t >= p.deployEnd) {
+      w.burst = !w.burst;
+      this.emit({ type: 'burstMode', pid: p.id, on: w.burst });
+    }
     if (def.zoomLevels && altPressed && !p.reloading && t >= p.deployEnd) {
       p.zoom = (p.zoom + 1) % (def.zoomLevels.length + 1);
       p.resumeZoomAt = 0;
@@ -900,6 +947,16 @@ export class Game {
     if (def.spinUp) {
       if (cmd.fire && !p.reloading && t >= p.deployEnd) p.spin = Math.min(def.spinUp, p.spin + dt);
       else p.spin = Math.max(0, p.spin - dt * 0.6);
+    }
+
+    // The rest of a burst fires on its own, one round per gap.
+    if (p.burstLeft > 0) {
+      p.fireHeld = !!cmd.fire;
+      if (t < p.burstNext) return;
+      if (w.clip <= 0 || p.reloading) { p.burstLeft = 0; return; }
+      p.burstLeft--;
+      this.fire(p, w, def, true);
+      return;
     }
 
     // Fire.
@@ -931,22 +988,25 @@ export class Game {
     else if (cmd.fire && t >= p.nextAttack) this.melee(p, def, 'slash');
   }
 
-  // HE grenade, CS style: press fire (or Mouse 2) to pull the pin, let go to
-  // throw (Mouse 2 lobs it underhand). Once it's gone your last gun comes back.
+  // Grenades, CS style: press fire (or Mouse 2) to pull the pin, let go to
+  // throw (Mouse 2 lobs it underhand). Once it's gone your last gun comes
+  // back, or the next one of the same kind (a second flashbang).
   updateGrenade(p, cmd, def, w) {
     const t = this.time;
     p.fireHeld = !!cmd.fire;
     p.altHeld = !!cmd.alt;
     p.reloading = false;
-    if (w.clip <= 0) {
-      // Thrown: put the empty hand away once the throw is over.
-      if (t >= p.nextAttack) {
-        p.weapons.grenade = null;
-        const back = p.lastActive !== 'grenade' && p.weapons[p.lastActive] ? p.lastActive : SLOTS.find((s) => p.weapons[s]);
-        this.switchTo(p, back ?? 'melee', true);
-      }
+    if (p.nadeRedrawAt) {
+      // Thrown: wait for the throw to finish.
+      if (t < p.nadeRedrawAt) return;
+      p.nadeRedrawAt = 0;
+      if (w.clip > 0) { this.switchTo(p, p.active, true); return; }
+      p.weapons[p.active] = null;
+      const back = !NADE_SLOTS.includes(p.lastActive) && p.weapons[p.lastActive] ? p.lastActive : SLOTS.find((s) => p.weapons[s]);
+      this.switchTo(p, back ?? 'melee', true);
       return;
     }
+    if (w.clip <= 0) return;
     if (t < p.deployEnd) return;
     if (!p.nadePin) {
       if ((cmd.fire || cmd.alt) && t >= p.nextAttack) {
@@ -983,11 +1043,12 @@ export class Game {
       vel: [dir[0] * speed + p.vel[0], dir[1] * speed + p.vel[1], dir[2] * speed + p.vel[2]],
       explodeAt: t + NADE_FUSE, rest: false, lastBounce: -1,
     });
-    w.clip = 0;
+    w.clip--;
     p.nadePin = 0;
     p.lastFire = t;
     p.nextAttack = t + NADE_SWITCH_TIME;
-    this.emit({ type: 'throw', pid: p.id, lob: p.nadeLob });
+    p.nadeRedrawAt = t + NADE_SWITCH_TIME;
+    this.emit({ type: 'throw', pid: p.id, lob: p.nadeLob, weapon: def.id });
   }
 
   // Grenades fly with low gravity, bounce off walls and floors, roll to a
@@ -997,7 +1058,7 @@ export class Game {
     const g = GRAVITY * NADE_GRAVITY;
     for (const n of this.nades) {
       n.prevPos[0] = n.pos[0]; n.prevPos[1] = n.pos[1]; n.prevPos[2] = n.pos[2];
-      if (this.time >= n.explodeAt) { n.done = true; this.explodeNade(n); continue; }
+      if (this.time >= n.explodeAt && this.readyToPop(n)) { n.done = true; this.explodeNade(n); continue; }
       if (n.rest) continue;
       const v = n.vel;
       v[1] -= g * dt;
@@ -1024,7 +1085,7 @@ export class Game {
         for (let k = 0; k < 3; k++) v[k] = (v[k] - (1 + NADE_BOUNCE) * vn * nn[k]) * 0.8;
         if (-vn > 1.5 && this.time - n.lastBounce > 0.08) {
           n.lastBounce = this.time;
-          this.emit({ type: 'nadeBounce', id: n.id, pos: [...n.pos] });
+          this.emit({ type: 'nadeBounce', id: n.id, pos: [...n.pos], weapon: n.weapon });
         }
         if (nn[1] > 0.7 && Math.hypot(v[0], v[1], v[2]) < 0.6) { v[0] = v[1] = v[2] = 0; n.rest = true; break; }
       }
@@ -1040,11 +1101,52 @@ export class Game {
     this.nades = this.nades.filter((n) => !n.done);
   }
 
+  // A smoke grenade waits until it has stopped rolling (or a few seconds
+  // more at most); the others go off when the fuse runs out.
+  readyToPop(n) {
+    if (WEAPONS[n.weapon]?.grenade.kind !== 'smoke') return true;
+    return n.rest || Math.hypot(n.vel[0], n.vel[1], n.vel[2]) < 0.4 || this.time >= n.explodeAt + SMOKE_MAX_WAIT;
+  }
+
+  // How much of a smoke cloud is there at time t: grows in over SMOKE_GROW,
+  // thins out over the last SMOKE_FADE seconds. 0..1.
+  smokeAmount(s, t = this.time) {
+    if (t < s.start || t >= s.end) return 0;
+    return Math.min(1, (t - s.start) / SMOKE_GROW, (s.end - t) / SMOKE_FADE);
+  }
+
+  updateSmokes() {
+    if (this.smokes.length) this.smokes = this.smokes.filter((s) => this.time < s.end);
+  }
+
+  // Does smoke block the line from a to b? The cloud is a squashed sphere
+  // (SMOKE_HEIGHT tall), thick enough to hide behind once it's mostly in.
+  smokeBlocks(ax, ay, az, bx, by, bz) {
+    for (const s of this.smokes) {
+      const k = this.smokeAmount(s);
+      if (k < 0.35) continue;
+      const r = s.radius * Math.min(1, 0.5 + k);
+      const sy = (r * 2) / SMOKE_HEIGHT; // scale y so the cloud is a sphere
+      const cx = s.pos[0], cy = s.pos[1] + SMOKE_HEIGHT * 0.4, cz = s.pos[2];
+      const dx = bx - ax, dy = (by - ay) * sy, dz = bz - az;
+      const fx = ax - cx, fy = (ay - cy) * sy, fz = az - cz;
+      const a = dx * dx + dy * dy + dz * dz;
+      if (a < 1e-9) continue;
+      const tt = Math.max(0, Math.min(1, -(fx * dx + fy * dy + fz * dz) / a));
+      const qx = fx + dx * tt, qy = fy + dy * tt, qz = fz + dz * tt;
+      if (qx * qx + qy * qy + qz * qz < r * r * 0.8) return true;
+    }
+    return false;
+  }
+
   // CS 1.6 RadiusDamage: full damage at the blast, falling off linearly to
   // nothing at the radius, only to players the blast can see. Hurts enemies
   // and the thrower, not teammates.
   explodeNade(n) {
     const def = WEAPONS[n.weapon];
+    const kind = def.grenade.kind;
+    if (kind === 'flash') { this.popFlash(n, def); return; }
+    if (kind === 'smoke') { this.popSmoke(n, def); return; }
     const owner = this.getPlayer(n.owner) ?? null;
     const src = [n.pos[0], n.pos[1] + 0.12, n.pos[2]];
     this.emit({ type: 'nadeExplode', pid: n.owner, pos: src, water: this.underwater(src[0], src[1], src[2]) });
@@ -1062,6 +1164,45 @@ export class Game {
       const d = dist > 1e-3 ? [(mid[0] - src[0]) / dist, (mid[1] - src[1]) / dist, (mid[2] - src[2]) / dist] : [0, 1, 0];
       this.damage(v, owner, dmg, 'chest', mid, def, false, d, src);
     }
+  }
+
+  // CS 1.6 RadiusFlash: everyone who can see the bang goes white, more so
+  // the closer they are and the more directly they're looking at it.
+  popFlash(n, def) {
+    const g = def.grenade;
+    const src = [n.pos[0], n.pos[1] + 0.1, n.pos[2]];
+    const water = this.underwater(src[0], src[1], src[2]);
+    this.emit({ type: 'flashPop', pid: n.owner, pos: src, water });
+    if (water) return; // a flashbang under water is just a dull thud
+    for (const v of this.players) {
+      if (!v.alive) continue;
+      const eye = this.eyePos(v);
+      const dx = src[0] - eye[0], dy = src[1] - eye[1], dz = src[2] - eye[2];
+      const dist = Math.hypot(dx, dy, dz);
+      const strength = g.strength * (1 - dist / U / g.radius);
+      if (strength <= 0) continue;
+      if (!this.world.visible(src[0], src[1], src[2], eye[0], eye[1], eye[2])) continue;
+      if (this.smokeBlocks(src[0], src[1], src[2], eye[0], eye[1], eye[2])) continue;
+      const f = aimDir(v.yaw, v.pitch);
+      const dot = dist > 1e-3 ? (dx * f[0] + dy * f[1] + dz * f[2]) / dist : 1;
+      let hold, fade, alpha;
+      if (dot >= 0.55) { hold = strength / 1.5; fade = strength * 3; alpha = 1; }
+      else if (dot >= 0.15) { hold = strength / 3.5; fade = strength * 1.75; alpha = 0.8; }
+      else { hold = strength / 4.5; fade = strength; alpha = 0.8; }
+      // A weaker flash doesn't cut short a stronger one still on screen.
+      if (alpha < blindLevel(v, this.time)) continue;
+      v.blindStart = this.time; v.blindHold = hold; v.blindFade = fade; v.blindAlpha = alpha;
+      this.emit({ type: 'blind', pid: v.id, by: n.owner, hold, fade, alpha });
+    }
+  }
+
+  popSmoke(n, def) {
+    const g = def.grenade;
+    const pos = [n.pos[0], n.pos[1] - 0.05, n.pos[2]];
+    const s = { id: n.id, pos, start: this.time, end: this.time + g.duration, radius: g.radius * U };
+    this.smokes.push(s);
+    if (this.smokes.length > 16) this.smokes.shift();
+    this.emit({ type: 'smokePop', pid: n.owner, pos, id: s.id });
   }
 
   melee(p, def, kind) {
@@ -1103,13 +1244,15 @@ export class Game {
     p.lastMelee = t;
   }
 
-  fire(p, w, def) {
+  // burstShot: a follow-up round of a burst (the trigger isn't pulled).
+  fire(p, w, def, burstShot = false) {
     const t = this.time;
     p.reloading = false;
     w.clip--;
 
     const state = this.moveState(p, def);
     const spread = this.currentSpread(p, def, state);
+    if (def.burst && w.burst && !burstShot) p.burstLeft = Math.min(def.burst.shots - 1, w.clip);
 
     // Update the accuracy state for the next shot.
     const acc = def.accuracy;
@@ -1164,7 +1307,7 @@ export class Game {
     }
     if (restore) restore();
 
-    this.emit({ type: 'shot', pid: p.id, weapon: def.id, origin, dir: fwd, ends, impacts });
+    this.emit({ type: 'shot', pid: p.id, weapon: def.id, origin, dir: fwd, ends, impacts, side: def.dual ? p.shotSeed & 1 : undefined });
 
     // Only the server (or practice) decides hits.
     if (!this.predicting) {
@@ -1182,12 +1325,20 @@ export class Game {
 
   afterShot(p, def) {
     const t = this.time;
+    const w = p.weapons[p.active];
+    if (def.burst && w?.burst) {
+      // Mid-burst: the next round comes after the gap; after the last one
+      // the gun waits out the burst cycle.
+      if (p.burstLeft > 0) { p.burstNext = t + def.burst.gap; p.nextAttack = t + def.burst.gap; }
+      else p.nextAttack = t + def.burst.cycle;
+      return;
+    }
     // Fire rate: keep the cadence exact across 128 Hz ticks.
     if (t - p.nextAttack > TICK_DT * 1.5) p.nextAttack = t;
-    p.nextAttack += def.cycle;
+    p.nextAttack += def.scopedCycle && p.zoom > 0 ? def.scopedCycle : def.cycle;
 
-    if (def.zoomLevels && p.zoom > 0) {
-      // AWP: drop out of scope while cycling the bolt, then go back in.
+    if (def.bolt && p.zoom > 0) {
+      // AWP, Scout: drop out of scope while cycling the bolt, then go back in.
       p.resumeZoom = p.zoom;
       p.zoom = 0;
       p.resumeZoomAt = p.nextAttack - 0.05;
@@ -1233,7 +1384,8 @@ export class Game {
       return s[0] + s[1] * this.rifleAccuracy(p, acc);
     }
     if (acc.type === 'pistol') {
-      const s = def.spread[state];
+      const w = p.weapons[p.active];
+      const s = (def.burst && w?.burst ? def.burst.spread : def.spread)[state];
       return s[0] + s[1] * (1 - this.nextPistolAcc(p, acc, now));
     }
     if (acc.type === 'sniper') {
@@ -1241,10 +1393,21 @@ export class Game {
       const hspeed = Math.hypot(p.vel[0], p.vel[2]) / U;
       let spread;
       if (state === 'air') spread = sp.air;
-      else if (hspeed > 140) spread = sp.run;
-      else if (hspeed > 10) spread = sp.walk;
+      else if (hspeed > (sp.runSpeed ?? 140)) spread = sp.run;
+      else if (sp.walk !== undefined && hspeed > 10) spread = sp.walk;
       else if (p.ducked) spread = sp.duck;
       else spread = sp.stand;
+      return spread + (p.zoom === 0 ? sp.unscoped : 0);
+    }
+    if (acc.type === 'autosniper') {
+      const sp = def.autoSpread;
+      const a = Math.min(0.98, acc.base + acc.rate * (now - p.lastFire));
+      const hspeed = Math.hypot(p.vel[0], p.vel[2]) / U;
+      let spread;
+      if (state === 'air') spread = sp.air * (1 - a);
+      else if (hspeed > 10) spread = sp.run;
+      else if (p.ducked) spread = sp.duck * (1 - a);
+      else spread = sp.stand * (1 - a);
       return spread + (p.zoom === 0 ? sp.unscoped : 0);
     }
     return 0;
@@ -1256,7 +1419,11 @@ export class Game {
     const R = RECOIL_SCALE;
     if (k.punch) {
       const range = state === 'air' && k.airPunch ? k.airPunch : k.punch;
-      p.punch[0] += (range[0] + rand() * (range[1] - range[0])) * R;
+      // Auto snipers: part of the punch still on screen adds to the next
+      // one, and it kicks a little to either side (CS G3SG1/SG550).
+      const carry = k.punchCarry ? p.punch[0] * k.punchCarry : 0;
+      p.punch[0] += (range[0] + rand() * (range[1] - range[0])) * R + carry;
+      if (k.punchSide) p.punch[1] += (rand() * 2 - 1) * k.punchSide * R;
       return;
     }
     let [upBase, latBase, upMod, latMod, upMax, latMax, dirChange] = k[state];
@@ -1319,6 +1486,9 @@ export class Game {
     victim.reloading = false;
     victim.zoom = 0;
     victim.nadePin = 0;
+    victim.nadeRedrawAt = 0;
+    victim.burstLeft = 0;
+    victim.blindAlpha = 0;
     victim.swimming = false;
     if (this.objective) {
       if (victim.task?.kind === 'defuse') this.bomb.defuser = null;
