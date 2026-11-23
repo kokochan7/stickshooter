@@ -61,7 +61,7 @@ no launcher.
 | Dunes | Bomb defusal | Huge |
 | Harbor | Hostage rescue | Large |
 | Frost | Hostage rescue | Huge |
-| Depot | Hostage rescue | Large |
+| Depot | Hostage rescue | Huge |
 
 All are CS 1.6 scale, with water you can wade, swim and dive in, bridges,
 and cover to fight around.

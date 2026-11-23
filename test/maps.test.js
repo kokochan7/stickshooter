@@ -592,3 +592,27 @@ test('Depot: bots keep to the ground; the roof is off their map', () => {
   const blue = MAPS.depot.teamSpawns.blue[0].pos, h = MAPS.depot.hostages[0];
   for (const [x, z] of nav.findPath(blue[0], blue[2], h[0], h[2])) assert.ok(nav.floorAt(x, z) < 0.5, `path stays on the ground at ${x},${z}`);
 });
+
+test('Depot: the ladder reaches the roof, a skylight drops you inside, bots can use the rail yard', () => {
+  const D = (x, y, z) => [x * 1.5, y, z * 1.5];
+  const g = new Game(MAPS.depot, { seed: 4 });
+  const a = g.addPlayer({ name: 'A' });
+  g.spawn(a);
+  // Climb the ladder (facing north) and hop onto the roof.
+  place(a, ...D(18.5, 0, -3.5)); a.yaw = 0;
+  run(g, 4, (p, i) => hold(p, { fwd: 1, jump: i > 200 && i % 20 === 0 }));
+  assert.ok(a.pos[1] > 6.2, `on the roof (${a.pos.map((v) => v.toFixed(1))})`);
+  // Walk into a skylight: down onto the warehouse floor.
+  place(a, ...D(3, 6.25, -13.5)); a.yaw = 0;
+  run(g, 2, (p) => hold(p, { fwd: 1 }));
+  assert.ok(a.pos[1] < 0.05 && a.pos[2] < -14 * 1.5, `dropped inside (${a.pos.map((v) => v.toFixed(1))})`);
+  // The track bed is part of the bots' map, up the stairs.
+  const nav = g.nav;
+  const blue = MAPS.depot.teamSpawns.blue[0].pos;
+  const p = nav.findPath(blue[0], blue[2], -46.8 * 1.5, -20 * 1.5);
+  assert.ok(p, 'a path onto the track bed');
+  assert.ok(Math.abs(nav.floorAt(-46.8 * 1.5, -20 * 1.5) - 2) < 0.01);
+  // And the walkway inside.
+  assert.ok(Math.abs(nav.floorAt(-24.5 * 1.5, -18 * 1.5) - 2.4) < 0.01);
+  assert.ok(nav.findPath(blue[0], blue[2], -24.5 * 1.5, -18 * 1.5));
+});
