@@ -1440,7 +1440,9 @@ function bombBeeps() {
   if (mode === 'menu' || game.objective !== 'bomb' || b.state !== 'planted') return;
   if (game.time < nextBeep) return;
   const left = Math.max(0, b.explodeAt - game.time);
-  nextBeep = game.time + bombBeepInterval(left);
+  const gap = bombBeepInterval(left);
+  nextBeep = game.time + gap;
+  view.flashBomb(game.time, Math.min(0.12, gap * 0.5));
   const rate = left > 5 ? 1 : 1 + 0.03 * (5 - left);
   audio.play('bombBeep', { pos: b.pos, volume: 0.55, jitter: 0, rate });
 }
