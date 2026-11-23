@@ -928,7 +928,8 @@ function handleEvent(e) {
     case 'burstMode':
       if (p === me) {
         audio.play('zoom', { volume: 0.4 });
-        alertMsg = { html: `<span class="alert">${e.on ? 'SWITCHED TO BURST-FIRE MODE' : 'SWITCHED TO SEMI-AUTOMATIC'}</span>`, until: performance.now() + 1500 };
+        const off = WEAPONS[e.weapon]?.auto ? 'SWITCHED TO FULL AUTO' : 'SWITCHED TO SEMI-AUTOMATIC';
+        alertMsg = { html: `<span class="alert">${e.on ? 'SWITCHED TO BURST-FIRE MODE' : off}</span>`, until: performance.now() + 1500 };
       }
       break;
     case 'nadeExplode': {
@@ -1312,6 +1313,8 @@ function updateView(dt, alpha) {
   if (Math.abs(smokeK - smokeShown) > 0.01) { smokeShown = smokeK; smokeEl.style.opacity = smokeK.toFixed(2); }
   const blindK = me?.alive && mode !== 'menu' ? blindLevel(me, game.time) : 0;
   if (Math.abs(blindK - flashShown) > 0.005 || (blindK === 0 && flashShown !== 0)) { flashShown = blindK; flashEl.style.opacity = blindK.toFixed(3); }
+  const aw = me?.weapons[me.active], adef = aw && WEAPONS[aw.id];
+  touch?.setAltLabel(adef?.burst ? (aw.burst ? 'BURST' : adef.auto ? 'AUTO' : 'SEMI') : adef?.melee ? 'STAB' : 'SCOPE');
   touch?.setHasNade(!!me?.alive && NADE_SLOTS.some((s) => me.weapons[s]?.clip > 0));
 
   // Viewmodel.
