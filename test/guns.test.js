@@ -53,6 +53,8 @@ test('Glock-18 and FAMAS switch between their normal mode and a three-round burs
     const before = w.clip;
     tick({ fire: true }); for (let i = 0; i < 40; i++) tick();
     assert.equal(before - w.clip, 3, `${id} fires three rounds per click`);
+    const shots = events.filter((e) => e.type === 'shot');
+    assert.ok(shots.length >= 3 && shots.slice(-3).every((e) => e.burst), 'burst shots are marked for their own sound');
     tick({ alt: true }); tick();
     assert.equal(w.burst, false, `${id} back to its normal mode`);
   }

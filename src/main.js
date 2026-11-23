@@ -780,10 +780,12 @@ function handleEvent(e) {
       const sniper = def.accuracy.type === 'sniper' || def.accuracy.type === 'autosniper';
       const vol = def.silenced ? 0.3 : sniper ? 0.55 : def.pellets || def.id === 'deagle' ? 0.5 : 0.42;
       const range = def.silenced ? 20 : undefined;
+      // The Glock has its own sound in burst mode.
+      const snd = e.burst && def.id === 'glock18' ? 'shot_glock18_burst' : 'shot_' + def.id;
       let muzzle;
       if (isFirstPerson(p)) {
         view.viewModel.fire(def.pellets ? 1.6 : sniper || def.id === 'deagle' ? 1.4 : 1, { side: e.side ?? 0, flash: !def.silenced });
-        audio.play('shot_' + def.id, { volume: vol });
+        audio.play(snd, { volume: vol });
         view.camera.updateMatrixWorld();
         muzzle = viewToWorld(view.viewModel.muzzleView(_v));
         const ej = viewToWorld(view.viewModel.ejectView(_v2));
@@ -799,7 +801,7 @@ function handleEvent(e) {
         v.man.kick = 1;
         muzzle = v.man.muzzleWorld(_v);
         if (!def.silenced) view.effects.muzzleFlash(muzzle, _v2.set(e.dir[0], e.dir[1], e.dir[2]));
-        audio.play('shot_' + def.id, { pos: e.origin, volume: vol, range });
+        audio.play(snd, { pos: e.origin, volume: vol, range });
       }
       const tracerChance = def.pellets ? 0.35 : isFirstPerson(p) ? 0.5 : 0.8;
       for (const end of e.ends) {
