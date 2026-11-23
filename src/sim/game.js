@@ -1047,7 +1047,7 @@ export class Game {
       id: this.nextNadeId++, owner: p.id, team: p.team, weapon: def.id,
       pos, prevPos: [...pos],
       vel: [dir[0] * speed + p.vel[0], dir[1] * speed + p.vel[1], dir[2] * speed + p.vel[2]],
-      explodeAt: t + NADE_FUSE, rest: false, lastBounce: -1,
+      explodeAt: t + (g.fuse ?? NADE_FUSE), rest: false, lastBounce: -1,
     });
     w.clip--;
     p.nadePin = 0;

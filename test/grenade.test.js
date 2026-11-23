@@ -68,7 +68,10 @@ test('hold fire to pull the pin, let go to throw; it goes off after the fuse and
   assert.ok(n.pos[2] < start[2] - 5, `it flies forward (${n.pos})`);
   assert.equal(a.active, 'primary', 'the AK is back in your hands');
   assert.equal(a.weapons.grenade, null);
-  for (let i = 0; i < NADE_FUSE / TICK_DT; i++) tick(look(a));
+  // 2 s fuse from the throw (0.6 s have passed): not yet at 1.3 s...
+  for (let i = 0; i < 0.7 / TICK_DT; i++) tick(look(a));
+  assert.ok(!evs.some((e) => e.type === 'nadeExplode'), 'still ticking 1.3 s after the throw');
+  for (let i = 0; i < 0.8 / TICK_DT; i++) tick(look(a));
   assert.ok(evs.some((e) => e.type === 'nadeExplode'), 'it exploded');
   assert.equal(g.nades.length, 0);
 });
@@ -90,7 +93,7 @@ test('a lob goes about half as far as a full throw', () => {
   assert.ok(lob < full * 0.75 && lob > 1, `lob ${lob.toFixed(1)} m vs throw ${full.toFixed(1)} m`);
 });
 
-test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past the 13 m radius', () => {
+test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past the 17.5 m radius', () => {
   const { g, a, b } = setup();
   put(b, 0, 10);
   blast(g, a, 0, 10.5);
@@ -114,7 +117,7 @@ test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past the 13 m radi
 
   const f = setup();
   put(f.b, 0, 10);
-  blast(f.g, f.a, 0, 10 + 14);
+  blast(f.g, f.a, 0, 10 + 18);
   assert.equal(f.b.health, 100, 'out of range');
 });
 
@@ -191,6 +194,8 @@ test('the grenade costs and does what CS 1.6 says', () => {
   const he = WEAPONS.hegrenade;
   assert.equal(he.price, 300);
   assert.equal(he.damage, 100);
-  assert.equal(he.grenade.radius, 525);
+  assert.equal(he.grenade.radius, 700);
+  assert.equal(he.grenade.fuse, 2);
+  assert.equal(WEAPONS.flashbang.grenade.fuse ?? NADE_FUSE, 1.5);
   assert.equal(he.slot, 'grenade');
 });

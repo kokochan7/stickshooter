@@ -370,15 +370,17 @@ W.knife = {
 
 // CS 1.6 HE grenade. Bought from the Equipment page, carried in its own slot
 // (key 4), one at a time. Damage is 100 at the blast, falling off linearly
-// to nothing at 525 units (13 m, 1.5x CS's 350 at Kenny's request); kevlar
+// to nothing at 700 units (17.5 m, 2x CS's 350 at Kenny's request); kevlar
 // halves it like any chest hit. Thrown harder than CS too (1000 u/s max). It
 // doesn't go through walls: you have to be in line of sight of the blast.
+// The fuse is 2 s from the throw (CS's is 1.5 s), so it can land and roll
+// before it goes off; Kenny found 1.5 s too quick.
 W.hegrenade = {
   name: 'HE Grenade', slot: 'grenade', category: 'Grenades', price: 300,
   damage: 100, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
   cycle: 0.5, auto: false, clip: 1, reserve: 0, deploy: 0.6, speed: 250,
   accuracy: { type: 'none' }, kick: { punch: [0, 0] },
-  grenade: { kind: 'he', radius: 525, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
+  grenade: { kind: 'he', radius: 700, fuse: 2, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
 };
 
 // CS 1.6 flashbang ($200, carry two). Goes off 1.5 s after the throw and
