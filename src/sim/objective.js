@@ -22,6 +22,14 @@ export function objectiveFor(mode, map) {
   return mode === 'teams' && OBJECTIVES.includes(map.type) ? map.type : null;
 }
 
+// Seconds until the planted bomb beeps again, given seconds left on its timer.
+// One beep at a time, like CS 1.6: about every 1.4 s right after the plant,
+// then faster and faster, down to rapid-fire beeping in the last second or so.
+export function bombBeepInterval(left) {
+  const f = Math.max(0, Math.min(1, left / BOMB_TIMER));
+  return 0.07 + 1.33 * f ** 0.9;
+}
+
 function inRect(r, x, z, pad = 0) {
   return x >= r.min[0] - pad && x <= r.max[0] + pad && z >= r.min[1] - pad && z <= r.max[1] + pad;
 }
