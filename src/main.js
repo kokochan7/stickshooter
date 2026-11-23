@@ -936,8 +936,8 @@ function handleEvent(e) {
       view.effects.explosion(e.pos, e.water);
       if (me?.alive) {
         const d = Math.hypot(me.pos[0] - e.pos[0], me.pos[1] + 1 - e.pos[1], me.pos[2] - e.pos[2]);
-        shakeP += Math.max(0, 0.09 - d * 0.006) * (Math.random() < 0.5 ? 1 : -1);
-        shakeY += Math.max(0, 0.05 - d * 0.004) * (Math.random() - 0.5);
+        shakeP += Math.max(0, 0.12 - d * 0.005) * (Math.random() < 0.5 ? 1 : -1);
+        shakeY += Math.max(0, 0.07 - d * 0.0035) * (Math.random() - 0.5);
       }
       break;
     }

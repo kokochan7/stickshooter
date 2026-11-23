@@ -15,12 +15,13 @@ export const DEFAULT_SETTINGS = {
   music: 0.5,
   musicMuted: false,
   // Crosshair, CS 1.6 style. Lengths are in screen pixels.
-  chSize: 8,
+  // Green (style.css), length 9, gap 3, thickness 2, dot, outline, static.
+  chSize: 9,
   chGap: 3,
   chThick: 2,
-  chDot: false,
+  chDot: true,
   chOutline: true,
-  chDynamic: true,
+  chDynamic: false,
   antialias: true,
   showFps: true,
   bots: 0,
@@ -32,8 +33,11 @@ export const DEFAULT_SETTINGS = {
   touchSens: 1, // look speed for touch controls
   mode: 'ffa', // 'ffa' or 'teams', for practice and online
   map: 'yard', // see src/maps/index.js
-  version: 7,
+  version: 8,
 };
+
+// The crosshair defaults before v8, for moving untouched saves to the new ones.
+const OLD_CROSSHAIR = { chSize: 8, chGap: 3, chThick: 2, chDot: false, chOutline: true, chDynamic: true };
 
 // Sensitivity uses CS units (0.022 degrees per mouse count per point).
 export const SENS_RANGE = [0.5, 10];
@@ -59,6 +63,13 @@ export function loadSettings() {
     delete saved.hudScale;
     delete saved.renderScale;
     delete saved.invertY;
+    // v8 changed the default crosshair (length 9, center dot, not dynamic).
+    // Saves store every setting, so a crosshair still exactly on the old
+    // defaults was never changed: give it the new ones. A crosshair the
+    // player adjusted in any way is kept.
+    if ((saved.version ?? 1) < 8 && Object.entries(OLD_CROSSHAIR).every(([k, v]) => saved[k] === undefined || saved[k] === v)) {
+      for (const k of Object.keys(OLD_CROSSHAIR)) delete saved[k];
+    }
     const s = { ...DEFAULT_SETTINGS, ...saved, version: DEFAULT_SETTINGS.version };
     s.sensitivity = clamp(+s.sensitivity || DEFAULT_SETTINGS.sensitivity, ...SENS_RANGE);
     s.fov = clamp(+s.fov || DEFAULT_SETTINGS.fov, ...FOV_RANGE);

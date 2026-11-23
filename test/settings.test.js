@@ -62,3 +62,26 @@ test('custom crouch/walk keys are kept, and a moved key never doubles up', () =>
   b = loadSettings().binds;
   assert.deepEqual([b.duck, b.walk], ['ControlLeft', 'ShiftLeft']);
 });
+
+test('the default crosshair: length 9, gap 3, thickness 2, dot, outline, not dynamic', () => {
+  store.clear();
+  const s = loadSettings();
+  assert.deepEqual([s.chSize, s.chGap, s.chThick, s.chDot, s.chOutline, s.chDynamic], [9, 3, 2, true, true, false]);
+});
+
+test('a save still on the old default crosshair gets the new one', () => {
+  store.set(KEY, JSON.stringify({ version: 7, chSize: 8, chGap: 3, chThick: 2, chDot: false, chOutline: true, chDynamic: true, fov: 70 }));
+  const s = loadSettings();
+  assert.deepEqual([s.chSize, s.chGap, s.chThick, s.chDot, s.chOutline, s.chDynamic], [9, 3, 2, true, true, false]);
+  assert.equal(s.fov, 70);
+});
+
+test('a crosshair the player changed is kept', () => {
+  store.set(KEY, JSON.stringify({ version: 7, chSize: 12, chGap: 3, chThick: 2, chDot: false, chOutline: true, chDynamic: true }));
+  let s = loadSettings();
+  assert.deepEqual([s.chSize, s.chDot, s.chDynamic], [12, false, true]);
+  // Picked after v8: left alone even if it matches the old defaults.
+  store.set(KEY, JSON.stringify({ version: 8, chSize: 8, chGap: 3, chThick: 2, chDot: false, chOutline: true, chDynamic: true }));
+  s = loadSettings();
+  assert.deepEqual([s.chSize, s.chDot, s.chDynamic], [8, false, true]);
+});

@@ -48,18 +48,19 @@ const MAX_TRACERS = 48;
 const MAX_HOLES = 160;
 const MAX_SHELLS = 48;
 const MAX_FLASHES = 12;
-const SMOKE_PUFFS = 22;
+const SMOKE_PUFFS = 30;
 const MAX_SMOKE = SMOKE_PUFFS * 16;
+const MAX_BLAST = 128; // fireball and smoke billboards for HE blasts
 
-// A soft, lumpy round puff for the smoke clouds.
-function puffTexture() {
+// A soft, lumpy round puff for the smoke clouds (and HE fireballs).
+function puffTexture(density = 0.45) {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d');
   for (let i = 0; i < 7; i++) {
     const x = 20 + Math.random() * 24, y = 20 + Math.random() * 24, r = 14 + Math.random() * 14;
     const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(0, `rgba(255,255,255,${density})`);
     grad.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = grad;
     g.fillRect(0, 0, 64, 64);
@@ -85,7 +86,7 @@ function makeSmokeMesh() {
   add('iPos', pos, 3); add('iSize', size, 1); add('iAlpha', alpha, 1); add('iShade', shade, 1); add('iRot', rot, 1);
   geo.instanceCount = 0;
   const mat = new THREE.ShaderMaterial({
-    uniforms: { map: { value: puffTexture() } },
+    uniforms: { map: { value: puffTexture(0.7) } },
     vertexShader: `
       attribute vec3 iPos; attribute float iSize; attribute float iAlpha; attribute float iShade; attribute float iRot;
       varying vec2 vUv; varying float vA; varying float vShade;
@@ -113,6 +114,96 @@ function makeSmokeMesh() {
   mesh.visible = false;
   mesh.renderOrder = 2;
   return { mesh, pos, size, alpha, shade, rot };
+}
+
+// Camera-facing colored puffs in one instanced draw call: the HE flash
+// (additive, so it glows), and the fireball and dark smoke (normal blending,
+// so they read against a bright sky too).
+function makeBillboards(max, additive, map = additive ? dotTexture() : puffTexture(0.75)) {
+  const quad = new THREE.PlaneGeometry(1, 1);
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.index = quad.index;
+  geo.setAttribute('position', quad.attributes.position);
+  geo.setAttribute('uv', quad.attributes.uv);
+  const pos = new Float32Array(max * 3), size = new Float32Array(max), col = new Float32Array(max * 4), rot = new Float32Array(max);
+  const add = (name, arr, n) => geo.setAttribute(name, new THREE.InstancedBufferAttribute(arr, n).setUsage(THREE.DynamicDrawUsage));
+  add('iPos', pos, 3); add('iSize', size, 1); add('iCol', col, 4); add('iRot', rot, 1);
+  geo.instanceCount = 0;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { map: { value: map } },
+    vertexShader: `
+      attribute vec3 iPos; attribute float iSize; attribute vec4 iCol; attribute float iRot;
+      varying vec2 vUv; varying vec4 vCol;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(iPos, 1.0);
+        float c = cos(iRot), s = sin(iRot);
+        mv.xy += mat2(c, s, -s, c) * position.xy * iSize;
+        vCol = iCol;
+        vCol.a *= clamp((-mv.z - 0.3) / 1.2, 0.0, 1.0);
+        vUv = uv;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform sampler2D map; varying vec2 vUv; varying vec4 vCol;
+      void main() {
+        float a = texture2D(map, vUv).a * vCol.a;
+        if (a < 0.01) discard;
+        gl_FragColor = vec4(vCol.rgb, a);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  mesh.renderOrder = additive ? 3 : 2;
+  const list = Array.from({ length: max }, () => ({
+    life: 0, max: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, s0: 1, s1: 1, rot: 0, spin: 0, c0: [1, 1, 1], c1: [1, 1, 1], a: 1, fadeIn: 0,
+  }));
+  return { mesh, pos, size, col, rot, list, next: 0, live: 0 };
+}
+
+// Spawn one billboard: it grows from size s0 to s1 and shifts color from c0
+// to c1 over its life, fading out at the end (and in over fadeIn seconds).
+function billboard(b, x, y, z, vx, vy, vz, life, s0, s1, c0, c1, a, fadeIn = 0) {
+  const p = b.list[b.next];
+  b.next = (b.next + 1) % b.list.length;
+  p.x = x; p.y = y; p.z = z; p.vx = vx; p.vy = vy; p.vz = vz;
+  p.life = p.max = life; p.s0 = s0; p.s1 = s1; p.c0 = c0; p.c1 = c1; p.a = a; p.fadeIn = fadeIn;
+  p.rot = Math.random() * 6.28; p.spin = (Math.random() - 0.5) * 1.2;
+  b.live = b.list.length; // the update counts the real number
+}
+
+function updateBillboards(b, dt) {
+  if (!b.live) return;
+  let n = 0;
+  const { pos, size, col, rot } = b;
+  for (const p of b.list) {
+    if (p.life <= 0) continue;
+    p.life -= dt;
+    if (p.life <= 0) continue;
+    const drag = Math.max(0, 1 - dt * 3);
+    p.vx *= drag; p.vy *= drag; p.vz *= drag;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    p.rot += p.spin * dt;
+    const k = 1 - p.life / p.max; // 0 -> 1 over its life
+    const age = p.max - p.life;
+    const e = 1 - (1 - k) * (1 - k); // grows fast, then slows
+    pos[n * 3] = p.x; pos[n * 3 + 1] = p.y; pos[n * 3 + 2] = p.z;
+    size[n] = p.s0 + (p.s1 - p.s0) * e;
+    col[n * 4] = p.c0[0] + (p.c1[0] - p.c0[0]) * k;
+    col[n * 4 + 1] = p.c0[1] + (p.c1[1] - p.c0[1]) * k;
+    col[n * 4 + 2] = p.c0[2] + (p.c1[2] - p.c0[2]) * k;
+    col[n * 4 + 3] = p.a * Math.min(1, (1 - k) * 2.5) * (p.fadeIn > 0 ? Math.min(1, age / p.fadeIn) : 1);
+    rot[n] = p.rot;
+    n++;
+  }
+  b.live = n;
+  const g = b.mesh.geometry;
+  g.instanceCount = n;
+  b.mesh.visible = n > 0;
+  for (const k of ['iPos', 'iSize', 'iCol', 'iRot']) g.attributes[k].needsUpdate = true;
 }
 
 export class Effects {
@@ -219,6 +310,13 @@ export class Effects {
     // draw call.
     this.smoke = makeSmokeMesh();
     scene.add(this.smoke.mesh);
+
+    // HE blasts: a glow, an orange fireball and the dark smoke after it.
+    this.fire = makeBillboards(16, true);
+    this.flame = makeBillboards(MAX_BLAST, false, puffTexture(0.95));
+    this.flame.mesh.renderOrder = 3;
+    this.blastSmoke = makeBillboards(MAX_BLAST, false);
+    scene.add(this.fire.mesh, this.flame.mesh, this.blastSmoke.mesh);
   }
 
   // Draw the smoke clouds. amount(s): how much of cloud s is there, 0..1.
@@ -238,8 +336,9 @@ export class Effects {
         pos[n * 3 + 1] = s.pos[1] + 0.3 + h * height * 0.75 * Math.min(1, 0.4 + k) + age * 0.01;
         pos[n * 3 + 2] = s.pos[2] + Math.sin(a + age * 0.02) * d * r;
         size[n] = r * (0.9 + rnd() * 0.6);
-        alpha[n] = 0.8 * k;
-        shade[n] = 0.6 + rnd() * 0.16;
+        // Thick, dark grey like CS 1.6's smoke.
+        alpha[n] = 0.97 * Math.min(1, k * 1.3);
+        shade[n] = 0.34 + rnd() * 0.12;
         rot[n] = rnd() * 6.28 + age * (rnd() - 0.5) * 0.15;
       }
     }
@@ -302,43 +401,51 @@ export class Effects {
     }
   }
 
-  // HE grenade going off: a hot flash, a ball of fire, sparks and debris
-  // thrown out, then grey smoke rolling up. Under water it's a burst of
+  // HE grenade going off, CS 1.6 style: a blinding flash, a big orange
+  // fireball rolling up, sparks and debris flying out, a column of dark
+  // smoke and a scorch mark on the floor. Under water it's a burst of
   // bubbles and spray instead of fire.
   explosion(pos, water = false) {
     const [x, y, z] = pos;
     const R = Math.random;
     if (water) {
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 50; i++) {
         const a = R() * Math.PI * 2, s = 1 + R() * 4;
-        this.spawnParticle(x + (R() - 0.5) * 0.8, y + R() * 0.5, z + (R() - 0.5) * 0.8,
-          Math.cos(a) * s * 0.5, 2 + R() * 7, Math.sin(a) * s * 0.5, [0.85, 0.93, 1], 0.6 + R() * 0.6, 0.08 + R() * 0.1, 1.2, 0.3);
+        this.spawnParticle(x + (R() - 0.5) * 1.2, y + R() * 0.5, z + (R() - 0.5) * 1.2,
+          Math.cos(a) * s * 0.6, 3 + R() * 9, Math.sin(a) * s * 0.6, [0.85, 0.93, 1], 0.7 + R() * 0.7, 0.1 + R() * 0.12, 1.2, 0.4);
       }
       return;
     }
-    // Flash.
-    this.spawnParticle(x, y + 0.3, z, 0, 0, 0, [1, 0.97, 0.85], 0.12, 2.6, 0, 1.5);
-    // Fireball.
-    for (let i = 0; i < 26; i++) {
-      const a = R() * Math.PI * 2, e = R() * 1.2, s = 2 + R() * 5;
-      const hot = R();
-      this.spawnParticle(x, y + 0.2, z, Math.cos(a) * Math.cos(e) * s, Math.sin(e) * s + 1, Math.sin(a) * Math.cos(e) * s,
-        [1, 0.55 + hot * 0.4, 0.15 + hot * 0.25], 0.25 + R() * 0.25, 0.35 + R() * 0.4, -0.2, 0.8);
+    const F = this.fire, L = this.flame, S = this.blastSmoke;
+    // Flash: a wide warm glow that lights up everything around it for a moment.
+    billboard(F, x, y + 0.6, z, 0, 0, 0, 0.2, 6, 10, [0.9, 0.6, 0.25], [0.5, 0.2, 0.05], 0.55);
+    billboard(F, x, y + 0.6, z, 0, 0, 0, 0.1, 2.5, 4, [1, 0.9, 0.6], [1, 0.6, 0.2], 0.8);
+    // Fireball: puffs of flame thrown out and up, yellow cooling through
+    // orange to dark red, then gone into the smoke.
+    for (let i = 0; i < 16; i++) {
+      const a = R() * Math.PI * 2, e = R() * 1.1, s = 1.5 + R() * 3.5;
+      const h = R();
+      billboard(L, x + (R() - 0.5) * 0.8, y + 0.4 + R() * 0.8, z + (R() - 0.5) * 0.8,
+        Math.cos(a) * Math.cos(e) * s, Math.sin(e) * s + 2, Math.sin(a) * Math.cos(e) * s,
+        0.5 + R() * 0.45, 1.1 + R() * 0.7, 2.8 + R() * 2, [1, 0.72 + h * 0.2, 0.2 + h * 0.25], [0.45, 0.1, 0.03], 0.9);
     }
     // Sparks and debris.
-    for (let i = 0; i < 30; i++) {
-      const a = R() * Math.PI * 2, s = 5 + R() * 9;
-      const spark = i % 2 === 0;
-      this.spawnParticle(x, y + 0.1, z, Math.cos(a) * s, 2 + R() * 7, Math.sin(a) * s,
-        spark ? [1, 0.8, 0.35] : [0.3, 0.27, 0.24], 0.5 + R() * 0.6, spark ? 0.03 : 0.045, 1.6);
+    for (let i = 0; i < 44; i++) {
+      const a = R() * Math.PI * 2, s = 6 + R() * 12;
+      const spark = i % 3 !== 0;
+      this.spawnParticle(x, y + 0.2, z, Math.cos(a) * s, 3 + R() * 9, Math.sin(a) * s,
+        spark ? [1, 0.8, 0.35] : [0.25, 0.22, 0.2], 0.6 + R() * 0.7, spark ? 0.04 : 0.06, 1.6);
     }
-    // Smoke.
-    for (let i = 0; i < 22; i++) {
-      const a = R() * Math.PI * 2, s = 0.5 + R() * 2;
-      const g = 0.35 + R() * 0.25;
-      this.spawnParticle(x + Math.cos(a) * R() * 1.2, y + 0.3 + R() * 1.2, z + Math.sin(a) * R() * 1.2,
-        Math.cos(a) * s, 0.6 + R() * 1.4, Math.sin(a) * s, [g, g, g * 0.97], 1.4 + R() * 1.2, 0.5 + R() * 0.4, -0.04, 1.6);
+    // Dark smoke billowing up after the fire.
+    for (let i = 0; i < 16; i++) {
+      const a = R() * Math.PI * 2, d = R() * 1.6, g = 0.16 + R() * 0.14;
+      billboard(S, x + Math.cos(a) * d, y + 0.5 + R() * 1.5, z + Math.sin(a) * d,
+        Math.cos(a) * (0.5 + R() * 1.5), 1.2 + R() * 1.8, Math.sin(a) * (0.5 + R() * 1.5),
+        2.6 + R() * 2, 1.6 + R(), 4.5 + R() * 2.5, [g, g, g], [g + 0.2, g + 0.2, g + 0.19], 0.55, 0.15 + R() * 0.25);
     }
+    // Scorch mark on whatever is just below.
+    const h = this.world.raycast?.(x, y + 0.3, z, 0, -1, 0, 1.2);
+    if (h && h.normal[1] > 0.7) this.addHole([x, y + 0.3 - h.t, z], h.normal, 'scorch', 2.6);
   }
 
   // Flashbang going off: a white-hot pop and a few sparks, no fire.
@@ -369,7 +476,7 @@ export class Effects {
     }
   }
 
-  addHole(pos, normal, material) {
+  addHole(pos, normal, material, size = material === 'metal' ? 0.05 : 0.07) {
     const i = this.hNext;
     this.hNext = (this.hNext + 1) % MAX_HOLES;
     this.holes.count = Math.max(this.holes.count, i + 1);
@@ -377,7 +484,6 @@ export class Effects {
     this._q.setFromUnitVectors(this._z, n);
     const rq = new THREE.Quaternion().setFromAxisAngle(this._z, Math.random() * Math.PI * 2);
     this._q.multiply(rq);
-    const size = material === 'metal' ? 0.05 : 0.07;
     this._s.set(size, size, size);
     this._v.set(pos[0] + n.x * 0.004, pos[1] + n.y * 0.004, pos[2] + n.z * 0.004);
     this._m.compose(this._v, this._q, this._s);
@@ -487,5 +593,9 @@ export class Effects {
       this.shellMesh.setMatrixAt(i, this._m);
     }
     this.shellMesh.instanceMatrix.needsUpdate = true;
+
+    updateBillboards(this.fire, dt);
+    updateBillboards(this.flame, dt);
+    updateBillboards(this.blastSmoke, dt);
   }
 }

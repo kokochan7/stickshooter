@@ -147,7 +147,8 @@ export const FLOAT_EYE = 0.12; // eyes this far above the surface when floating
 export const BUOYANCY = 9; // m/s^2 pulling you up to the surface
 export const SWIM_PITCH_DEADZONE = 22; // degrees of look up/down that still swims level
 export const WATER_JUMP_TIME = 0.6;
-// HE grenade (CS 1.6 wpn_hegrenade / ggrenade.cpp): 1.5 s fuse, 100 damage
+// Grenades (CS 1.6 wpn_hegrenade / ggrenade.cpp): 1.5 s fuse unless the
+// grenade sets its own (the HE's is longer, see weapons.js), 100 damage
 // falling off to 0 at the radius in weapons.js, low gravity, bounces off walls. Hold fire
 // to pull the pin, let go to throw; Mouse 2 lobs it underhand.
 export const NADE_FUSE = 1.5;
