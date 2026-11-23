@@ -29,3 +29,31 @@ test('gun models build with shine and stay light', () => {
     assert.ok(full.muzzle.z < 0, `${id} muzzle points forward`);
   }
 });
+
+test('Glock-18 and FAMAS switch between their normal mode and a three-round burst', async () => {
+  const { Game, emptyCmd } = await import('../src/sim/game.js');
+  const { YARD } = await import('../src/maps/yard.js');
+  for (const [id, team] of [['glock18', 'red'], ['famas', 'blue']]) {
+    const g = new Game(YARD, { seed: 1, mode: 'teams' });
+    const a = g.addPlayer({ name: 'A', team });
+    g.spawn(a);
+    const events = [];
+    const emit = g.emit.bind(g);
+    g.emit = (e) => { events.push(e); emit(e); };
+    const tick = (c = {}) => g.tick(new Map([[a.id, { ...emptyCmd(), yaw: a.yaw, pitch: a.pitch, ...c }]]));
+    for (let i = 0; i < 400; i++) tick();
+    a.money = 16000;
+    g.buy(a, id, true);
+    for (let i = 0; i < 200; i++) tick();
+    const w = a.weapons[a.active];
+    assert.equal(w.id, id);
+    tick({ alt: true }); tick();
+    assert.equal(w.burst, true, `${id} burst on`);
+    assert.ok(events.some((e) => e.type === 'burstMode' && e.on && e.weapon === id));
+    const before = w.clip;
+    tick({ fire: true }); for (let i = 0; i < 40; i++) tick();
+    assert.equal(before - w.clip, 3, `${id} fires three rounds per click`);
+    tick({ alt: true }); tick();
+    assert.equal(w.burst, false, `${id} back to its normal mode`);
+  }
+});

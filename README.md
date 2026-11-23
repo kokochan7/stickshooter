@@ -95,7 +95,7 @@ and cover to fight around.
 | --- | --- |
 | WASD | Move |
 | Mouse | Aim |
-| Mouse 1 / Mouse 2 | Fire / scope (AWP) |
+| Mouse 1 / Mouse 2 | Fire / scope, or switch the Glock-18 and FAMAS to 3-round burst (SCOPE button on phones) |
 | Space | Jump |
 | Ctrl or C | Crouch |
 | Shift | Walk (silent, more accurate) |

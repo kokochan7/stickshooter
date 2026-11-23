@@ -282,7 +282,8 @@ export class Hud {
     $('helmet').style.display = p.helmet ? '' : 'none';
     $('health').parentElement.classList.toggle('low', p.health <= 25);
     if (def && w) {
-      this.set('weapon-name', def.name);
+      // Burst guns show their fire mode next to the name.
+      this.set('weapon-name', def.burst ? `${def.name} · ${w?.burst ? 'BURST' : def.auto ? 'AUTO' : 'SEMI'}` : def.name);
       this.set('clip', String(w.clip));
       this.set('reserve', String(w.reserve));
       $('clip').classList.toggle('low', !def.grenade && w.clip <= Math.ceil(def.clip * 0.2));
@@ -735,7 +736,7 @@ export class BuyMenu {
         ['Throw', 'Hold fire to pull the pin, let go to throw. Mouse 2 lobs it.']);
       return `<div class="buy-pic"><img src="${this.icons[id]}" alt=""></div>${statsHtml(kv)}`;
     }
-    const mode = w.bolt ? 'Bolt action' : w.burst ? 'Semi-auto, Mouse 2 for 3-round burst'
+    const mode = w.bolt ? 'Bolt action' : w.burst ? `${w.auto ? 'Automatic' : 'Semi-auto'}, Mouse 2 for 3-round burst`
       : w.pellets ? (w.cycle > 0.5 ? 'Pump action' : 'Semi-automatic') : w.auto ? 'Automatic' : 'Semi-automatic';
     const kv = [
       ['Price', `$${w.price}${st.owned ? ' (owned, buy again to refill ammo)' : ''}`],

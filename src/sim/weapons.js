@@ -206,6 +206,9 @@ W.famas = {
   cycle: 0.0825, auto: true, clip: 25, reserve: 90, reload: 3.3, deploy: 0.75, speed: 240,
   accuracy: { type: 'rifle', pow: 3, div: 215, offset: 0.3, max: 1 },
   spread: { air: [0.03, 0.3], run: [0.03, 0.07], duck: [0, 0.02], stand: [0, 0.02] },
+  // Mouse 2 toggles a three-round burst like CS 1.6 (WPNSTATE_FAMAS_BURST_MODE):
+  // 0.05 s between the rounds, 0.55 s before the next burst, and +0.01 spread.
+  burst: { shots: 3, gap: 0.05, cycle: 0.55, spread: { air: [0.04, 0.3], run: [0.04, 0.07], duck: [0.01, 0.02], stand: [0.01, 0.02] } },
   kick: {
     air: [1.25, 0.45, 0.22, 0.18, 5.5, 4, 5],
     run: [1, 0.45, 0.275, 0.05, 4, 2.5, 7],

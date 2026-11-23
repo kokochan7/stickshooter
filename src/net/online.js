@@ -19,7 +19,7 @@ import { emptyWeapons } from '../sim/game.js';
 const PING_EVERY = 2000;
 // Our own events the browser predicts. The server's copies are dropped when
 // they match one we already showed.
-const PREDICTED = new Set(['shot', 'dry', 'deploy', 'reload', 'reloaded', 'shell', 'zoom']);
+const PREDICTED = new Set(['shot', 'dry', 'deploy', 'reload', 'reloaded', 'shell', 'zoom', 'burstMode']);
 // A prediction the server hasn't confirmed after this long never will be.
 const PREDICT_EXPIRE = 1500;
 

@@ -194,6 +194,14 @@ export class TouchControls {
     if (id === 'duck') this.el.querySelector('.t-duck').classList.toggle('lit', t.duck);
   }
 
+  // The SCOPE button switches fire mode on the Glock and FAMAS, so it shows
+  // the mode those guns are in.
+  setAltLabel(label) {
+    if (this._altLabel === label) return;
+    this._altLabel = label;
+    this.el.querySelector('.t-alt').textContent = label;
+  }
+
   // Dim the NADE button when you have no grenade.
   setHasNade(has) {
     if (this._hasNade === has) return;

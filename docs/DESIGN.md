@@ -228,7 +228,7 @@ time per shell.
 | P90 | SMG | $2,350 | 21 | 50 / 100 | 909 | Auto | 3.4 | 0.75 | 245 |
 | Shotgun | Shotgun | $1,700 | 9 × 20 | 8 / 32 | 69 | Hold | 0.45 + 0.45/shell | 0.75 | 230 |
 | Auto Shotgun | Shotgun | $3,000 | 6 × 20 | 7 / 32 | 240 | Auto | 0.45 + 0.3/shell | 0.75 | 240 |
-| FAMAS | Rifle | $2,250 | 30 | 25 / 90 | 727 | Auto | 3.3 | 0.75 | 240 |
+| FAMAS | Rifle | $2,250 | 30 | 25 / 90 | 727 | Auto, Mouse 2 for 3-round burst | 3.3 | 0.75 | 240 |
 | AK47 | Rifle | $2,500 | 36 | 30 / 90 | 628 | Auto | 2.45 | 0.75 | 221 |
 | M4A1 | Rifle | $3,100 | 33 | 30 / 90 | 686 | Auto | 3.05 | 0.75 | 230 |
 | AWP | Sniper | $4,750 | 115 | 10 / 30 | 41 | Hold | 2.5 | 1.1 | 210 (150 scoped) |
@@ -853,7 +853,7 @@ Screen" right away.
   a mix of wallbang materials. Ideas: a rooftop map with long AWP sightlines,
   a small indoor map for SMGs and shotguns, a dust-style three-lane map for
   round mode.
-- **Weapons:** every CS 1.6 gun and grenade has shipped. FAMAS burst fire is still to do.
+- **Weapons:** every CS 1.6 gun and grenade has shipped, including the Glock-18 and FAMAS burst modes.
 - **Settings:** quality presets. (Key rebinding, crosshair editor,
   sensitivity, FOV and volume shipped in PRs #5 and #6.)
 

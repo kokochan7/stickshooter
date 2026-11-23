@@ -933,12 +933,12 @@ export class Game {
       this.emit({ type: 'reload', pid: p.id, weapon: def.id, duration: def.shellReload ? def.shellReload.start + def.shellReload.each * (def.clip - w.clip) : def.reload });
     }
 
-    // Scope, or the Glock's burst switch.
+    // Scope, or the Glock and FAMAS burst switch.
     const altPressed = cmd.alt && !p.altHeld;
     p.altHeld = !!cmd.alt;
     if (def.burst && altPressed && t >= p.deployEnd) {
       w.burst = !w.burst;
-      this.emit({ type: 'burstMode', pid: p.id, on: w.burst });
+      this.emit({ type: 'burstMode', pid: p.id, weapon: def.id, on: w.burst });
     }
     if (def.zoomLevels && altPressed && !p.reloading && t >= p.deployEnd) {
       p.zoom = (p.zoom + 1) % (def.zoomLevels.length + 1);
@@ -1386,7 +1386,8 @@ export class Game {
     const acc = def.accuracy;
     if (def.pellets) return def.pelletSpread;
     if (acc.type === 'rifle') {
-      const s = def.spread[state];
+      const w = p.weapons[p.active];
+      const s = (def.burst && w?.burst ? def.burst.spread : def.spread)[state];
       return s[0] + s[1] * this.rifleAccuracy(p, acc);
     }
     if (acc.type === 'pistol') {
