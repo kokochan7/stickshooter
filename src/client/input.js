@@ -7,7 +7,7 @@ const DEG = Math.PI / 180;
 export const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
   jump: 'Space', duck: 'ShiftLeft', walk: 'KeyC',
-  reload: 'KeyR', primary: 'Digit1', secondary: 'Digit2', melee: 'Digit3', grenade: 'Digit4', lastWeapon: 'KeyQ',
+  reload: 'KeyR', primary: 'Digit1', secondary: 'Digit2', melee: 'Digit3', grenade: 'Digit4', bomb: 'Digit5', lastWeapon: 'KeyQ',
   drop: 'KeyG', buy: 'KeyB', buyAmmo: 'KeyN', rebuy: 'F1', scores: 'Tab', switchTeam: 'KeyM', use: 'KeyE',
 };
 
@@ -15,7 +15,7 @@ export const DEFAULT_BINDS = {
 export const BIND_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
   jump: 'Jump', duck: 'Crouch', walk: 'Walk',
-  reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', melee: 'Knife / bomb', grenade: 'HE grenade', lastWeapon: 'Last weapon',
+  reload: 'Reload', primary: 'Primary weapon', secondary: 'Pistol', melee: 'Knife', grenade: 'Grenades', bomb: 'Bomb (C4)', lastWeapon: 'Last weapon',
   drop: 'Drop / pick up gun', buy: 'Buy menu', buyAmmo: 'Buy ammo', rebuy: 'Re-buy last purchase', scores: 'Scoreboard', switchTeam: 'Switch team',
   use: 'Use (plant, defuse, hostages, take over a bot)',
 };
@@ -93,6 +93,7 @@ export class Input {
       if (e.code === b.secondary) this.pending.slot = 'secondary';
       if (e.code === b.melee) this.pending.slot = 'melee';
       if (e.code === b.grenade) this.pending.slot = 'nade'; // next grenade you carry
+      if (e.code === b.bomb) this.pending.slot = 'c4';
       if (e.code === b.lastWeapon) this.pending.lastWeapon = true;
       if (e.code === b.jump) this.pending.jump = true;
       this.emit('key', e.code);

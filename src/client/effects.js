@@ -50,7 +50,11 @@ const MAX_SHELLS = 48;
 const MAX_FLASHES = 12;
 const SMOKE_PUFFS = 30;
 const MAX_SMOKE = SMOKE_PUFFS * 16;
-const MAX_BLAST = 128; // fireball and smoke billboards for HE blasts
+const MAX_BLAST = 128; // smoke billboards for HE blasts
+const MAX_FLAME = 224; // fireball billboards: a blast fills its whole damage radius
+const MAX_SCORCH = 6; // HE scorch marks on the floor
+const SCORCH_LIFE = 8; // seconds a scorch mark stays
+const SCORCH_FADE = 1.5; // ... fading out over the last part of that
 
 // A soft, lumpy round puff for the smoke clouds (and HE fireballs).
 function puffTexture(density = 0.45) {
@@ -183,7 +187,7 @@ function updateBillboards(b, dt) {
     if (p.life <= 0) continue;
     p.life -= dt;
     if (p.life <= 0) continue;
-    const drag = Math.max(0, 1 - dt * 3);
+    const drag = Math.exp(-3 * dt); // same slow-down at any frame rate
     p.vx *= drag; p.vy *= drag; p.vz *= drag;
     p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
     p.rot += p.spin * dt;
@@ -312,11 +316,24 @@ export class Effects {
     scene.add(this.smoke.mesh);
 
     // HE blasts: a glow, an orange fireball and the dark smoke after it.
-    this.fire = makeBillboards(16, true);
-    this.flame = makeBillboards(MAX_BLAST, false, puffTexture(0.95));
+    this.fire = makeBillboards(48, true);
+    this.flame = makeBillboards(MAX_FLAME, false, puffTexture(0.95));
     this.flame.mesh.renderOrder = 3;
     this.blastSmoke = makeBillboards(MAX_BLAST, false);
     scene.add(this.fire.mesh, this.flame.mesh, this.blastSmoke.mesh);
+
+    // HE scorch marks: each its own decal so it can fade out on its own.
+    const scorchTex = holeTexture();
+    this.scorches = Array.from({ length: MAX_SCORCH }, () => {
+      const m = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({
+        map: scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+      }));
+      m.visible = false;
+      m.matrixAutoUpdate = false;
+      scene.add(m);
+      return { mesh: m, life: 0 };
+    });
+    this.scNext = 0;
   }
 
   // Draw the smoke clouds. amount(s): how much of cloud s is there, 0..1.
@@ -401,11 +418,12 @@ export class Effects {
     }
   }
 
-  // HE grenade going off, CS 1.6 style: a blinding flash, a big orange
-  // fireball rolling up, sparks and debris flying out, a column of dark
-  // smoke and a scorch mark on the floor. Under water it's a burst of
-  // bubbles and spray instead of fire.
-  explosion(pos, water = false) {
+  // HE grenade going off, CS 1.6 style: a blinding flash, a fireball that
+  // rolls out to the edge of the damage radius (radius, in meters: anyone
+  // the fire reaches can be hurt), sparks and debris, a column of dark smoke
+  // and a scorch mark on the floor that fades after 8 s. The fire stops at
+  // walls, like the damage. Under water it's a burst of bubbles and spray.
+  explosion(pos, water = false, radius = 13) {
     const [x, y, z] = pos;
     const R = Math.random;
     if (water) {
@@ -417,17 +435,43 @@ export class Effects {
       return;
     }
     const F = this.fire, L = this.flame, S = this.blastSmoke;
+    const cy = y + 0.6;
     // Flash: a wide warm glow that lights up everything around it for a moment.
-    billboard(F, x, y + 0.6, z, 0, 0, 0, 0.2, 6, 10, [0.9, 0.6, 0.25], [0.5, 0.2, 0.05], 0.55);
-    billboard(F, x, y + 0.6, z, 0, 0, 0, 0.1, 2.5, 4, [1, 0.9, 0.6], [1, 0.6, 0.2], 0.8);
-    // Fireball: puffs of flame thrown out and up, yellow cooling through
-    // orange to dark red, then gone into the smoke.
-    for (let i = 0; i < 16; i++) {
-      const a = R() * Math.PI * 2, e = R() * 1.1, s = 1.5 + R() * 3.5;
+    billboard(F, x, cy, z, 0, 0, 0, 0.25, radius * 0.6, radius * 1.1, [0.9, 0.6, 0.25], [0.5, 0.2, 0.05], 0.5);
+    billboard(F, x, cy, z, 0, 0, 0, 0.12, 2.5, 5, [1, 0.9, 0.6], [1, 0.6, 0.2], 0.8);
+    // Core: hot yellow puffs right at the grenade.
+    for (let i = 0; i < 14; i++) {
       const h = R();
-      billboard(L, x + (R() - 0.5) * 0.8, y + 0.4 + R() * 0.8, z + (R() - 0.5) * 0.8,
-        Math.cos(a) * Math.cos(e) * s, Math.sin(e) * s + 2, Math.sin(a) * Math.cos(e) * s,
-        0.5 + R() * 0.45, 1.1 + R() * 0.7, 2.8 + R() * 2, [1, 0.72 + h * 0.2, 0.2 + h * 0.25], [0.45, 0.1, 0.03], 0.9);
+      billboard(L, x + (R() - 0.5) * 1.2, y + 0.4 + R() * 1.2, z + (R() - 0.5) * 1.2,
+        (R() - 0.5) * 3, 1.5 + R() * 2, (R() - 0.5) * 3,
+        0.55 + R() * 0.4, 2 + R(), 4.5 + R() * 2.5, [1, 0.8 + h * 0.15, 0.3 + h * 0.25], [0.45, 0.1, 0.03], 0.95);
+    }
+    // The blast front: flame puffs flung out in every direction over the
+    // ground and up, each slowing to a stop at the radius (or at a wall).
+    // Velocities are damped by exp(-3t) (updateBillboards), so a puff
+    // launched at v travels v/3 * (1 - exp(-3 life)).
+    const n = Math.round(Math.min(150, Math.max(40, radius * radius * 0.65)));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 * 7.3 + R() * 0.6; // spread round evenly
+      // Most of the fire hugs the ground so the footprint reads clearly.
+      const e = i % 3 === 0 ? 0.25 + R() * 0.9 : R() * 0.22;
+      const dx = Math.cos(a) * Math.cos(e), dy = Math.sin(e), dz = Math.sin(a) * Math.cos(e);
+      const size = radius * (0.26 + R() * 0.14);
+      // Half the puffs make the edge, the rest fill in the middle.
+      const edge = i % 2 === 0;
+      let reach = edge ? radius * (0.88 + R() * 0.12) - size * 0.35 : radius * (0.15 + Math.sqrt(R()) * 0.6);
+      const hit = this.world.raycast?.(x, cy, z, dx, dy, dz, reach + size * 0.35);
+      if (hit) reach = Math.max(0.3, hit.t - size * 0.4);
+      const life = 0.85 + R() * 0.45;
+      const v = (3 * reach) / (1 - Math.exp(-3 * life));
+      const h = R();
+      billboard(L, x + dx * 0.4, cy + dy * 0.4, z + dz * 0.4, dx * v, dy * v, dz * v,
+        life, size * 0.35, size, [1, 0.78 + h * 0.2, 0.3 + h * 0.25], [0.72, 0.16 + h * 0.1, 0.03], 0.92);
+      // A hot glow riding along with some of the front.
+      if (i % 5 === 0) {
+        billboard(F, x + dx * 0.4, cy + dy * 0.4, z + dz * 0.4, dx * v, dy * v, dz * v,
+          life * 0.55, size * 0.5, size * 1.2, [0.55, 0.32, 0.08], [0.35, 0.1, 0.02], 0.45);
+      }
     }
     // Sparks and debris.
     for (let i = 0; i < 44; i++) {
@@ -445,7 +489,23 @@ export class Effects {
     }
     // Scorch mark on whatever is just below.
     const h = this.world.raycast?.(x, y + 0.3, z, 0, -1, 0, 1.2);
-    if (h && h.normal[1] > 0.7) this.addHole([x, y + 0.3 - h.t, z], h.normal, 'scorch', 2.6);
+    if (h && h.normal[1] > 0.7) this.scorch([x, y + 0.3 - h.t, z], h.normal, 3);
+  }
+
+  // A black scorch mark that stays SCORCH_LIFE seconds, then fades away.
+  scorch(pos, normal, size) {
+    const s = this.scorches[this.scNext];
+    this.scNext = (this.scNext + 1) % MAX_SCORCH;
+    const n = this._n.set(normal[0], normal[1], normal[2]);
+    this._q.setFromUnitVectors(this._z, n);
+    this._q.multiply(new THREE.Quaternion().setFromAxisAngle(this._z, Math.random() * Math.PI * 2));
+    this._s.set(size, size, size);
+    this._v.set(pos[0] + n.x * 0.006, pos[1] + n.y * 0.006, pos[2] + n.z * 0.006);
+    s.mesh.matrix.compose(this._v, this._q, this._s);
+    s.mesh.matrixWorldNeedsUpdate = true;
+    s.mesh.material.opacity = 1;
+    s.mesh.visible = true;
+    s.life = SCORCH_LIFE;
   }
 
   // Jumping or falling into water: a ring of spray.
@@ -580,5 +640,12 @@ export class Effects {
     updateBillboards(this.fire, dt);
     updateBillboards(this.flame, dt);
     updateBillboards(this.blastSmoke, dt);
+
+    for (const s of this.scorches) {
+      if (s.life <= 0) continue;
+      s.life -= dt;
+      if (s.life <= 0) { s.mesh.visible = false; continue; }
+      s.mesh.material.opacity = Math.min(1, s.life / SCORCH_FADE);
+    }
   }
 }

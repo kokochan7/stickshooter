@@ -93,7 +93,7 @@ test('F1 re-buy buys what you lack and skips what you have', () => {
   assert.equal(g.rebuy(p, ['m4a1']), 0);
 });
 
-test('key 3 swaps between the bomb and the knife; G drops the bomb ahead', () => {
+test('key 5 takes out the bomb, key 3 is always the knife; G drops the bomb ahead', () => {
   const g = new Game(MAPS.canal, { seed: 7, mode: 'teams' });
   const red = g.addPlayer({ name: 'Red', team: 'red' });
   g.addPlayer({ name: 'Blue', team: 'blue' });
@@ -101,10 +101,12 @@ test('key 3 swaps between the bomb and the knife; G drops the bomb ahead', () =>
   assert.equal(g.bomb.carrier, red.id);
   assert.ok(red.weapons.c4, 'the carrier has the C4');
   run(g, TICK_DT, (p) => (p === red ? hold(p, { slot: 'melee' }) : null));
-  assert.equal(red.active, 'c4');
+  assert.equal(red.active, 'melee', 'key 3: the knife, even with the bomb');
+  run(g, TICK_DT, (p) => (p === red ? hold(p, { slot: 'c4' }) : null));
+  assert.equal(red.active, 'c4', 'key 5: the bomb');
   run(g, TICK_DT, (p) => (p === red ? hold(p, { slot: 'melee' }) : null));
-  assert.equal(red.active, 'melee', 'again: the knife');
-  run(g, TICK_DT, (p) => (p === red ? hold(p, { slot: 'melee' }) : null));
+  assert.equal(red.active, 'melee');
+  run(g, TICK_DT, (p) => (p === red ? hold(p, { slot: 'c4' }) : null));
   assert.equal(red.active, 'c4');
   run(g, ROUND_FREEZE + 0.1);
   run(g, TICK_DT, (p) => (p === red ? hold(p, { actions: [{ type: 'drop' }] }) : null));

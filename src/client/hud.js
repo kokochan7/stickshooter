@@ -440,8 +440,8 @@ export class Hud {
     $(id).style.width = `${v}%`;
   }
 
-  // Weapon list on the right: 1 primary, 2 pistol, 3 knife (and the bomb,
-  // which 3 swaps to), 4 grenades (HE, smoke). The gun in hand is
+  // Weapon list on the right: 1 primary, 2 pistol, 3 knife, 4 grenades
+  // (HE, smoke), 5 the bomb. The gun in hand is
   // bright, the rest dim.
   slots(p) {
     const w = p.weapons ?? {};
@@ -462,7 +462,7 @@ export class Hud {
       const count = NADE_SLOTS.includes(slot) && w[slot].clip > 1 ? `<small class="cnt">×${w[slot].clip}</small>` : '';
       html += `<div class="slot ${p.active === slot ? 'on' : ''} s-${slot}"><sup>${n}</sup>${pic}${count}</div>`;
     }
-    if (w.c4 && p.alive) html += `<div class="slot s-bomb ${p.active === 'c4' ? 'on' : ''}"><sup>3</sup>${C4_ICON}</div>`;
+    if (w.c4 && p.alive) html += `<div class="slot s-bomb ${p.active === 'c4' ? 'on' : ''}"><sup>5</sup>${C4_ICON}</div>`;
     $('slots').innerHTML = html;
   }
 
