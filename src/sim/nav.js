@@ -26,6 +26,10 @@ export class NavGrid {
     this.floor = new Float32Array(this.w * this.h);
     this.swim = new Uint8Array(this.w * this.h); // 1 = deep water you swim through
     this.surf = new Float32Array(this.w * this.h); // water surface over swum cells
+    // Lowest thing overhead (bottom of a catwalk, roof or deck above the
+    // floor). You can't drop into a cell from higher than its ceiling: a
+    // walkway's edge next to the floor under another walkway isn't a way down.
+    this.ceil = new Float32Array(this.w * this.h).fill(1e9);
     // A* gives up after this many steps. Big maps need room for a path from
     // one end to the other (a few times the cells on the way).
     this.maxIter = Math.max(20000, this.w * this.h);
@@ -55,6 +59,7 @@ export class NavGrid {
         }
         if (floor === null) { this.blocked[k] = 1; this.floor[k] = -100; continue; }
         this.floor[k] = floor;
+        for (const c of column) if (c.min[1] > floor - 1e-3 && c.min[1] < this.ceil[k]) this.ceil[k] = c.min[1];
         if (surf !== null && floor < surf - 1) { this.swim[k] = 1; this.surf[k] = surf; }
         const r = CLEARANCE;
         // Anything between knee and head height above the floor blocks
@@ -106,6 +111,7 @@ export class NavGrid {
   // Can you walk from cell a to its neighbor b (by index)?
   canStep(a, b) {
     const up = this.floor[b] - this.floor[a];
+    if (up < -MAX_STEP && this.ceil[b] < this.floor[a] + 0.5) return false; // something in the way above it
     if (up <= MAX_STEP) return true;
     // A swimmer floats with their feet about 1.5 m under the surface and
     // climbs out from there, however deep the water is.
@@ -201,7 +207,12 @@ export class NavGrid {
     heap.clear();
     const blocked = this.blocked, floor = this.floor, swim = this.swim, H = this.h;
     const free = (i, j) => i >= 0 && j >= 0 && i < W && j < H && blocked[j * W + i] !== 1;
-    const step = (from, to) => floor[to] - floor[from] <= MAX_STEP || this.canStep(from, to);
+    const ceil = this.ceil;
+    const step = (from, to) => {
+      const up = floor[to] - floor[from];
+      if (up < -MAX_STEP) return ceil[to] >= floor[from] + 0.5;
+      return up <= MAX_STEP || this.canStep(from, to);
+    };
     const gi = g0[0], gj = g0[1];
     // Octile distance, weighted a little: a tight estimate keeps A* from
     // flooding big open maps. Paths get string-pulled afterwards anyway.

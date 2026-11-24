@@ -9,8 +9,9 @@ import { DUNES } from './dunes.js';
 import { HARBOR } from './harbor.js';
 import { FROST } from './frost.js';
 import { DEPOT } from './depot.js';
+import { WAREHOUSE } from './warehouse.js';
 
-export const MAP_LIST = [YARD, CANAL, DUNES, HARBOR, FROST, DEPOT];
+export const MAP_LIST = [YARD, CANAL, DUNES, HARBOR, FROST, DEPOT, WAREHOUSE];
 export const MAPS = Object.fromEntries(MAP_LIST.map((m) => [m.id, m]));
 export const DEFAULT_MAP = 'yard';
 
