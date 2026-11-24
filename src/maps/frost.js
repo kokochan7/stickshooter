@@ -6,7 +6,7 @@
 //           (thin wooden walls: most guns shoot through).
 //   South - Blue spawns by the cabins, where the rescue zone is, and has to
 //           cross the whole valley to the lodge and back.
-import { mapBuilder, scaleMap, spawnGrid, toSpawn, WATER_DEPTH } from './builder.js';
+import { COVER_H, mapBuilder, scaleMap, spawnGrid, toSpawn, WATER_DEPTH } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xeef2f6, bed: 0x6f8592,
@@ -45,9 +45,9 @@ m.crate(3.5, -31); m.crate(-3.5, -30.5, 1.0);
 
 // --- Lodge grounds ---
 m.pine(-28, -36); m.pine(-32, -28, 1.2); m.pine(27, -34); m.pine(31, -29, 1.1);
-m.box(-24, 0, -24, -20, 1.0, -23.4, 'wood', 'wood'); // woodpile
-m.box(19, 0, -22, 23, 1.0, -21.4, 'wood', 'wood');
-m.crate(-9, -21); m.crate(10, -19); m.box(-3, 0, -24, 3, 1.1, -23.4, 'concrete', 'stone'); // low wall
+m.box(-24, 0, -24, -20, COVER_H, -22.9, 'wood', 'wood'); // woodpile
+m.box(19, 0, -22, 23, COVER_H, -20.9, 'wood', 'wood');
+m.crate(-9, -21); m.crate(10, -19); m.box(-3, 0, -24, 3, COVER_H, -23.4, 'concrete', 'stone'); // low wall
 m.pine(-14, -15); m.pine(15, -13, 0.9);
 
 // --- The stream, across the waist ---
@@ -60,7 +60,7 @@ m.crate(-19, -6); m.crate(19, 6);
 
 // --- South woods ---
 m.pine(-15, 14); m.pine(-5, 9); m.pine(4, 13, 1.2); m.pine(16, 12); m.pine(-24, 24, 0.9); m.pine(24, 25);
-m.box(-4, 0, 20, 2, 1.1, 20.6, 'concrete', 'stone');
+m.box(-4, 0, 20, 2, COVER_H, 20.6, 'concrete', 'stone');
 m.crates(-28, 30); m.crate(28, 18 + 12); m.pine(-10, 26); m.pine(10, 22, 0.9);
 
 // --- Cabins (Blue side) ---
@@ -72,6 +72,23 @@ m.crate(-8, 43); m.crate(8, 33); m.barrel(-10, 35);
 
 // --- Blue spawn and the rescue zone (south end) ---
 m.pine(-32, 50); m.pine(32, 49); m.crates(-22, 51); m.crate(22, 51.5);
+
+// --- Cover across the open valley (both halves get the same amount) ---
+// Boulders are solid rock (full or crouch height), log piles are wood.
+const boulder = (x, z, w, d, h) => m.box(x - w / 2, 0, z - d / 2, x + w / 2, h, z + d / 2, 'concrete', 'rock');
+const logs = (x, z, len, axis = 'x') => m.cover(x, z, len, axis, { material: 'wood', col: 'trunk', t: 1.0 });
+// North half (Red's side of the stream).
+boulder(-20, -14, 3, 2.2, 2.2); boulder(21, -15.5, 2.6, 2, COVER_H);
+logs(-6, -12, 4); logs(7, -10.5, 4);
+m.crates(-13, -25.5); m.crates(13, -26.5);
+m.cover(-4, -6.5, 3.5, 'x', { col: 'stone' }); m.cover(4.5, -7, 3, 'x', { col: 'stone' });
+boulder(-26, -15, 2.4, 2.4, 1.8); boulder(25, -13, 2.4, 2.4, COVER_H);
+// South half (Blue's side).
+boulder(20, 14, 3, 2.2, 2.2); boulder(-21, 15.5, 2.6, 2, COVER_H);
+logs(6, 16, 4); logs(-7, 12.5, 4);
+m.crates(-14, 28.5); m.crates(14, 27);
+m.cover(4, 6.5, 3.5, 'x', { col: 'stone' }); m.cover(-4.5, 7, 3, 'x', { col: 'stone' });
+boulder(26, 15, 2.4, 2.4, 1.8); boulder(-25, 13, 2.4, 2.4, COVER_H);
 
 const ground = m.finishGround(-X, -Z, X, Z);
 

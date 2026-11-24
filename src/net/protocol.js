@@ -26,7 +26,7 @@
 //   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 20; // 20: free for all weapon filter (19: Gun Game mode (ggLevel)) (18: Warehouse garage shut + east door, layered bot nav) (17: Warehouse map, hostage follow fix) (16: flashbang removed)
+export const PROTOCOL_VERSION = 21; // 21: map props resized into real cover (20: free for all weapon filter) (19: Gun Game mode (ggLevel)) (18: Warehouse garage shut + east door, layered bot nav) (17: Warehouse map, hostage follow fix) (16: flashbang removed)
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
