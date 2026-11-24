@@ -10,7 +10,7 @@
 //   Site B - a pillared hall with doors west (tunnel), north (mid) and east
 // The sites sit east of the middle: Blue gets there first, Red walks
 // further, but both teams have a long way to go.
-import { mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
+import { COVER_H, mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xe2cc9a, bed: 0x8d8259,
@@ -30,8 +30,8 @@ for (const s of [-1, 1]) {
 
 // --- Red spawn (west end) ---
 m.crates(-56, -11); m.crate(-57, 11); m.barrel(-52, 4); m.barrel(-52.6, 4.6); m.palm(-61, -12); m.palm(-61, 12);
-m.crate(-46, -6); m.crate(-46, -4.8); m.box(-44, 0, 7, -43.4, 1.1, 11, 'concrete', 'stone');
-m.crates(-38, -24); m.crate(-36, 18); m.box(-38, 0, -2, -37.4, 1.1, 2, 'concrete', 'stone');
+m.crate(-46, -6); m.crate(-46, -4.8); m.box(-44, 0, 7, -43.4, COVER_H, 11, 'concrete', 'stone');
+m.crates(-38, -24); m.crate(-36, 18); m.box(-38, 0, -2, -37.4, COVER_H, 2, 'concrete', 'stone');
 
 // --- North road (to A) ---
 m.palm(-24, -31); m.palm(-12, -24); m.palm(-30, -21);
@@ -48,11 +48,11 @@ m.wallX(-6.4, -30, 24, 3.5, 0.4, 'concrete', 'wall', [[-20, -17.5], [8, 11]]);
 m.wallX(6, -30, 24, 3.5, 0.4, 'concrete', 'wall', [[-11, -8.5], [12, 15]]);
 m.wallZ(-8.4, -6, 6, 3.5, 0.4, 'concrete', 'wall', [[-1.5, 1.5]]); // the gate
 m.box(-8.4, 2.6, -6, -8, 2.9, 6, 'wood', 'awning'); // gate beam
-m.crate(-14, -4); m.crate(-3, 3.8); m.box(4, 0, -1, 4.6, 1.1, 1.5, 'concrete', 'stone'); m.crate(19, -4); m.barrel(-24, 3.5);
+m.crate(-14, -4); m.crate(-3, 3.8); m.box(4, 0, -1, 4.6, COVER_H, 1.5, 'concrete', 'stone'); m.crate(19, -4); m.barrel(-24, 3.5);
 
 // --- South house, between mid and the tunnel ---
 m.building(-28, 9, -6, 24, 4, { col: 'wall2', doors: { n: [[-22, -19.5]], s: [[-12, -9.5]] } });
-m.crates(-24.5, 20.5); m.crate(-10, 12); m.box(-19, 0, 16, -16, 1.1, 16.6, 'wood', 'wood');
+m.crates(-24.5, 20.5); m.crate(-10, 12); m.box(-19, 0, 16, -16, COVER_H, 16.6, 'wood', 'wood');
 
 // --- The tunnel to B, along the south wall ---
 m.wallX(25.7, -30, 2, 3.2, 0.3, 'concrete', 'wall2', [[-12, -9.5]]);
@@ -63,25 +63,35 @@ m.crate(-20, 31.5, 1.0); m.crate(-4, 27.5, 1.0);
 // --- Site B: the pillared hall ---
 m.building(2, 8, 24, 34, 5, { col: 'wall', t: 0.4, doors: { w: [[27, 31]], n: [[12, 15]], e: [[18, 22]] } });
 for (const [x, z] of [[8, 15], [17, 15], [8, 27], [17, 27]]) m.box(x - 0.5, 0, z - 0.5, x + 0.5, 5, z + 0.5, 'concrete', 'stone');
-m.crates(12.5, 21); m.crate(5, 11); m.crate(21, 31); m.crate(19.8, 31); m.box(4, 0, 23, 7, 1.1, 23.6, 'wood', 'wood');
+m.crates(12.5, 21); m.crate(5, 11); m.crate(21, 31); m.crate(19.8, 31); m.box(4, 0, 23, 7, COVER_H, 23.6, 'wood', 'wood');
 
 // --- Site A: the oasis ---
 m.wallZ(0, -Z, -8, 3, 0.4, 'concrete', 'wall2', [[-31, -25]]);
 m.water(8, -26, 16, -20);
 m.bridge(11, -26.6, 13, -19.4, 'z');
 m.palm(6, -28); m.palm(18, -18); m.palm(19, -30);
-m.crates(3.5, -12); m.crate(21, -13); m.crate(21, -11.8); m.crates(4, -32.5); m.box(22, 0, -26, 22.6, 1.1, -21, 'concrete', 'stone');
+m.crates(3.5, -12); m.crate(21, -13); m.crate(21, -11.8); m.crates(4, -32.5); m.box(22, 0, -26, 22.6, COVER_H, -21, 'concrete', 'stone');
 
 // --- Blue side (east) ---
 m.building(30, -26, 42, -14, 4, { col: 'wall2', doors: { w: [[-22, -19.5]], e: [[-20, -17.5]], s: [[35, 37.5]] } });
 m.building(30, 14, 42, 26, 4, { col: 'wall2', doors: { w: [[19.5, 22]], e: [[17.5, 20]], n: [[35, 37.5]] } });
-m.crate(32.5, -23.5); m.crate(39.5, 23.5); m.crates(36, -4); m.box(34, 0, 3, 38, 1.1, 3.6, 'concrete', 'stone');
+m.crate(32.5, -23.5); m.crate(39.5, 23.5); m.crates(36, -4); m.box(34, 0, 3, 38, COVER_H, 3.6, 'concrete', 'stone');
 m.crates(27, -32); m.crate(27, 31); m.palm(46, -10); m.palm(46, 10);
 // Market cloth shades over the Blue spawn (high enough to walk under).
 m.box(52, 2.4, -6, 60, 2.55, 6, 'wood', 'cloth');
 
 // --- Blue spawn (east end) ---
 m.crates(56, -11); m.crate(57, 11); m.barrel(52, -4); m.barrel(52.6, -4.6);
+
+// --- Extra cover on the open stretches, mirrored for Red and Blue ---
+// Red's approach (west) and Blue's approach (east).
+m.cover(-42, -12, 4); m.crates(-34, -6); m.cover(-33, 10, 4, 'z');
+m.cover(42, 12, 4); m.crates(26, 8); m.cover(27, -8, 4, 'z');
+// North road and the A site.
+m.crates(-34, -30); m.cover(-9, -20, 3.5, 'z'); m.crates(8, -16.5); m.cover(17, -31.5, 3.5);
+m.crate(36, -30); m.crate(13, 2.5);
+// Beside B.
+m.crate(28, 26.5);
 
 const ground = m.finishGround(-X, -Z, X, Z);
 

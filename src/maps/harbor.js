@@ -9,7 +9,7 @@
 //               wade under). Blue spawns at its south end, where the
 //               rescue zone is, so every hostage has to be walked all the
 //               way round the corner.
-import { mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
+import { COVER_H, mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xbfc3c4, bed: 0x5d6d6e,
@@ -78,8 +78,12 @@ m.crate(-28, 3); m.crate(-12, 3.5); m.barrel(-40, 13.5); m.crate(-10, 14);
 m.building(-44, 18, -30, 28, 3.8, { col: 'wall', doors: { e: [[21, 24]], s: [[-38, -35]] } });
 m.crate(-41.5, 20.5); m.crate(-33, 25.5);
 cont(-22, 18, -19.5, 24, 'blue'); cont(-14, 24, -8, 26.5, 'orange');
-m.box(-28, 0, 31, -22, 1.1, 31.6, 'concrete', 'stone');
+m.box(-28, 0, 31, -22, COVER_H, 31.6, 'concrete', 'stone');
 m.crates(-12, 33); m.barrel(-40, 32); m.crate(-24, 42.5);
+
+// --- Extra cover along the north arm, the channel bank and the west arm ---
+m.crates(18, -10); m.barrel(36, -11.5); m.barrel(36.6, -12.1); m.cover(27, -9.5, 3.5);
+m.cover(-33, 1, 3.5); m.crates(-26, 14); m.cover(-17, 15, 3.5);
 
 const ground = m.finishGround(-B, -B, B, B);
 

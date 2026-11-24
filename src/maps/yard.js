@@ -8,7 +8,7 @@
 //   metal    - containers are solid; the thin fence sheets can be shot through
 //   concrete - thick walls stop everything; the 20 cm lane walls stop all but rifles/AWP
 //   grate    - platform railing
-import { mapBuilder, scaleMap, toSpawn } from './builder.js';
+import { COVER_H, mapBuilder, scaleMap, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xd9d1c1, wall: 0xc9bfae, wood: 0xc68a4e, crate: 0xb8743a, metal: 0x8d9aa8, grate: 0x5f6b78,
@@ -53,8 +53,9 @@ m.box(-12.2, 0, 3, -12, 3, 11, 'concrete', 'wall');
 m.box(-26, 0, 13, -20, 3, 13.2, 'concrete', 'wall');
 
 // Low cover walls (thick concrete).
-m.box(-9, 0, -5.3, -4, 1.1, -4.7, 'concrete', 'step');
-m.box(1, 0, -10, 1.6, 1.1, -6, 'concrete', 'step');
+m.box(-9, 0, -5.3, -4, COVER_H, -4.7, 'concrete', 'step');
+m.box(1, 0, -10, 1.6, COVER_H, -6, 'concrete', 'step');
+m.crates(-1, -17); m.crate(-19, -8); // open middle of each half
 
 // --- Turn the half around the center ---
 for (const b of [...m.boxes]) {

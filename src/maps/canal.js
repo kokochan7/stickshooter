@@ -9,7 +9,7 @@
 // but far enough that both teams have to walk:
 //   Site B - a walled courtyard with a well, west
 //   Site A - a plaza with a fountain, east
-import { mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
+import { COVER_H, mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0xd3c6a9, bed: 0x7d7a5e,
@@ -28,7 +28,7 @@ m.block(-W, 48, -24, L, 7, 'house'); m.block(24, 48, W, L, 7, 'house');
 
 // --- Red spawn yard (north end) ---
 m.crates(-17, -58); m.crate(17, -60); m.barrel(-21, -51); m.barrel(20.5, -52.5);
-m.crate(-1.5, -50, 1.0); m.crate(4, -63); m.box(-8, 0, -52.4, -4, 1.1, -51.8, 'concrete', 'stone');
+m.crate(-1.5, -50, 1.0); m.crate(4, -63); m.box(-8, 0, -52.4, -4, COVER_H, -51.8, 'concrete', 'stone');
 
 // --- Old town (Red side): two houses and three lanes ---
 const H = 4.2;
@@ -38,9 +38,9 @@ m.building(5, -44, 18, -26, H, { col: 'wall2', doors: { n: [[11.5, 14]], w: [[-3
 m.crate(-15.5, -41.5); m.crate(-14.3, -41.5); m.box(-12, 0, -35.3, -8, 1, -34.7, 'wood', 'wood'); m.crate(-7.5, -28.5);
 m.crates(15.5, -41.5); m.box(8, 0, -35.3, 12, 1, -34.7, 'wood', 'wood'); m.crate(7.5, -28.5); m.crate(8.7, -28.5);
 // West lane, mid lane and east lane cover.
-m.crate(-26, -40); m.box(-29, 0, -33, -27, 1.1, -32.4, 'concrete', 'stone'); m.crates(-21, -28);
-m.box(-3.4, 0, -40, -2.8, 1.1, -36, 'concrete', 'stone'); m.box(2.8, 0, -33, 3.4, 1.1, -29, 'concrete', 'stone'); m.crate(0, -45.5);
-m.crate(26, -38); m.box(27, 0, -30, 29, 1.1, -29.4, 'concrete', 'stone'); m.crates(21.5, -44);
+m.crate(-26, -40); m.box(-29, 0, -33, -27, COVER_H, -32.4, 'concrete', 'stone'); m.crates(-21, -28);
+m.box(-3.4, 0, -40, -2.8, COVER_H, -36, 'concrete', 'stone'); m.box(2.8, 0, -33, 3.4, COVER_H, -29, 'concrete', 'stone'); m.crate(0, -45.5);
+m.crate(26, -38); m.box(27, 0, -30, 29, COVER_H, -29.4, 'concrete', 'stone'); m.crates(21.5, -44);
 
 // --- The canal ---
 m.water(-W, -16, W, -10);
@@ -63,12 +63,12 @@ m.wallX(24, -W, -12, 3, 0.4, 'concrete', 'wall2', [[-20, -16.5]]);
 m.box(-22, 0, 10, -20, 1.0, 12, 'concrete', 'stone'); // the well
 m.box(-21.6, 1.0, 10.4, -20.4, 2.2, 11.6, 'concrete', 'stone');
 m.crates(-27, 4); m.crate(-25.8, 4); m.crate(-27.5, 19.5); m.crate(-15.5, 4.5);
-m.box(-17, 0, 16.5, -14.6, 1.1, 18, 'wood', 'wood'); // cart
-m.box(-27, 0, 13, -26.4, 1.1, 17, 'concrete', 'stone');
+m.box(-17, 0, 16.5, -14.6, COVER_H, 18, 'wood', 'wood'); // cart
+m.box(-27, 0, 13, -26.4, COVER_H, 17, 'concrete', 'stone');
 
 // --- Market street (middle) ---
 const stall = (x, z, col) => {
-  m.box(x - 1.4, 0, z - 0.4, x + 1.4, 1.0, z + 0.4, 'wood', 'wood');
+  m.box(x - 1.4, 0, z - 0.4, x + 1.4, COVER_H, z + 0.4, 'wood', 'wood');
   m.box(x - 1.6, 2.3, z - 1.2, x + 1.6, 2.45, z + 0.6, 'wood', col);
 };
 stall(-7, 4, 'awning'); stall(7, 9, 'awning2'); stall(-7, 15, 'awning2'); stall(6.5, 20, 'awning');
@@ -81,18 +81,24 @@ m.wallX(24, 12, W, 3, 0.4, 'concrete', 'wall2', [[22, 25.5]]);
 m.box(19, 0, 9, 23, 0.7, 13, 'concrete', 'stone'); // fountain basin
 m.box(20.6, 0.7, 10.6, 21.4, 2.0, 11.4, 'concrete', 'stone');
 m.crates(27.5, 3.5); m.crate(27.5, 4.7); m.crate(15, 20.5); m.crates(27, 20); m.crate(15.5, 3.5);
-m.box(26.4, 0, 9, 27, 1.1, 13, 'concrete', 'stone');
+m.box(26.4, 0, 9, 27, COVER_H, 13, 'concrete', 'stone');
 
 // --- Blue side: two shops between the sites and the spawn ---
 m.building(-26, 30, -14, 42, 3.8, { col: 'house', doors: { n: [[-21.5, -19]], s: [[-19, -16.5]], e: [[34, 36.5]] } });
 m.building(14, 30, 26, 42, 3.8, { col: 'house', doors: { n: [[19, 21.5]], s: [[16.5, 19]], w: [[34, 36.5]] } });
 m.crate(-23.5, 39.5); m.crate(-16.5, 32.5); m.crates(23.5, 32.5); m.crate(16.5, 39.5);
 // The square between them.
-m.box(-3, 0, 33, 3, 1.1, 33.6, 'concrete', 'stone'); m.crate(-6.5, 38); m.crate(6.5, 29); m.barrel(-9, 44); m.barrel(9.5, 44.5);
+m.box(-3, 0, 33, 3, COVER_H, 33.6, 'concrete', 'stone'); m.crate(-6.5, 38); m.crate(6.5, 29); m.barrel(-9, 44); m.barrel(9.5, 44.5);
 m.crates(-28, 27); m.crate(28, 27); m.crates(-28, 45); m.crate(28, 45.5);
 
 // --- Blue spawn street (south end) ---
 m.crates(-17, 58); m.crate(17, 60); m.barrel(-21, 51); m.barrel(20.5, 52.5); m.crate(1.5, 50, 1.0); m.crate(-4, 63);
+
+// --- Extra cover: both quays, the lanes and the square ---
+m.cover(-6, -22, 3); m.cover(6, -22.5, 3); // north quay (Red)
+m.cover(-17, -7, 3.5); m.cover(17, -6.5, 3.5); // south quay (Blue)
+m.barrel(-22, -36); m.barrel(-22.6, -35.4); m.barrel(22, -34); m.barrel(22.6, -34.6); // side lanes
+m.crates(-7.5, 27.5); m.crates(8, 40); // the square
 
 const ground = m.finishGround(-W, -L, W, L);
 

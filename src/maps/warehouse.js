@@ -22,7 +22,7 @@
 // Inside, a main loading floor with stacked crates and a shipping container
 // climbs via a back ramp to an upper walkway wrapping the south and west walls
 // and leading into the hostage office.
-import { mapBuilder, scaleMap, spawnGrid, subtractRects, toSpawn } from './builder.js';
+import { COVER_H, mapBuilder, scaleMap, spawnGrid, subtractRects, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0x7e8082, wall: 0x8c5642, wall2: 0xbcb6aa, trim: 0x52575c, roof: 0x4b5258, stone: 0x99958c, step: 0x747a80,
@@ -155,7 +155,7 @@ m.box(-38, 0, -38, -30, 3.2, 10, 'concrete', 'stone', { kind: 'block' }); // ove
 m.stairs(-38, 10, -30, 22, '-z', 3.2, 10, 'concrete', 'step'); // south approach ramp
 m.box(-30.3, 3.2, -38, -30, 4.1, 10, 'concrete', 'trim'); // east parapet
 m.box(-38, 3.2, -38, -37.7, 4.1, 10, 'concrete', 'trim'); // west parapet
-m.crates(-34, -4); m.crate(-34, -22); m.barrel(-32, 6);
+m.crate(-34, -4, 1.2, 3.2); m.crate(-33.9, -4.05, 0.9, 4.4); m.crate(-34, -22, 1.2, 3.2); m.barrel(-32, 6, 'barrel', 3.2); // up on the deck
 // Lower west alley cover between the overpass and the warehouse.
 m.box(-24, 0, -18, -20.8, 2.6, -10, 'metal', 'blue', { kind: 'container' });
 m.crates(-14, -8); m.crate(-21, -28); m.barrel(-19, -3);
@@ -166,8 +166,9 @@ m.crates(-14, -8); m.crate(-21, -28); m.barrel(-19, -3);
 m.box(-14, 0, 1, -8, 2.6, 4.2, 'metal', 'teal', { kind: 'container' });
 m.box(22, 0, 2, 25.2, 2.6, 10, 'metal', 'orange', { kind: 'container' });
 m.crates(-3, 2); m.crate(6, 5); m.crate(7.2, 5); m.barrel(19, 1); m.barrel(19.6, 1.6);
-m.box(-1, 0, 10, 4, 1.0, 10.6, 'concrete', 'stone'); // low concrete barrier
-m.box(14, 0, 10, 19, 1.0, 10.6, 'concrete', 'stone');
+m.box(-1, 0, 10, 4, COVER_H, 10.6, 'concrete', 'stone'); // low concrete barrier
+m.box(14, 0, 10, 19, COVER_H, 10.6, 'concrete', 'stone');
+m.crates(12, 4); m.cover(-20, 13, 4); m.crates(-26, -2); m.crates(-6, 28); m.cover(-26, 27, 4);
 
 // Standalone concrete building in the middle of the front approach.
 m.block(-12, 14, 8, 24, 6.8, 'wall2');
