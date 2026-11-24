@@ -131,42 +131,92 @@ function runBots(g, brains, seconds, until = () => false) {
   return false;
 }
 
-test('bots buy Kevlar + helmet 30% / 50% / 100% of the time by difficulty, with their own money', () => {
-  for (const [diff, chance] of [['easy', 0.3], ['normal', 0.5], ['hard', 1]]) {
-    for (const roll of [chance - 0.01, Math.min(0.999, chance + 0.01)]) {
-      const g = new Game(YARD, { seed: 1, mode: 'teams' });
-      const b = bot(g, 'red', diff);
-      g.spawn(b.p);
-      b.p.money = 5000;
-      b.buyLoadout(() => roll);
-      const wants = roll < chance;
-      assert.equal(b.p.helmet, wants, `${diff}, roll ${roll}`);
-      assert.equal(b.p.armor, wants ? 100 : 0);
-      assert.ok(b.p.weapons.primary, 'still buys a gun');
-      assert.ok(b.p.money < 5000 && b.p.money >= 0, 'paid for it from its own money');
-      if (wants) assert.ok(b.p.money <= 5000 - 1000 - 1250);
+// A seeded random source, so buy tests don't flake.
+function seeded(seed) {
+  let x = seed * 2654435761 % 4294967296 || 1;
+  return () => {
+    x = (x * 1103515245 + 12345) % 2147483648;
+    return x / 2147483648;
+  };
+}
+
+function buyWith(money, { team = 'red', diff = 'normal', seed = 1, objective = null } = {}) {
+  const map = objective === 'bomb' ? MAPS.canal : YARD;
+  const g = new Game(map, { seed: 1, mode: 'teams' });
+  const b = bot(g, team, diff);
+  g.spawn(b.p);
+  b.p.money = money;
+  b.buyLoadout(seeded(seed));
+  return b.p;
+}
+
+test('rich bots buy to the fullest: Kevlar + helmet, a strong gun and grenades', () => {
+  for (const diff of ['easy', 'normal', 'hard']) {
+    for (let seed = 1; seed <= 30; seed++) {
+      const p = buyWith(9000, { diff, seed });
+      assert.ok(p.armor === 100 && p.helmet, `${diff} seed ${seed}: armor`);
+      const gun = p.weapons.primary?.id;
+      assert.ok(gun && WEAPONS[gun].price >= 2000, `${diff} seed ${seed}: bought ${gun}`);
+      assert.ok(p.weapons.grenade?.clip > 0, 'an HE');
+      assert.ok(p.money >= 0 && p.money < 9000);
     }
   }
 });
 
-test('a bot only buys armor it can afford, and picks a gun that leaves room for it', () => {
+test('bots never buy flashbangs', () => {
+  for (let seed = 1; seed <= 60; seed++) {
+    for (const money of [800, 2500, 4000, 16000]) {
+      const p = buyWith(money, { seed, team: seed % 2 ? 'red' : 'blue' });
+      assert.ok(!p.weapons.flash, `seed ${seed}, $${money}`);
+    }
+  }
+});
+
+test('more money buys stronger guns, more grenades and more armor', () => {
+  const avg = (money) => {
+    let price = 0, nades = 0, helmets = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const p = buyWith(money, { seed });
+      price += p.weapons.primary ? WEAPONS[p.weapons.primary.id].price : 0;
+      nades += (p.weapons.grenade?.clip ?? 0) + (p.weapons.smoke?.clip ?? 0);
+      helmets += p.helmet ? 1 : 0;
+    }
+    return { price: price / 200, nades: nades / 200, helmets: helmets / 200 };
+  };
+  const poor = avg(2000), mid = avg(3500), rich = avg(7000);
+  assert.ok(poor.price < mid.price && mid.price < rich.price, `${poor.price} ${mid.price} ${rich.price}`);
+  assert.ok(poor.nades < rich.nades, `${poor.nades} ${rich.nades}`);
+  assert.ok(poor.helmets < rich.helmets && rich.helmets === 1, `${poor.helmets} ${rich.helmets}`);
+});
+
+test('bot buys are random: a lobby of rich bots carries a mix of guns', () => {
+  const guns = new Set();
+  for (let seed = 1; seed <= 60; seed++) guns.add(buyWith(6000, { seed, team: 'blue' }).weapons.primary?.id);
+  assert.ok(guns.size >= 4, [...guns].join(' '));
+  assert.ok(guns.has('m4a1'), 'M4s are common');
+});
+
+test('a poor bot spends what it has and never goes below zero', () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const p = buyWith(800, { seed, diff: 'hard' });
+    assert.ok(p.money >= 0 && p.money < 800, `seed ${seed}: $${p.money} left`);
+    assert.equal(p.weapons.primary, null, 'no rifle on a pistol round');
+  }
+  // $700, hard: a vest is the buy.
   const g = new Game(YARD, { seed: 1, mode: 'teams' });
   const b = bot(g, 'red', 'hard');
   g.spawn(b.p);
-  b.p.money = 700; // vest only
+  b.p.money = 700;
   b.buyLoadout(() => 0.5);
   assert.equal(b.p.armor, 100);
   assert.equal(b.p.helmet, false);
-  assert.equal(b.p.weapons.primary, null, 'no money left for a gun');
   assert.equal(b.p.money, 50);
+});
 
-  const g2 = new Game(YARD, { seed: 1, mode: 'teams' });
-  const b2 = bot(g2, 'red', 'hard');
-  g2.spawn(b2.p);
-  b2.p.money = 3000;
-  b2.buyLoadout(() => 0.99); // would pick the Mini Gun
-  assert.ok(b2.p.helmet, 'armor bought');
-  assert.ok(b2.p.weapons.primary && WEAPONS[b2.p.weapons.primary.id].price <= 2000, b2.p.weapons.primary?.id);
+test('Blue bots on bomb maps buy a kit when they have money', () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    assert.ok(buyWith(6000, { team: 'blue', seed, objective: 'bomb' }).defuser, `seed ${seed}`);
+  }
 });
 
 test('Red bots carry the bomb in, plant it, and hold posts that can see it', () => {
