@@ -196,6 +196,7 @@ test('the grenade costs and does what CS 1.6 says', () => {
   assert.equal(he.damage, 100);
   assert.equal(he.grenade.radius, 700);
   assert.equal(he.grenade.fuse, 2);
-  assert.equal(WEAPONS.flashbang.grenade.fuse ?? NADE_FUSE, 1.5);
+  assert.equal(WEAPONS.smokegrenade.grenade.fuse ?? NADE_FUSE, 1.5);
+  assert.equal(WEAPONS.flashbang, undefined, 'flashbang was removed');
   assert.equal(he.slot, 'grenade');
 });

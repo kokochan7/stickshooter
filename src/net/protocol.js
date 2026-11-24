@@ -25,7 +25,7 @@
 //   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 15; // 15: Depot map (old tabs would fall back to Yard)
+export const PROTOCOL_VERSION = 16; // 16: flashbang removed
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -66,7 +66,6 @@ const OWN = [
   'shellNext', 'resumeZoom', 'resumeZoomAt',
   'nextStab', 'frozenUntil', 'spawnedAt', 'life', 'task', 'defuser', 'useHeld',
   'nadePin', 'nadeRedrawAt', 'swimming', 'waterJump', 'wjDir', 'burstLeft', 'burstNext',
-  'blindStart', 'blindHold', 'blindFade', 'blindAlpha',
 ];
 // What other clients need to draw, interpolate and list someone.
 const OTHER = [
@@ -108,7 +107,7 @@ export function packOther(p) {
 // Cmd fields the server accepts; anything else a client sends is dropped.
 export function sanitizeCmd(c) {
   const num = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : 0);
-  const slot = ['primary', 'secondary', 'melee', 'grenade', 'flash', 'smoke', 'nade', 'c4'].includes(c.slot) ? c.slot : null;
+  const slot = ['primary', 'secondary', 'melee', 'grenade', 'smoke', 'nade', 'c4'].includes(c.slot) ? c.slot : null;
   let actions = null;
   if (Array.isArray(c.actions)) {
     actions = c.actions.slice(0, 4).map(cleanAction).filter(Boolean);

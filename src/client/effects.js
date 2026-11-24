@@ -448,23 +448,6 @@ export class Effects {
     if (h && h.normal[1] > 0.7) this.addHole([x, y + 0.3 - h.t, z], h.normal, 'scorch', 2.6);
   }
 
-  // Flashbang going off: a white-hot pop and a few sparks, no fire.
-  flashBang(pos, water = false) {
-    const [x, y, z] = pos;
-    const R = Math.random;
-    if (water) { this.splash(pos, 0.6); return; }
-    this.spawnParticle(x, y + 0.1, z, 0, 0, 0, [1, 1, 1], 0.18, 3.2, 0, 2);
-    this.spawnParticle(x, y + 0.1, z, 0, 0, 0, [1, 0.98, 0.9], 0.35, 1.2, 0, 0.5);
-    for (let i = 0; i < 16; i++) {
-      const a = R() * Math.PI * 2, s = 3 + R() * 5;
-      this.spawnParticle(x, y + 0.1, z, Math.cos(a) * s, 1 + R() * 4, Math.sin(a) * s, [1, 0.95, 0.8], 0.3 + R() * 0.3, 0.03, 1.4);
-    }
-    for (let i = 0; i < 6; i++) {
-      const g = 0.75 + R() * 0.15;
-      this.spawnParticle(x, y + 0.2, z, (R() - 0.5), 0.4 + R() * 0.5, (R() - 0.5), [g, g, g], 0.8 + R() * 0.6, 0.25, -0.05, 0.8);
-    }
-  }
-
   // Jumping or falling into water: a ring of spray.
   splash(pos, strength = 1) {
     const R = Math.random;

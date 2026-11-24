@@ -163,15 +163,6 @@ test('rich bots buy to the fullest: Kevlar + helmet, a strong gun and grenades',
   }
 });
 
-test('bots never buy flashbangs', () => {
-  for (let seed = 1; seed <= 60; seed++) {
-    for (const money of [800, 2500, 4000, 16000]) {
-      const p = buyWith(money, { seed, team: seed % 2 ? 'red' : 'blue' });
-      assert.ok(!p.weapons.flash, `seed ${seed}, $${money}`);
-    }
-  }
-});
-
 test('more money buys stronger guns, more grenades and more armor', () => {
   const avg = (money) => {
     let price = 0, nades = 0, helmets = 0;
@@ -295,4 +286,58 @@ test('bots only buy their own team guns in team modes', () => {
       }
     }
   }
+});
+
+test('a Red team takes different ways to the site: straight, left and right', () => {
+  const g = new Game(MAPS.canal, { seed: 4, mode: 'teams' });
+  const brains = [bot(g, 'red'), bot(g, 'red'), bot(g, 'red')];
+  g.restartMatch();
+  runBots(g, brains, ROUND_FREEZE + 0.5);
+  const lanes = brains.map((b) => b.lane());
+  assert.deepEqual([...lanes].map(String).sort(), ['-1', '1', 'false'], lanes.join(' '));
+  // On an execute, everyone not escorting the bomb goes in by their own lane.
+  const plan = brains[0].plan();
+  plan.name = 'execute'; plan.goAt = 0;
+  for (const b of brains) {
+    const obj = b.objective(emptyCmd());
+    if (obj?.goal && !obj.escort && b.p.id !== g.bomb.carrier) assert.equal(obj.detour, b.lane());
+  }
+});
+
+test('far out, a bot stops before it shoots and taps instead of spraying', async () => {
+  const { rangeAim } = await import('../src/sim/bot.js');
+  assert.equal(rangeAim(10), 1);
+  assert.ok(rangeAim(40) < 0.5);
+  const g = new Game(YARD, { seed: 2, mode: 'ffa' });
+  const a = g.addPlayer({ name: 'A', team: 'red', isBot: true });
+  const x = g.addPlayer({ name: 'X', team: 'blue' });
+  g.spawn(a); g.spawn(x);
+  // Find an open lane 35 m long.
+  let lane = null;
+  for (let tx = -30; tx <= 30 && !lane; tx++) {
+    for (const tz of [-20, -10, 0, 10, 20]) {
+      if (g.world.visible(tx, 1.6, tz - 17.5, tx, 1.6, tz + 17.5) && g.world.visible(tx, 0.3, tz - 17.5, tx, 0.3, tz + 17.5)) { lane = [tx, tz]; break; }
+    }
+  }
+  assert.ok(lane, 'an open lane');
+  place(a, lane[0], lane[1] - 17.5, Math.PI); place(x, lane[0], lane[1] + 17.5, 0);
+  a.frozenUntil = 0; x.frozenUntil = 0;
+  const b = new BotBrain(g, a, null, 'hard');
+  b.buyLoadout = () => {};
+  a.money = 16000; g.buy(a, 'ak47', true);
+  let movingShots = 0, longestBurst = 0, burst = 0;
+  for (let i = 0; i < 3 / TICK_DT; i++) {
+    x.health = 100;
+    // Keep shoving the bot sideways at a run, like it just strafed.
+    if (i % 64 === 0) a.vel[0] = 5;
+    const fast = Math.hypot(a.vel[0], a.vel[2]) / 0.025 > 140;
+    const cmd = b.think(TICK_DT);
+    if (cmd.fire && fast) movingShots++;
+    const c0 = a.weapons.primary.clip;
+    g.tick(new Map([[a.id, cmd], [x.id, { ...emptyCmd(), yaw: 0, pitch: 0 }]]));
+    if (a.weapons.primary.clip < c0) longestBurst = Math.max(longestBurst, ++burst);
+    else if (!cmd.fire) burst = 0;
+  }
+  assert.equal(movingShots, 0, 'never fires at a run at 35 m');
+  assert.ok(longestBurst > 0 && longestBurst <= 3, `burst of ${longestBurst}`);
 });
