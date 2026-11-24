@@ -1,7 +1,9 @@
-// Third-person stickman: round head, stick limbs posed every frame with a
-// procedural walk cycle and two-bone IK so the hands always hold the gun.
+// Third-person stickman: shaped low-poly body in the Classic textured look
+// (playerLook.js), posed every frame with a procedural walk cycle and
+// two-bone IK so the hands always hold the gun.
 import * as THREE from 'three';
 import { buildGun } from './gunModels.js';
+import { playerKit, suitMaterials, tintSuit, orientHand, PALM_R, PALM_L, PALM_DOWN } from './playerLook.js';
 import { U, FOOTSTEP_TIME } from '../sim/constants.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -27,7 +29,6 @@ export function toonMaterial(color, opts = {}) {
 }
 
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
-const sphGeo = new THREE.SphereGeometry(1, 14, 10);
 const lowSphGeo = new THREE.SphereGeometry(1, 10, 8);
 
 // Two-bone IK: elbow/knee position for root a, target c, bone lengths l1, l2,
@@ -47,8 +48,8 @@ export function solveIK(a, c, l1, l2, pole, out) {
 }
 
 export class Limb {
-  constructor(parent, material, radius, outlineMat, outlineWidth = 0.012) {
-    this.mesh = new THREE.Mesh(cylGeo, material);
+  constructor(parent, material, radius, outlineMat, outlineWidth = 0.012, geo = cylGeo) {
+    this.mesh = new THREE.Mesh(geo, material);
     this.radius = radius;
     this.ow = outlineWidth;
     parent.add(this.mesh);
@@ -161,50 +162,44 @@ function sideDir(a, out) {
 }
 
 export class Stickman {
-  constructor({ body = 0xffffff, eyes = 0x111111, outline = 0x1a1a1a, glowEyes = false } = {}) {
+  constructor({ body = 0xffffff, eyes = 0x111111 } = {}) {
     this.root = new THREE.Group();
     this.body = new THREE.Group(); // tilts when dying
     this.root.add(this.body);
 
-    const mat = toonMaterial(body);
-    const outMat = new THREE.MeshBasicMaterial({ color: outline, side: THREE.BackSide });
-    this.material = mat;
+    // Shaped parts on the same bones as before. Limb radius 1: the shapes
+    // carry their own widths (see playerLook.tube).
+    const k = playerKit();
+    const mats = suitMaterials(['torso', 'thigh', 'shin', 'upper', 'fore', 'head']);
+    this.mats = mats;
+    this.baseColor = body;
     this.team = null;
+    tintSuit(mats, body);
 
-    this.torso = new Limb(this.body, mat, 0.085, outMat);
-    this.neck = new Limb(this.body, mat, 0.05, null);
-    this.hip = new Joint(this.body, mat, 0.09, outMat);
-    this.chest = new Joint(this.body, mat, 0.09, outMat);
+    this.torso = new Limb(this.body, mats.torso, 1, null, 0, k.torso);
+    this.neck = new Limb(this.body, mats.head, 1, null, 0, k.neck);
     this.limbs = {};
     for (const s of ['L', 'R']) {
-      this.limbs['thigh' + s] = new Limb(this.body, mat, 0.055, outMat);
-      this.limbs['shin' + s] = new Limb(this.body, mat, 0.05, outMat);
-      this.limbs['upper' + s] = new Limb(this.body, mat, 0.045, outMat);
-      this.limbs['fore' + s] = new Limb(this.body, mat, 0.042, outMat);
-      this.limbs['knee' + s] = new Joint(this.body, mat, 0.055, null);
-      this.limbs['elbow' + s] = new Joint(this.body, mat, 0.045, null);
-      this.limbs['hand' + s] = new Joint(this.body, mat, 0.055, outMat);
-      this.limbs['foot' + s] = new Joint(this.body, mat, 0.07, outMat);
-      this.limbs['foot' + s].mesh.scale.set(0.065, 0.045, 0.1);
-      this.limbs['foot' + s].outline.scale.set(0.077, 0.057, 0.112);
-      this.limbs['shoulder' + s] = new Joint(this.body, mat, 0.05, null);
+      this.limbs['thigh' + s] = new Limb(this.body, mats.thigh, 1, null, 0, k.thigh);
+      this.limbs['shin' + s] = new Limb(this.body, mats.shin, 1, null, 0, k.shin);
+      this.limbs['upper' + s] = new Limb(this.body, mats.upper, 1, null, 0, k.upper);
+      this.limbs['fore' + s] = new Limb(this.body, mats.fore, 1, null, 0, k.fore);
+      // Gloved fists (the left one mirrored) and boots, not team-tinted.
+      this.limbs['hand' + s] = new Joint(this.body, k.gloveMat, 1, null, 0, k.hand);
+      if (s === 'L') this.limbs.handL.mesh.scale.x = -1;
+      this.limbs['foot' + s] = new Joint(this.body, k.bootMat, 1, null, 0, k.foot);
     }
 
     // Head with two tall oval eyes.
     this.head = new THREE.Group();
     this.body.add(this.head);
-    const headMesh = new THREE.Mesh(sphGeo, mat);
-    headMesh.scale.setScalar(0.17);
-    this.head.add(headMesh);
-    const headOut = new THREE.Mesh(sphGeo, outMat);
-    headOut.scale.setScalar(0.182);
-    this.head.add(headOut);
-    const eyeMat = glowEyes ? new THREE.MeshBasicMaterial({ color: eyes }) : new THREE.MeshBasicMaterial({ color: eyes });
-    for (const x of [-0.058, 0.058]) {
+    this.head.add(new THREE.Mesh(k.head, mats.head));
+    const eyeMat = new THREE.MeshBasicMaterial({ color: eyes });
+    for (const sx of [-1, 1]) {
       const eye = new THREE.Mesh(lowSphGeo, eyeMat);
-      eye.scale.set(0.026, 0.05, 0.02);
-      eye.position.set(x, 0.02, -0.155);
-      eye.rotation.y = x * 2.2;
+      eye.scale.set(...k.eyes.s);
+      eye.position.set(sx * k.eyes.x, k.eyes.y, k.eyes.z);
+      eye.rotation.y = sx * k.eyes.x * 3.2;
       this.head.add(eye);
     }
 
@@ -256,7 +251,15 @@ export class Stickman {
   setTeam(team) {
     if (this.team === team) return;
     this.team = team;
-    this.material.color.setHex(teamColor(team));
+    tintSuit(this.mats, teamColor(team));
+  }
+
+  // Fists follow their forearms, palms on the gun (or hanging down).
+  orientHands() {
+    const loose = this.deathT >= 0 || !this.gun;
+    for (const s of ['L', 'R']) {
+      orientHand(this.limbs['hand' + s].mesh, this.limbs['fore' + s].mesh.quaternion, loose ? PALM_DOWN : s === 'R' ? PALM_R : PALM_L);
+    }
   }
 
   die(sideSign) {
@@ -298,11 +301,9 @@ export class Stickman {
     const lean = duck * 0.45 + k * 0.08;
     const hip = this.tmp.hip.set(0, hipY, duck * 0.05);
     const chest = this.tmp.chest.set(0, hipY + 0.5 * Math.cos(lean), hip.z - 0.5 * Math.sin(lean));
-    this.hip.set(hip);
-    this.chest.set(chest);
     this.torso.set(hip, chest);
     if (this.pack?.visible) {
-      this.pack.position.set(0, (hip.y + chest.y) / 2 + 0.06, (hip.z + chest.z) / 2 + 0.13);
+      this.pack.position.set(0, (hip.y + chest.y) / 2 + 0.06, (hip.z + chest.z) / 2 + 0.15);
       this.pack.rotation.x = -lean;
     }
 
@@ -330,9 +331,7 @@ export class Stickman {
       const knee = solveIK(hipJ, foot, THIGH, SHIN, v[2].set(sgn * 0.15, 0, -1), v[3]);
       this.limbs['thigh' + side].set(hipJ, knee);
       this.limbs['shin' + side].set(knee, foot);
-      this.limbs['knee' + side].set(knee);
       this.limbs['foot' + side].set(foot);
-      this.limbs['foot' + side].mesh.position.z -= 0.03;
     }
 
     // Aim pivot & gun.
@@ -383,6 +382,7 @@ export class Stickman {
       this.body.rotation.z = e * 0.25 * this.deathDir;
       this.body.position.y = -e * 0.02;
     }
+    this.orientHands();
   }
 
   // Dead body: plays one of the DEATHS keyframe sets; t counts up from 0.
@@ -399,8 +399,6 @@ export class Stickman {
     const up = sideDir(a3, v[2]);
     const front = sideDir(a3 - Math.PI / 2, v[3]);
     const chest = this.tmp.chest.copy(hip).addScaledVector(up, 0.5);
-    this.hip.set(hip);
-    this.chest.set(chest);
     this.torso.set(hip, chest);
     if (this.pack) this.pack.visible = false;
     const head = this.tmp.head.copy(chest).addScaledVector(sideDir(a3 + headTilt * 0.5, _a), 0.19);
@@ -417,7 +415,6 @@ export class Stickman {
       const k = solveIK(hipJ, f, THIGH, SHIN, v[6].set(sgn * 0.15, 0, -1), v[7]);
       this.limbs['thigh' + s].set(hipJ, k);
       this.limbs['shin' + s].set(k, f);
-      this.limbs['knee' + s].set(k);
       this.limbs['foot' + s].set(f);
     }
 
@@ -431,22 +428,19 @@ export class Stickman {
       hand.x += sgn * out;
       const pole = v[6].set(sgn * 0.9, 0.2, 0).addScaledVector(up, -0.8);
       const elbow = solveIK(shoulder, hand, UPPER_ARM, FOREARM, pole, v[7]);
-      this.limbs['shoulder' + s].set(shoulder);
       this.limbs['upper' + s].set(shoulder, elbow);
       this.limbs['fore' + s].set(elbow, hand);
-      this.limbs['elbow' + s].set(elbow);
       this.limbs['hand' + s].set(hand);
     }
+    this.orientHands();
   }
 
   arm(side, sgn, chest, hand) {
     const v = this._v;
     const shoulder = v[6].set(sgn * 0.17, chest.y - 0.03, chest.z);
     const elbow = solveIK(shoulder, hand, UPPER_ARM, FOREARM, v[7].set(sgn * 0.8, -1, 0.3), _a.clone());
-    this.limbs['shoulder' + side].set(shoulder);
     this.limbs['upper' + side].set(shoulder, elbow);
     this.limbs['fore' + side].set(elbow, hand);
-    this.limbs['elbow' + side].set(elbow);
     this.limbs['hand' + side].set(hand);
   }
 }
