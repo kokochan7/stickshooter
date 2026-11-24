@@ -22,7 +22,7 @@ import { canPlant, canDefuse, hostageInReach, siteAt, bombBeepInterval } from '.
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
 import { GG_LADDER, GG_LAST, ggWeapon, ggRank } from './sim/gungame.js';
 import { GameView } from './client/scene.js';
-import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, DEPLOY_SOUNDS, STEP_SOUNDS, speak } from './client/audio.js';
+import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, DEPLOY_SOUNDS, BUY_SOUNDS, STEP_SOUNDS, speak } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
 import { MenuMusic } from './client/music.js';
 import { TouchControls, isTouchDevice } from './client/touch.js';
@@ -1011,7 +1011,9 @@ function handleEvent(e) {
       break;
     case 'buy':
       if (p === me) {
-        audio.play('buy', { volume: 0.4 });
+        const sounds = BUY_SOUNDS[e.item];
+        if (sounds) sounds.forEach((s, i) => audio.play(s, { volume: i ? 0.25 : 0.5, alt: 'buy' }));
+        else audio.play('buy', { volume: 0.4 });
         if (buyMenu.open) buyMenu.render(me);
         if (e.item !== 'ammo') buyLog.push(e.item);
       }

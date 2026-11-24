@@ -700,6 +700,14 @@ export const DEPLOY_SOUNDS = {
   aug: 'aug_forearm', scout: 'scout_bolt', awp: 'awp_deploy', g3sg1: 'g3sg1_slide', sg550: 'sg550_boltpull',
   // Machine guns: the belt.
   m249: 'm249_chain', minigun: 'boltup',
+  // Grenades: a light tink of the can; the bomb: one keypad beep.
+  hegrenade: 'he_draw', smokegrenade: 'smoke_draw', c4: 'c4_click',
+};
+// Buying gear you never hold in your hands: its own sound instead of the
+// buy blip. Guns don't need one: buying a gun draws it (DEPLOY_SOUNDS).
+export const BUY_SOUNDS = {
+  kevlar: ['kevlar_buy'], kevlarHelmet: ['kevlar_buy', 'helmet_buy'], defuser: ['defuser_buy'],
+  hegrenade: ['he_draw'], smokegrenade: ['smoke_draw'], ammo: ['clipin1'],
 };
 
 // Surface under the feet -> footstep sound. Wood has no file in the pack,
@@ -713,7 +721,7 @@ export const SAMPLES = (() => {
   for (const [name, files] of Object.entries(GROUPS)) out[name] = files.map(url);
   const singles = [
     ...Object.values(RELOAD_SOUNDS).flat().map((r) => r[1]),
-    ...Object.values(SHELL_SOUNDS), ...Object.values(RELOADED_SOUNDS), ...Object.values(DEPLOY_SOUNDS),
+    ...Object.values(SHELL_SOUNDS), ...Object.values(RELOADED_SOUNDS), ...Object.values(DEPLOY_SOUNDS), ...Object.values(BUY_SOUNDS).flat(),
   ];
   for (const f of singles) out[f] = [url(f)];
   return out;
