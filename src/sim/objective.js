@@ -11,10 +11,11 @@
 import {
   U, ROUND_WIN_LIMIT, ROUND_FREEZE, ROUND_END_TIME, ROUND_TIME, LATE_JOIN, NEVER,
   BOMB_TIMER, PLANT_TIME, DEFUSE_TIME, DEFUSE_KIT_TIME, DEFUSE_RANGE, BOMB_RADIUS, BOMB_DAMAGE,
-  BOMB_PLANT_REWARD, HOSTAGE_USE_RANGE, HOSTAGE_FOLLOW_DIST, HOSTAGE_SPEED, HOSTAGE_RESCUE_REWARD,
+  BOMB_PLANT_REWARD, HOSTAGE_HEALTH, HOSTAGE_KILL_PENALTY, HOSTAGE_USE_RANGE, HOSTAGE_FOLLOW_DIST, HOSTAGE_SPEED, HOSTAGE_RESCUE_REWARD,
   MAX_MONEY,
 } from './constants.js';
 import { movePlayer, forwardVec } from './movement.js';
+import { computeDamage } from './combat.js';
 
 export const OBJECTIVES = ['bomb', 'hostage'];
 
@@ -70,6 +71,7 @@ export function startRound(g) {
   for (const p of g.players) {
     g.spawn(p);
     p.frozenUntil = r.freezeEnd;
+    p.hostageKills = 0; // the hostage fine starts over at $1000 each round
   }
   g.bomb = emptyBomb();
   g.hostages = [];
@@ -219,7 +221,7 @@ export function hostageInReach(g, p) {
   const f = forwardVec(p.yaw);
   let best = null, bestScore = Infinity;
   for (const h of g.hostages) {
-    if (h.state === 'rescued') continue;
+    if (h.state === 'rescued' || h.state === 'dead') continue;
     const dx = h.pos[0] - p.pos[0], dz = h.pos[2] - p.pos[2];
     const d = Math.hypot(dx, dz);
     if (d > HOSTAGE_USE_RANGE || Math.abs(h.pos[1] - p.pos[1]) > 1.5) continue;
@@ -349,8 +351,10 @@ function checkWin(g) {
     if (both && alive.blue === 0) return endRound(g, 'red', 'eliminated');
     if (both && alive.red === 0 && !planted) return endRound(g, 'blue', 'eliminated');
   } else {
-    const left = g.hostages.filter((h) => h.state !== 'rescued');
-    if (g.hostages.length && !left.length) return endRound(g, 'blue', 'rescued');
+    // Every hostage still alive is out: Blue wins (if they saved any; with
+    // all of them dead there's nothing left to rescue and the round plays on).
+    const left = g.hostages.filter((h) => h.state !== 'rescued' && h.state !== 'dead');
+    if (!left.length && g.hostages.some((h) => h.state === 'rescued')) return endRound(g, 'blue', 'rescued');
     if (g.time >= g.round.endsAt) return endRound(g, 'red', 'time');
     if (both && alive.blue === 0) return endRound(g, 'red', 'eliminated');
     if (both && alive.red === 0) return endRound(g, 'blue', 'eliminated');
@@ -364,14 +368,43 @@ function newHostage(id, pos) {
     id, pos: [...pos], prevPos: [...pos], vel: [0, 0, 0], yaw: Math.PI * 2 * ((id * 0.37) % 1),
     state: 'idle', leader: null, onGround: true, ducked: false, duckAmount: 0, stamina: 0,
     path: null, pathIdx: 0, repathAt: 0, stuck: 0,
+    // Shootable like a player (combat.js traces anything with these).
+    isHostage: true, team: 'hostage', alive: true, health: HOSTAGE_HEALTH, armor: 0, helmet: false,
   };
+}
+
+// Escalating fine for killing hostages: the nth one a player kills in a
+// round costs n x HOSTAGE_KILL_PENALTY ($1000, then $2000, $3000...).
+export function hostageFine(n) {
+  return HOSTAGE_KILL_PENALTY * n;
+}
+
+// A bullet, knife or grenade hurting a hostage. Anyone can do it, either team.
+export function hurtHostage(g, h, attacker, raw, group, point, def, from = null) {
+  if (!h.alive || h.state === 'dead' || h.state === 'rescued') return;
+  const { damage } = computeDamage(h, raw, group, def);
+  h.health -= damage;
+  g.emit({ type: 'hostageHit', attacker: attacker?.id ?? null, id: h.id, damage, group, weapon: def?.id ?? null, pos: point, from: from ? [...from] : attacker ? [...attacker.pos] : null });
+  if (h.health > 0) return;
+  h.health = 0;
+  h.alive = false;
+  h.state = 'dead';
+  h.leader = null;
+  h.path = null;
+  let fine = 0;
+  if (attacker) {
+    const n = attacker.hostageKills = (attacker.hostageKills ?? 0) + 1;
+    fine = hostageFine(n);
+    attacker.money = Math.max(0, attacker.money - fine);
+  }
+  g.emit({ type: 'hostageKilled', pid: attacker?.id ?? null, id: h.id, fine, pos: [...h.pos] });
 }
 
 const STOP = { fwd: 0, side: 0, jump: false, duck: false, walk: false, yaw: 0 };
 
 function updateHostage(g, h, dt) {
   h.prevPos[0] = h.pos[0]; h.prevPos[1] = h.pos[1]; h.prevPos[2] = h.pos[2];
-  if (h.state === 'rescued') return;
+  if (h.state === 'rescued' || h.state === 'dead') return;
   const leader = h.state === 'follow' ? g.getPlayer(h.leader) : null;
   if (h.state === 'follow' && (!leader || !leader.alive)) { h.state = 'idle'; h.leader = null; }
   let cmd = { ...STOP, yaw: h.yaw };
@@ -415,6 +448,7 @@ function updateHostage(g, h, dt) {
   }
   if (h.state === 'follow' && inRescueZone(g.map, h.pos)) {
     h.state = 'rescued';
+    h.alive = false;
     if (leader) leader.money = Math.min(MAX_MONEY, leader.money + HOSTAGE_RESCUE_REWARD);
     g.emit({ type: 'rescued', pid: h.leader, id: h.id });
     h.leader = null;
@@ -447,6 +481,7 @@ export function applyObjectiveInfo(g, o) {
     const h = old.get(s.id) ?? newHostage(s.id, s.pos);
     h.prevPos = h.pos;
     h.pos = s.pos; h.yaw = s.yaw; h.state = s.state; h.leader = s.leader; h.vel = s.vel;
+    h.alive = s.state !== 'rescued' && s.state !== 'dead';
     return h;
   });
 }

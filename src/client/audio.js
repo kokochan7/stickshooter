@@ -580,10 +580,10 @@ export function arenaVoice(ctx, input, out) {
   echoOut.connect(verb); // repeats feed the reverb too, so they sit in the room
 }
 
-// Announcer voice lines for multi-kills and "The bomb has been planted"
-// (original recordings, see README). A missing file just isn't loaded.
+// Announcer voice lines: Kenny's pack for multi-kills and victory/defeat,
+// plus "The bomb has been planted" (see README). A missing file just isn't loaded.
 const CLIPS = Object.fromEntries(
-  ['double', 'triple', 'multi', 'ultra', 'monster', 'planted'].map((k) => [`announce_${k}`, `/audio/announcer/${k}.mp3`]),
+  ['doublekill', 'triplekill', 'quadrakill', 'pentakill', 'victory', 'defeat', 'planted'].map((k) => [`announce_${k}`, `/audio/announcer/${k}.mp3`]),
 );
 
 // Recorded effects from the sound pack: game name -> file variants in
