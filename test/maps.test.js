@@ -474,7 +474,7 @@ for (const id of ['canal', 'dunes']) {
   });
 }
 
-for (const id of ['harbor', 'frost', 'depot']) {
+for (const id of ['harbor', 'frost', 'depot', 'warehouse']) {
   test(`a lone Blue bot leads hostages out on ${id}`, () => {
     const g = botsOnly(MAPS[id], ['blue'], ROUND_FREEZE + ROUND_TIME.hostage, (g) => g.hostages.some((h) => h.state === 'rescued'));
     assert.ok(g.hostages.some((h) => h.state === 'rescued'), `hostages: ${g.hostages.map((h) => h.state)}`);
@@ -615,4 +615,32 @@ test('Depot: the ladder reaches the roof, a skylight drops you inside, bots can 
   // And the walkway inside.
   assert.ok(Math.abs(nav.floorAt(-24.5 * 1.5, -18 * 1.5) - 2.4) < 0.01);
   assert.ok(nav.findPath(blue[0], blue[2], -24.5 * 1.5, -18 * 1.5));
+});
+
+// ---------- Warehouse (Kenny's map) ----------
+
+test('Warehouse: ladders reach the roof, and the vent crawl drops into the hostage office', () => {
+  const W = (x, y, z) => [x * 1.4, y, z * 1.4];
+  const g = new Game(MAPS.warehouse, { seed: 5 });
+  const a = g.addPlayer({ name: 'A' });
+  g.spawn(a);
+  // West ladder, climbing east, then hop onto the roof.
+  place(a, ...W(-8.4, 0, -8)); a.yaw = -Math.PI / 2;
+  run(g, 4, (p, i) => hold(p, { fwd: 1, jump: i > 200 && i % 20 === 0 }));
+  assert.ok(a.pos[1] > 6.6, `on the roof from the west ladder (${a.pos.map((v) => v.toFixed(1))})`);
+  // East ladder, climbing west.
+  place(a, ...W(30.4, 0, -13)); a.yaw = Math.PI / 2;
+  run(g, 4, (p, i) => hold(p, { fwd: 1, jump: i > 200 && i % 20 === 0 }));
+  assert.ok(a.pos[1] > 6.6, `on the roof from the east ladder (${a.pos.map((v) => v.toFixed(1))})`);
+  // Down the hatch, crawl north, then west into the office.
+  place(a, ...W(9.1, 6.65, -20.1));
+  run(g, 1.5, (p) => hold(p, { duck: true }));
+  assert.ok(Math.abs(a.pos[1] - 4.6) < 0.05, `in the duct (${a.pos[1].toFixed(2)})`);
+  a.yaw = 0;
+  run(g, 4, (p) => hold(p, { fwd: 1, duck: true }));
+  a.yaw = Math.PI / 2;
+  run(g, 12, (p) => hold(p, { fwd: 1, duck: true }));
+  const [x, y, z] = a.pos;
+  assert.ok(Math.abs(y - 3.2) < 0.05 && x < -6.3 * 1.4 && x > -16 * 1.4 && z > -35 * 1.4 && z < -23 * 1.4,
+    `dropped into the hostage office (${a.pos.map((v) => (v / 1.4).toFixed(1))})`);
 });

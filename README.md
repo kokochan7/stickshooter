@@ -52,7 +52,7 @@ no launcher.
 - Multi-kill streaks with announcer calls: DOUBLE, TRIPLE, MULTI, ULTRA,
   **MONSTER KILL**.
 
-**🗺️ Six original maps**
+**🗺️ Seven original maps**
 
 | Map | Mode | Size |
 | --- | --- | --- |
@@ -62,6 +62,7 @@ no launcher.
 | Harbor | Hostage rescue | Large |
 | Frost | Hostage rescue | Huge |
 | Depot | Hostage rescue | Huge |
+| Warehouse (by Kenny) | Hostage rescue | Huge |
 
 All are CS 1.6 scale, with water you can wade, swim and dive in, bridges,
 and cover to fight around.

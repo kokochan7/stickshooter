@@ -381,7 +381,13 @@ function updateHostage(g, h, dt) {
     if (dist > HOSTAGE_FOLLOW_DIST) {
       let tx = leader.pos[0], tz = leader.pos[2];
       const nav = g.nav;
-      if (!nav.walkable(h.pos[0], h.pos[2], tx, tz)) {
+      // Straight at the leader only if the whole body fits along the line,
+      // not just its middle (or a hostage snags on a door's edge).
+      const ox = (-dz / dist) * 0.35, oz = (dx / dist) * 0.35;
+      const clear = nav.walkable(h.pos[0], h.pos[2], tx, tz)
+        && nav.walkable(h.pos[0] + ox, h.pos[2] + oz, tx + ox, tz + oz)
+        && nav.walkable(h.pos[0] - ox, h.pos[2] - oz, tx - ox, tz - oz);
+      if (!clear) {
         if (!h.path || g.time >= h.repathAt || h.pathIdx >= h.path.length) {
           h.path = nav.findPath(h.pos[0], h.pos[2], tx, tz);
           h.pathIdx = 0;
