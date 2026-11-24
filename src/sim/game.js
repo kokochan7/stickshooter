@@ -17,13 +17,16 @@ import { movePlayer, aimDir, forwardVec, rightVec, playerBox, hullTouches } from
 import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
 import { NavGrid } from './nav.js';
 import * as Obj from './objective.js';
+import { GG_LADDER, GG_LAST, ggWeapon } from './gungame.js';
 
 const DEG = Math.PI / 180;
 
 // Game modes. In 'ffa' everyone is on team 'ffa' and fights everyone; in
 // 'teams' players are 'red' or 'blue' and spawn on their own side of the map.
 // Teams on a bomb or hostage map plays objective rounds (objective.js).
-export const MODES = ['ffa', 'teams'];
+// 'gungame' is free for all where every kill moves you up a ladder of guns
+// (gungame.js) and nobody buys.
+export const MODES = ['ffa', 'teams', 'gungame'];
 export const TEAMS = ['red', 'blue'];
 
 export function emptyCmd() {
@@ -193,7 +196,7 @@ export class Game {
       roundKills: 0, multi: 0, lastKillAt: -10, god: false,
       spawnedAt: 0,
       nadePin: 0, nadeLob: false, nadeRedrawAt: 0, swimming: false, waterJump: 0,
-      burstLeft: 0, burstNext: 0,
+      burstLeft: 0, burstNext: 0, ggLevel: 0,
     };
     this.players.push(p);
     return p;
@@ -239,7 +242,7 @@ export class Game {
     this.nades = [];
     this.smokes = [];
     for (const p of this.players) {
-      p.kills = 0; p.deaths = 0; p.headshots = 0; p.money = START_MONEY;
+      p.kills = 0; p.deaths = 0; p.headshots = 0; p.money = START_MONEY; p.ggLevel = 0;
       p.controlling = null; p.controlledBy = null; p.ownMoney = 0;
     }
   }
@@ -258,6 +261,10 @@ export class Game {
   // START_DELAY so they get a moment to look around and buy. In objective
   // rounds you wait for the next round unless this one has only just begun.
   join(p) {
+    if (this.mode === 'gungame') {
+      const others = this.players.filter((o) => o !== p);
+      p.ggLevel = others.length ? Math.min(GG_LAST - 1, Math.min(...others.map((o) => o.ggLevel ?? 0))) : 0;
+    }
     if (this.objective && this.round.state !== 'none') {
       if (!Obj.canSpawnNow(this)) { p.alive = false; p.respawnAt = NEVER; return; }
       this.spawn(p);
@@ -387,7 +394,10 @@ export class Game {
     p.roundKills = 0;
     p.multi = 0;
     p.ducked = false; p.duckAmount = 0; p.onGround = true;
-    if (!keepGear) {
+    if (this.mode === 'gungame') {
+      p.armor = 100; p.helmet = true; p.defuser = false;
+      this.ggArm(p);
+    } else if (!keepGear) {
       p.armor = 0; p.helmet = false; p.defuser = false;
       p.weapons = emptyWeapons();
       p.weapons.secondary = makeWeapon(this.mode === 'teams' && p.team === 'red' ? 'glock18' : 'usp');
@@ -410,6 +420,49 @@ export class Game {
     this.emit({ type: 'spawn', pid: p.id, yaw: p.yaw }); // yaw: cmds later in the tick overwrite p.yaw
   }
 
+  // Gun Game: the gun for p's level (plus the knife) in p's hands, full.
+  ggArm(p) {
+    const id = ggWeapon(p.ggLevel);
+    p.weapons = emptyWeapons();
+    p.weapons.melee = makeWeapon('knife');
+    const slot = WEAPONS[id].slot;
+    if (id !== 'knife') p.weapons[slot] = makeWeapon(id);
+    p.active = slot;
+    p.lastActive = 'melee';
+    if (p.alive) this.switchTo(p, slot, true);
+  }
+
+  // Gun Game upkeep each tick: the gun's reserve stays full, and on the HE
+  // level a new grenade comes once your last one has gone off.
+  ggUpkeep(p) {
+    const id = ggWeapon(p.ggLevel);
+    const def = WEAPONS[id];
+    if (def.grenade) {
+      if (p.weapons.grenade || p.nadeRedrawAt || this.nades.some((n) => n.owner === p.id)) return;
+      p.weapons.grenade = makeWeapon(id);
+      if (p.active === 'melee' && this.time >= p.nextStab) this.switchTo(p, 'grenade', true);
+      return;
+    }
+    const w = p.weapons[def.slot];
+    if (w && w.id === id && w.reserve < def.reserve) w.reserve = def.reserve;
+  }
+
+  // Gun Game: what a kill does to the ladder. Returns true if it won the match.
+  ggKill(attacker, victim, def) {
+    const knife = !!def?.melee;
+    if (attacker.ggLevel >= GG_LAST) {
+      if (!knife) return false;
+      attacker.ggLevel = GG_LADDER.length;
+      return true;
+    }
+    attacker.ggLevel++;
+    let stolen = false;
+    if (knife && victim.ggLevel > 0) { victim.ggLevel--; stolen = true; }
+    this.emit({ type: 'ggLevel', pid: attacker.id, level: attacker.ggLevel, weapon: ggWeapon(attacker.ggLevel), victim: victim.id, stolen });
+    if (attacker.alive) this.ggArm(attacker);
+    return false;
+  }
+
   // When buying closes for this player (game time).
   buyDeadline(p) {
     if (this.objective) return this.round.freezeEnd + BUY_TIME;
@@ -422,7 +475,7 @@ export class Game {
   }
 
   canBuy(p) {
-    return p.alive && this.time <= this.buyDeadline(p);
+    return p.alive && this.mode !== 'gungame' && this.time <= this.buyDeadline(p);
   }
 
   // The gun N buys ammo for: the one in your hands, or your primary (then
@@ -450,7 +503,7 @@ export class Game {
 
   // silent: bots and tests, which skip the buy time and the buy event.
   buy(p, item, silent = false) {
-    if (!p.alive) return false;
+    if (!p.alive || this.mode === 'gungame') return false;
     if (!silent && !this.canBuy(p)) return false;
     if (item === 'ammo') return this.buyAmmo(p, undefined, silent);
     if (item === 'defuser') {
@@ -624,6 +677,7 @@ export class Game {
       }
       if (cmd.actions) for (const a of cmd.actions) this.handleAction(p, a);
       if (this.objective) Obj.playerUse(this, p, this.frozen(p) ? { ...cmd, use: false } : cmd);
+      if (this.mode === 'gungame') this.ggUpkeep(p);
 
       this.moveStep(p, cmd, dt);
       // Frozen (match start / match over): look, switch and buy, but no shooting.
@@ -701,6 +755,7 @@ export class Game {
   // never drops. Returns the drop or null.
   dropWeapon(p, slot, thrown, { switchAway = true } = {}) {
     const w = p.weapons[slot];
+    if (this.mode === 'gungame') return null; // your gun is your level
     if (!w || WEAPONS[w.id].melee || WEAPONS[w.id].grenade || WEAPONS[w.id].bomb) return null;
     p.weapons[slot] = null;
     let pos, vel;
@@ -1464,7 +1519,7 @@ export class Game {
     if (attacker && attacker !== victim) {
       credit.kills++;
       if (headshot) credit.headshots++;
-      reward = this.killReward(attacker);
+      reward = this.mode === 'gungame' ? 0 : this.killReward(attacker);
       attacker.roundKills++;
       attacker.money = Math.min(MAX_MONEY, attacker.money + reward);
       if (attacker.team in this.teamKills && this.match.state === 'live') this.teamKills[attacker.team]++;
@@ -1483,7 +1538,9 @@ export class Game {
     // The bot's body died: it stays dead, and gets its money back.
     if (victim.controlling) this.releaseBot(victim);
 
-    if (attacker && attacker !== victim && this.match.state === 'live' && !this.objective) {
+    if (attacker && attacker !== victim && this.match.state === 'live' && this.mode === 'gungame') {
+      if (this.ggKill(attacker, victim, def)) this.endMatch(attacker, null);
+    } else if (attacker && attacker !== victim && this.match.state === 'live' && !this.objective) {
       if (this.mode === 'teams') {
         if (this.teamKills[attacker.team] >= TEAM_KILL_LIMIT) this.endMatch(null, attacker.team);
       } else if (attacker.kills >= FFA_KILL_LIMIT) {

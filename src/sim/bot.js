@@ -127,13 +127,13 @@ export class BotBrain {
       c = m.teamCache = { time: g.time, players: g.players, size: m.size, mode: g.mode, alive, lists: new Map() };
       for (const b of m.values()) {
         if (!b.p.alive || !inGame.has(b.p)) continue;
-        const key = g.mode === 'ffa' ? 'ffa' : b.p.team;
+        const key = g.mode !== 'teams' ? 'ffa' : b.p.team;
         if (!c.lists.has(key)) c.lists.set(key, []);
         c.lists.get(key).push(b);
       }
       for (const list of c.lists.values()) list.sort((a, b) => a.p.id - b.p.id);
     }
-    return c.lists.get(g.mode === 'ffa' ? 'ffa' : this.p.team) ?? [];
+    return c.lists.get(g.mode !== 'teams' ? 'ffa' : this.p.team) ?? [];
   }
 
   // Take the role our team has least of (ties broken at random).
@@ -142,7 +142,7 @@ export class BotBrain {
     const g = this.game;
     for (const b of brainsOf(g).values()) {
       if (b === this || g.getPlayer(b.p.id) !== b.p || !b.role) continue;
-      if (g.mode === 'ffa' || b.p.team === this.p.team) counts[b.role]++;
+      if (g.mode !== 'teams' || b.p.team === this.p.team) counts[b.role]++;
     }
     const min = Math.min(...Object.values(counts));
     const opts = ROLES.filter((r) => counts[r] === min);
@@ -227,11 +227,13 @@ export class BotBrain {
   considerNade(tgt, dist, lost) {
     const g = this.game, p = this.p, t = g.time;
     if (t < this.nadeNextTry || p.task || p.reloading || g.frozen(p)) return;
-    this.nadeNextTry = t + 1.5 + Math.random();
-    if (dist < 8 || dist > 26) return;
+    // Gun Game's HE level: the grenade is our gun, so throw it every chance.
+    const heLevel = g.mode === 'gungame' && !p.weapons.primary && !p.weapons.secondary;
+    this.nadeNextTry = t + (heLevel ? 0.3 : 1.5 + Math.random());
+    if (dist < (heLevel ? 4 : 8) || dist > 26) return;
     if (!(p.weapons.grenade?.clip > 0)) return;
     // A lost enemy is the classic grenade; in a straight fight it's rarer.
-    if (Math.random() > (lost ? 0.45 : 0.12)) return;
+    if (!heLevel && Math.random() > (lost ? 0.45 : 0.12)) return;
     const pos = lost ? this.lastSeenPos : tgt.pos;
     // Don't land it on teammates.
     if (g.mode === 'teams' && this.allies().some((b) => Math.hypot(b.p.pos[0] - pos[0], b.p.pos[2] - pos[2]) < 6)) return;
@@ -240,7 +242,7 @@ export class BotBrain {
 
   startNade(slot, aim) {
     this.nadeThrow = { slot, aim, phase: 'draw', until: this.game.time + 2.5 };
-    this.nadeNextTry = this.game.time + 6 + Math.random() * 6;
+    this.nadeNextTry = this.game.time + (this.game.mode === 'gungame' ? 1 : 6 + Math.random() * 6);
   }
 
   // Draw the grenade, turn to the throwing angle, pull the pin, let go.
@@ -954,7 +956,7 @@ export class BotBrain {
     // Two or more of us already on it, and we're healthy.
     let on = 0;
     for (const b of this.allies()) if (b.targetVisible && b.target === tgt.id) on++;
-    if (on >= 2 && p.health > 50 && this.game.mode !== 'ffa') return true;
+    if (on >= 2 && p.health > 50 && this.game.mode === 'teams') return true;
     // Close-range guns want to close the gap.
     if ((def?.pellets || def?.id === 'uzi' || def?.id === 'p90') && dist < 12) return this.engageRoll < 0.7;
     // Otherwise it's down to temperament, rolled once per fight.
@@ -1254,7 +1256,7 @@ export class BotBrain {
         if (-(dx * of[0] + dz * of[2]) / (d || 1) > 0.9) score -= 4;
         let on = 0;
         for (const b of allies) if (b.target === o.id && b.targetVisible) on++;
-        score += on * (g.mode === 'ffa' ? 5 : 9);
+        score += on * (g.mode !== 'teams' ? 5 : 9);
         // A per-bot, per-enemy preference that doesn't flicker.
         score += ((Math.sin(this.bias + o.id * 12.9898) * 43758.5453) % 1 + 1) % 1 * 6;
         if (score < bestScore) { bestScore = score; best = o; }
@@ -1448,7 +1450,7 @@ export class BotBrain {
     let px = 0, pz = 0;
     for (const o of g.players) {
       if (o === p || !o.alive || o.id === this.target) continue;
-      if (g.mode !== 'ffa' && isEnemy(p, o)) continue;
+      if (g.mode === 'teams' && isEnemy(p, o)) continue;
       const dx = p.pos[0] - o.pos[0], dz = p.pos[2] - o.pos[2];
       const d = Math.hypot(dx, dz);
       if (d >= radius || Math.abs(o.pos[1] - p.pos[1]) > 2) continue;

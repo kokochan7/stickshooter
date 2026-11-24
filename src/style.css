@@ -366,6 +366,9 @@ body.touch .pause-hint { display: none; }
 #center-msg .round-win.team-blue { color: #4f95ff; }
 #center-msg .alert { display: block; font: 400 40px/1.1 var(--title); color: #ff5a5f; text-shadow: 0 4px 0 #1b1f27; }
 #center-msg .alert.good { color: #6fe08a; }
+#center-msg .gg-up { display: block; font: 400 44px/1.1 var(--title); color: #ffd23f; text-shadow: 0 4px 0 #1b1f27; }
+/* Gun Game: nothing to buy or drop. */
+.mode-gungame .money, .mode-gungame .t-btn.t-buy, .mode-gungame .t-btn.t-ammo, .mode-gungame .t-btn.t-drop { display: none; }
 .kf-ic.bomb { fill: #ff7a5a; }
 
 /* ---------- Admin console (~) ---------- */
