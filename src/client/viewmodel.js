@@ -2,7 +2,8 @@
 // gun never clips into walls. Springs give the kick, sway and bob their feel.
 import * as THREE from 'three';
 import { buildGun } from './gunModels.js';
-import { toonMaterial, solveIK, Limb, Joint, stepRate, teamColor } from './stickman.js';
+import { solveIK, Limb, Joint, stepRate, teamColor } from './stickman.js';
+import { playerKit, suitMaterials, tintSuit, orientHand, PALM_R, PALM_L } from './playerLook.js';
 
 class Spring {
   constructor(stiffness = 180, damping = 18) {
@@ -44,17 +45,18 @@ export class ViewModel {
     this.gunHolder = new THREE.Group();
     this.rig.add(this.gunHolder);
 
-    const mat = toonMaterial(0xffffff);
-    this.armMat = mat;
+    // Same Classic textured suit and gloves as the third-person body.
+    const k = playerKit();
+    this.armMats = suitMaterials(['upper', 'fore']);
+    tintSuit(this.armMats, 0xffffff);
     this.team = null;
-    const out = new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide });
     this.arms = {};
     for (const s of ['L', 'R']) {
-      this.arms['upper' + s] = new Limb(this.rig, mat, 0.03, out, 0.004);
-      this.arms['fore' + s] = new Limb(this.rig, mat, 0.027, out, 0.004);
-      this.arms['elbow' + s] = new Joint(this.rig, mat, 0.03, null);
-      this.arms['hand' + s] = new Joint(this.rig, mat, 0.036, out, 0.004);
+      this.arms['upper' + s] = new Limb(this.rig, this.armMats.upper, 1, null, 0, k.vmUpper);
+      this.arms['fore' + s] = new Limb(this.rig, this.armMats.fore, 1, null, 0, k.vmFore);
+      this.arms['hand' + s] = new Joint(this.rig, k.gloveMat, 1, null, 0, k.vmHand);
     }
+    this.arms.handL.mesh.scale.x = -1;
 
     // Muzzle flash: two crossed additive quads.
     this.flash = makeFlash();
@@ -111,7 +113,7 @@ export class ViewModel {
   setTeam(team) {
     if (this.team === team) return;
     this.team = team;
-    this.armMat.color.setHex(teamColor(team));
+    tintSuit(this.armMats, teamColor(team));
   }
 
   setWeapon(id) {
@@ -460,7 +462,7 @@ export class ViewModel {
   showLeft(on) {
     if (this.leftShown === on) return;
     this.leftShown = on;
-    for (const k of ['upperL', 'foreL', 'elbowL', 'handL']) {
+    for (const k of ['upperL', 'foreL', 'handL']) {
       const part = this.arms[k];
       part.mesh.visible = on;
       if (part.outline) part.outline.visible = on;
@@ -471,8 +473,8 @@ export class ViewModel {
     const elbow = solveIK(shoulder, hand, 0.42, 0.42, pole, this._v[4]);
     this.arms['upper' + side].set(shoulder, elbow);
     this.arms['fore' + side].set(elbow, hand);
-    this.arms['elbow' + side].set(elbow);
     this.arms['hand' + side].set(hand);
+    orientHand(this.arms['hand' + side].mesh, this.arms['fore' + side].mesh.quaternion, side === 'R' ? PALM_R : PALM_L);
   }
 
   // Muzzle and shell-ejection points in view space.
