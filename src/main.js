@@ -623,7 +623,9 @@ function announce(clip, text) {
 
 // ---------- Multi-kill announcer ----------
 
-const MULTI_KILLS = [null, null, ['DOUBLE KILL', 'double'], ['TRIPLE KILL', 'triple'], ['MULTI KILL', 'multi'], ['ULTRA KILL', 'ultra'], ['MONSTER KILL', 'monster']];
+// Kenny's announcer pack: 2 kills = doublekill, 3 = triplekill, 4 = quadrakill,
+// 5 or more = pentakill (public/audio/announcer/).
+const MULTI_KILLS = [null, null, ['DOUBLE KILL', 'doublekill'], ['TRIPLE KILL', 'triplekill'], ['QUADRA KILL', 'quadrakill'], ['PENTA KILL', 'pentakill']];
 let announcer = null;
 function announceMultiKill(n) {
   const [text, clip] = MULTI_KILLS[Math.min(n, MULTI_KILLS.length - 1)];
@@ -982,9 +984,13 @@ function handleEvent(e) {
         alertMsg = { html: '<span class="alert">KNIFED · LEVEL LOST</span>', until: performance.now() + 1600 };
       }
       break;
-    case 'matchEnd':
-      audio.play('win', { volume: 0.6 });
+    case 'matchEnd': {
+      // Victory or defeat from the announcer pack (the blip if it hasn't loaded).
+      const won = me && (e.team ? e.team === me.team : e.winner === me.id);
+      if (!me) audio.play('win', { volume: 0.6 });
+      else announce(won ? 'victory' : 'defeat', won ? 'Victory!' : 'Defeat.');
       break;
+    }
     case 'dry':
       if (p === me) audio.play(game.activeDef(p)?.slot === 'secondary' ? 'dryPistol' : 'dryRifle', { volume: 0.7 });
       break;
@@ -1074,6 +1080,20 @@ function handleEvent(e) {
     case 'hostageFollow':
     case 'hostageStop':
       if (p === me) audio.play(e.type === 'hostageFollow' ? 'buy' : 'dry', { volume: 0.5 });
+      break;
+    case 'hostageHit': {
+      const dir = e.from ? norm([e.pos[0] - e.from[0], e.pos[1] - e.from[1] - 1.5, e.pos[2] - e.from[2]]) : [0, 0, 0];
+      view.effects.blood(e.pos, dir, e.group === 'head');
+      audio.play('hitBody', { pos: e.pos, volume: 0.5 });
+      break;
+    }
+    case 'hostageKilled':
+      if (me && e.pid === me.id) {
+        alertMsg = { html: `<span class="alert">YOU KILLED A HOSTAGE · -$${e.fine}</span>`, until: performance.now() + 2500 };
+        if (e.fine) hud.moneyPop(-e.fine);
+      } else {
+        alertMsg = { html: '<span class="alert">A HOSTAGE HAS BEEN KILLED</span>', until: performance.now() + 1800 };
+      }
       break;
     case 'rescued':
       audio.play('rescue', { volume: 0.6 });
@@ -1533,7 +1553,7 @@ function objectivePrompt() {
   const h = hostageInReach(game, me);
   if (!h) return '';
   if (h.state === 'follow' && h.leader === me.id) return `${k} Tell the hostage to wait`;
-  if (me.team === 'blue' && h.state !== 'rescued') return `${k} Lead the hostage`;
+  if (me.team === 'blue' && h.state !== 'rescued' && h.state !== 'dead') return `${k} Lead the hostage`;
   return '';
 }
 
@@ -1546,7 +1566,7 @@ function goalText() {
       if (b.state === 'planted') return me.team === 'blue' ? `${n} · DEFUSE THE BOMB AT ${b.site}` : `${n} · GUARD THE BOMB AT ${b.site}`;
       return me.team === 'red' ? `${n} · PLANT THE BOMB AT A OR B` : `${n} · DEFEND SITES A AND B`;
     }
-    const left = game.hostages.filter((h) => h.state !== 'rescued').length;
+    const left = game.hostages.filter((h) => h.state !== 'rescued' && h.state !== 'dead').length;
     return me.team === 'blue' ? `${n} · RESCUE THE HOSTAGES (${left} LEFT)` : `${n} · GUARD THE HOSTAGES (${left} LEFT)`;
   }
   if (game.mode === 'teams') return `FIRST TEAM TO ${TEAM_KILL_LIMIT} KILLS`;

@@ -373,7 +373,8 @@ export class Hud {
   // "+$750" next to the money after a kill.
   moneyPop(amount) {
     const el = $('money-pop');
-    el.textContent = `+$${amount}`;
+    el.textContent = amount < 0 ? `-$${-amount}` : `+$${amount}`;
+    el.classList.toggle('loss', amount < 0);
     el.classList.remove('show');
     void el.offsetWidth; // restart the animation
     el.classList.add('show');

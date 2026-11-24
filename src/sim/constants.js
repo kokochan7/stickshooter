@@ -133,6 +133,9 @@ export const HOSTAGE_USE_RANGE = 1.9;
 export const HOSTAGE_FOLLOW_DIST = 1.7;
 export const HOSTAGE_SPEED = 230; // CS units/s
 export const HOSTAGE_RESCUE_REWARD = 1000;
+export const HOSTAGE_HEALTH = 100;
+// Killing hostages: the 1st in a round costs $1000, the 2nd $2000, the 3rd $3000...
+export const HOSTAGE_KILL_PENALTY = 1000;
 // Wading through water slows you down.
 export const WATER_SPEED_MUL = 0.78;
 // Swimming (deep water, see movement.js). You swim once the water is above

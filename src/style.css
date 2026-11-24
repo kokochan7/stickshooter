@@ -164,12 +164,13 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 /* "+$750" after a kill, floating up from the money. */
 #money-pop { position: absolute; left: 100%; bottom: 0; margin-left: 10px; font-style: normal; font-size: 20px; color: #b8ffbf; white-space: nowrap; opacity: 0; }
 #money-pop.show { animation: moneyPop 1.4s ease-out; }
+#money-pop.loss { color: #ff8a80; }
 @keyframes moneyPop { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }
 /* DOUBLE KILL, TRIPLE KILL... */
 #multikill { position: absolute; left: 50%; top: 23%; transform: translateX(-50%); font: 400 64px/1 var(--title); letter-spacing: 2px; color: var(--accent); text-shadow: 0 5px 0 #1b1f27, 0 0 28px rgba(255,170,40,.55); white-space: nowrap; opacity: 0; pointer-events: none; }
 #multikill.show { animation: multiKill 1.8s ease-out; }
-#multikill.m4, #multikill.m5 { color: #ff8a3d; }
-#multikill.m6 { color: #ff4d4d; }
+#multikill.m4 { color: #ff8a3d; }
+#multikill.m5, #multikill.m6 { color: #ff4d4d; }
 @keyframes multiKill { 0% { opacity: 0; transform: translateX(-50%) scale(1.6); } 10% { opacity: 1; transform: translateX(-50%) scale(.96); } 18% { transform: translateX(-50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1); } }
 #nade-chip.hidden { display: none; }
 #nade-chip svg { width: 18px; height: 18px; fill: #8fae5a; }

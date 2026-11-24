@@ -238,6 +238,8 @@ export class BotBrain {
     const pos = lost ? this.lastSeenPos : tgt.pos;
     // Don't land it on teammates.
     if (g.mode === 'teams' && this.allies().some((b) => Math.hypot(b.p.pos[0] - pos[0], b.p.pos[2] - pos[2]) < 6)) return;
+    // Or on hostages (killing one costs money).
+    if (g.hostages.some((h) => h.alive && Math.hypot(h.pos[0] - pos[0], h.pos[2] - pos[2]) < 12)) return;
     this.startNade('grenade', [pos[0], pos[1], pos[2]]);
   }
 
@@ -681,6 +683,9 @@ export class BotBrain {
     // we land, unless they're right in front of us.
     if (wantFire && !p.onGround && !p.swimming && !def?.melee && fightDist > 4) wantFire = false;
 
+    // Hostages cost money to kill: hold fire while one is in the way.
+    if (wantFire && tgt && g.hostages.length && this.hostageInLine(tgt)) wantFire = false;
+
     // --- Fire control ---
     if (wantFire) {
       if (def.auto && !def.pellets && !def.scope) {
@@ -838,7 +843,7 @@ export class BotBrain {
       return { goal: this.spotGoal('hold' + site, g.map.sites[site], 0.2, 12) };
     }
     // Hostage rescue.
-    const hs = g.hostages.filter((h) => h.state !== 'rescued');
+    const hs = g.hostages.filter((h) => h.state !== 'rescued' && h.state !== 'dead');
     if (p.team === 'blue') {
       const mine = hs.filter((h) => h.state === 'follow' && h.leader === p.id);
       const free = hs.filter((h) => h.state === 'idle');
@@ -893,6 +898,26 @@ export class BotBrain {
   // straight way), or round the left or right of it. Dealt out by place in
   // the team so a team splits across all three ways, and reshuffled each
   // round, so the bots don't all file down the same corridor.
+  // Is a live hostage close to our line of fire at the target (in front of
+  // it, or right behind it where a miss or a bullet through would land)?
+  hostageInLine(tgt) {
+    const g = this.game, p = this.p;
+    const eye = g.eyePos(p);
+    const ex = tgt.pos[0] - eye[0], ey = tgt.pos[1] + 1.1 - eye[1], ez = tgt.pos[2] - eye[2];
+    const len2 = ex * ex + ey * ey + ez * ez || 1;
+    for (const h of g.hostages) {
+      if (!h.alive) continue;
+      const hx = h.pos[0] - eye[0], hy = h.pos[1] + 1 - eye[1], hz = h.pos[2] - eye[2];
+      const k = (hx * ex + hy * ey + hz * ez) / len2;
+      if (k <= 0 || k > 1.25) continue;
+      const dx = hx - ex * k, dy = hy - ey * k, dz = hz - ez * k;
+      // Wider far out, where our aim wobbles and the spread opens up.
+      const slack = 0.65 + 0.025 * Math.sqrt(len2) * k;
+      if (Math.hypot(dx, dz) < slack && Math.abs(dy) < 1.1 + slack - 0.65) return true;
+    }
+    return false;
+  }
+
   lane() {
     const plan = this.plan();
     if (this.laneKey !== plan.key || this.lanePlan !== plan) {

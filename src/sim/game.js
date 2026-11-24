@@ -1242,6 +1242,23 @@ export class Game {
       const d = dist > 1e-3 ? [(mid[0] - src[0]) / dist, (mid[1] - src[1]) / dist, (mid[2] - src[2]) / dist] : [0, 1, 0];
       this.damage(v, owner, dmg, 'chest', mid, def, false, d, src);
     }
+    // Hostages get caught in the blast too.
+    for (const h of this.hostages) {
+      if (!h.alive) continue;
+      const mid = [h.pos[0], h.pos[1] + 0.9, h.pos[2]];
+      const dist = Math.hypot(mid[0] - src[0], mid[1] - src[1], mid[2] - src[2]);
+      const dmg = def.damage * (1 - dist / U / radius);
+      if (dmg <= 0 || !this.world.visible(src[0], src[1], src[2], mid[0], mid[1], mid[2])) continue;
+      Obj.hurtHostage(this, h, owner, dmg, 'chest', mid, def, src);
+    }
+  }
+
+  // What bullets and knives can hit: the players, plus the hostages still
+  // standing in a hostage round.
+  targets() {
+    if (!this.hostages.length) return this.players;
+    const hs = this.hostages.filter((h) => h.alive);
+    return hs.length ? this.players.concat(hs) : this.players;
   }
 
   popSmoke(n, def) {
@@ -1262,7 +1279,7 @@ export class Game {
     const up = cross(right, fwd);
     const origin = this.eyePos(p);
     const restore = this.lagComp ? this.lagComp(p) : null;
-    const res = traceMelee(this.world, this.players, p, origin, fwd, right, up, m.range);
+    const res = traceMelee(this.world, this.targets(), p, origin, fwd, right, up, m.range);
     if (restore) restore();
 
     const hit = !!res;
@@ -1280,7 +1297,8 @@ export class Game {
       type: 'melee', pid: p.id, kind, hit: res?.victim ? 'flesh' : res?.wall ? 'wall' : null, backstab,
       pos: res?.victim ? res.point : res?.wall?.pos ?? null, normal: res?.wall?.normal ?? null, material: res?.wall?.material ?? null,
     });
-    if (res?.victim) this.damage(res.victim, p, dmg, res.group, res.point, def, false, fwd);
+    if (res?.victim?.isHostage) Obj.hurtHostage(this, res.victim, p, dmg, res.group, res.point, def);
+    else if (res?.victim) this.damage(res.victim, p, dmg, res.group, res.point, def, false, fwd);
 
     if (kind === 'slash') {
       p.nextAttack = t + (hit ? m.hitCycle : m.missCycle);
@@ -1332,6 +1350,7 @@ export class Game {
     const ends = [];
     const impacts = [];
     const hitsByVictim = new Map();
+    const targets = this.targets();
     // Predicting (online, our own shot): others are already drawn where we
     // saw them, so there's nothing to rewind.
     const restore = this.lagComp && !this.predicting ? this.lagComp(p) : null;
@@ -1345,7 +1364,7 @@ export class Game {
         y = (rand() - 0.5 + rand() - 0.5) * spread;
       }
       const d = norm([fwd[0] + x * right[0] + y * up[0], fwd[1] + x * right[1] + y * up[1], fwd[2] + x * right[2] + y * up[2]]);
-      const res = traceBullet(this.world, this.players, p, origin, d, def, (victim, dmg, group, point, wallbang) => {
+      const res = traceBullet(this.world, targets, p, origin, d, def, (victim, dmg, group, point, wallbang) => {
         const hits = hitsByVictim.get(victim) ?? [];
         hits.push({ dmg, group, point, wallbang });
         hitsByVictim.set(victim, hits);
@@ -1362,7 +1381,8 @@ export class Game {
       for (const [victim, hits] of hitsByVictim) {
         for (const h of hits) {
           if (!victim.alive) break;
-          this.damage(victim, p, h.dmg, h.group, h.point, def, h.wallbang, fwd);
+          if (victim.isHostage) Obj.hurtHostage(this, victim, p, h.dmg, h.group, h.point, def);
+          else this.damage(victim, p, h.dmg, h.group, h.point, def, h.wallbang, fwd);
         }
       }
     }

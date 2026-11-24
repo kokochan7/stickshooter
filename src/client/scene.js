@@ -350,7 +350,7 @@ export class GameView {
 
     const seen = new Set();
     for (const h of game.hostages) {
-      if (h.state === 'rescued') continue;
+      if (h.state === 'rescued' || h.state === 'dead') continue; // dead ones vanish like players
       seen.add(h.id);
       let v = this.hostageViews.get(h.id);
       if (!v) {

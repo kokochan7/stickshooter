@@ -50,8 +50,10 @@ no launcher.
 - **Deathmatch**: Free for all or Teams (Red vs Blue).
 - CS-style rounds with one life, a buy menu, buy time, kill rewards and a
   first-to-8 match. Spectate teammates after you die.
-- Multi-kill streaks with announcer calls: DOUBLE, TRIPLE, MULTI, ULTRA,
-  **MONSTER KILL**.
+- Multi-kill streaks with announcer calls: DOUBLE, TRIPLE, QUADRA,
+  **PENTA KILL**, plus a Victory / Defeat call at the end of a match.
+- Killing a hostage costs money: $1000 for the first in a round, $2000 for
+  the second, $3000 for the third, and so on.
 
 **🗺️ Seven original maps**
 
@@ -206,6 +208,7 @@ in `.dev.vars`.
 
 ### Credits
 
-Announcer voice lines are original, generated with the Apache-2.0 Kokoro TTS
-model and processed with ffmpeg. Gameplay numbers follow Counter-Strike 1.6;
+The multi-kill and victory/defeat announcer lines are Kenny's own sound pack;
+the "bomb has been planted" line was generated with the Apache-2.0 Kokoro TTS
+model. All were processed with ffmpeg. Gameplay numbers follow Counter-Strike 1.6;
 all art, maps and models are original.
