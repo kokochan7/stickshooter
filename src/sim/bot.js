@@ -7,6 +7,7 @@ import { forwardVec, rightVec, aimDir } from './movement.js';
 import { isEnemy } from './combat.js';
 import { siteAt, canPlant, canDefuse, hostageInReach } from './objective.js';
 import { teamPlan, mapMiddle } from './botplan.js';
+import { WP_JUMP, WP_CROUCH } from './nav.js';
 
 const DEG = Math.PI / 180;
 
@@ -182,7 +183,7 @@ export class BotBrain {
     this.wobblePhase = [Math.random() * 10, Math.random() * 10];
     this.lastHurtSeen = this.p.lastHurtTime;
     this.dropGoal = null; // id of a gun on the ground worth more than ours
-    this.objSpot = null; // where the objective wants us: [x, z]
+    this.objSpot = null; // where the objective wants us: [x, z, floor height]
     this.objSpotKey = '';
     this.objSpotUntil = 0;
     this.useToggle = false;
@@ -502,7 +503,10 @@ export class BotBrain {
       // --- Roam / hunt / play the objective ---
       let goal = null;
       const obj = g.objective ? this.objective(cmd) : null;
-      const chase = obj?.urgent ? 1.5 : this.style.chase;
+      // The objective comes first: the bomb carrier, whoever is going for or
+      // leading out hostages, and anyone running to a planted bomb don't
+      // chase someone they've lost sight of, or stop for guns on the floor.
+      const chase = obj?.critical ? 0.4 : obj?.urgent ? 1.5 : this.style.chase;
       // Guarding a planted bomb: don't chase anyone far from it.
       const tether = obj?.tether;
       const chaseOk = !tether || (this.lastSeenPos && Math.hypot(this.lastSeenPos[0] - tether.pos[0], this.lastSeenPos[2] - tether.pos[2]) < tether.r);
@@ -535,8 +539,8 @@ export class BotBrain {
         this.holdUntil = 0;
       }
       // A better gun on the ground beats hunting.
-      const drop = this.dropGoal ? g.drops.find((d) => d.id === this.dropGoal) : null;
-      if (this.dropGoal && !drop) { this.dropGoal = null; this.path = null; }
+      const drop = this.dropGoal && !obj?.critical ? g.drops.find((d) => d.id === this.dropGoal) : null;
+      if (this.dropGoal && !drop && !obj?.critical) { this.dropGoal = null; this.path = null; }
       if (drop) {
         goal = drop.pos;
         const dd = Math.hypot(drop.pos[0] - p.pos[0], drop.pos[2] - p.pos[2]);
@@ -546,7 +550,7 @@ export class BotBrain {
       if (obj?.hold) {
         // Planting or defusing: stand still with the key held.
       } else if (goal && !moveDir && (!this.path || this.pathIdx >= this.path.length || t >= this.repathAt)) {
-        this.path = this.routeTo(goal, drop ? false : obj?.detour ?? !obj?.urgent);
+        this.path = this.routeTo(goal, drop ? false : obj?.detour ?? !obj?.urgent, !!obj?.walkOnly);
         this.pathIdx = 0;
         this.repathAt = t + (drop ? 1 : roaming ? 8 : 1.5);
         if (!this.path) {
@@ -563,8 +567,16 @@ export class BotBrain {
         // is clear from where we actually stand; otherwise we'd cut the
         // corner into whatever the path was steering around.
         const next = this.path[this.pathIdx + 1];
-        const nextClear = next && d < 2 && this.nav.walkable(p.pos[0], p.pos[2], next[0], next[1]);
-        if (d < 0.6 && (!next || d < 0.15 || nextClear)) this.pathIdx++;
+        const nextClear = next && d < 2 && !(next[3] & WP_JUMP) && this.nav.walkable(p.pos[0], p.pos[2], next[0], next[1], p.pos[1]);
+        // A ledge to jump up onto (the roof from the top of a ladder): jump
+        // as we reach its foot. A duct or a low ceiling: crouch through it.
+        const flags = wp[3] ?? 0;
+        if ((flags & WP_JUMP) && d < 1.3 && p.onGround && wp[2] - p.pos[1] > 0.3) this.jumpNext = true;
+        if ((flags & WP_CROUCH) || (next && (next[3] & WP_CROUCH) && d < 1.2) || this.nav.crouchAt(p.pos[0], p.pos[2], p.pos[1])) cmd.duck = true;
+        // A waypoint up a ledge isn't reached until we're on top of it, nor
+        // one down a hole (a skylight, a vent) until we've dropped in.
+        const onLevel = wp[2] === undefined || Math.abs(p.pos[1] - wp[2]) < 0.7;
+        if (d < 0.6 && onLevel && (!next || d < 0.15 || nextClear)) this.pathIdx++;
         else if (d > 0.01) {
           let dir = [dx / d, dz / d];
           // Round the corner: start bending towards the next waypoint as we
@@ -747,15 +759,15 @@ export class BotBrain {
               this.armBomb(cmd);
               return { hold: true };
             }
-            return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
+            return { goal: [this.objSpot[0], this.objSpot[2] ?? 0, this.objSpot[1]], urgent: true, critical: true };
           }
           // Slow and fake plans: the bomb waits in the middle until the call.
           if (waiting) return { goal: this.spotGoal('mid', this.midRect(8), 0, 10) };
           this.pickSpot('plant', g.map.sites[g.plan], 0.25);
-          return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: plan.name === 'rush' || late, detour: this.lane() };
+          return { goal: [this.objSpot[0], this.objSpot[2] ?? 0, this.objSpot[1]], urgent: plan.name === 'rush' || late, detour: this.lane(), critical: true };
         }
         // Dropped bomb: the two of us nearest go and get it, the rest carry on.
-        if (b.state === 'dropped' && this.nearestTo(b.pos) < 2) return { goal: b.pos, urgent: true };
+        if (b.state === 'dropped' && this.nearestTo(b.pos) < 2) return { goal: b.pos, urgent: true, critical: true };
         if (b.state === 'planted') return this.postPlant(b);
         const site = g.map.sites[g.plan];
         const other = sites.find((k) => k !== g.plan);
@@ -796,7 +808,7 @@ export class BotBrain {
       // Blue.
       if (b.state === 'planted') {
         if (p.task?.kind === 'defuse' || canDefuse(g, p)) { cmd.use = true; return { hold: true, urgent: true }; }
-        return { goal: b.pos, urgent: true };
+        return { goal: b.pos, urgent: true, critical: true };
       }
       // Someone called where Red is: most of the other site rotates over.
       if (plan.called && t - plan.calledAt < 20 && this.role !== 'anchor' && this.rotateRoll < 0.75) {
@@ -817,8 +829,7 @@ export class BotBrain {
           // One on each site; the rest wait in between to retake.
           if (idx >= sites.length) return { goal: this.spotGoal('between', this.betweenRect(), 0, 10) };
           break;
-        default: // even
-          if (this.role === 'rush' && n >= 3) return null;
+        default: // even: everyone holds a site (the objective comes first)
       }
       return { goal: this.spotGoal('hold' + site, g.map.sites[site], 0.2, 12) };
     }
@@ -835,11 +846,12 @@ export class BotBrain {
       }
       if (mine.length) {
         // Lead them home, waiting for anyone falling behind.
-        if (free.length && mine.length < 2 && near) return { goal: free[0].pos, urgent: true };
+        if (free.length && mine.length < 2 && near) return { goal: free[0].pos, urgent: true, critical: true };
         const lag = mine.some((h) => Math.hypot(h.pos[0] - p.pos[0], h.pos[2] - p.pos[2]) > 7);
         if (lag) return { hold: true };
+        // Home by a way the hostages can walk: no ledges to jump, no ducts.
         this.pickSpot('rescue', g.map.rescue[0], 0.3, 30);
-        return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: true };
+        return { goal: [this.objSpot[0], this.objSpot[2] ?? 0, this.objSpot[1]], urgent: true, critical: true, walkOnly: true };
       }
       if (plan.name === 'slow' && waiting) {
         this.hostageGoal = null;
@@ -851,8 +863,8 @@ export class BotBrain {
         const dist = (h) => Math.hypot(h.pos[0] - p.pos[0], h.pos[2] - p.pos[2]) + (taken.has(h.id) ? 25 : 0);
         free.sort((a, b2) => dist(a) - dist(b2));
         this.hostageGoal = free[0].id;
-        if (plan.name === 'split') return { goal: free[0].pos, detour: idx % 2 ? plan.flip : -plan.flip };
-        return { goal: free[0].pos, urgent: true, detour: this.lane() };
+        if (plan.name === 'split') return { goal: free[0].pos, detour: idx % 2 ? plan.flip : -plan.flip, critical: true };
+        return { goal: free[0].pos, urgent: true, detour: this.lane(), critical: true };
       }
       this.hostageGoal = null;
       // Nothing to do for the hostages: push toward them anyway.
@@ -864,7 +876,9 @@ export class BotBrain {
     const follow = hs.find((x) => x.state === 'follow');
     if (follow) return { goal: follow.pos, urgent: true };
     if (plan.name === 'forward' && idx % 2 && n >= 2) return { goal: this.spotGoal('fwd', this.midRect(14), 0, 10) };
-    if (plan.name === 'guard' && this.role === 'rush' && n >= 3) return null;
+    // A rusher with enough teammates holds a forward angle instead of
+    // wandering off: the hostages come first.
+    if (plan.name === 'guard' && this.role === 'rush' && n >= 3) return { goal: this.spotGoal('fwd', this.midRect(14), 0, 10) };
     const h = hs[idx % Math.max(1, hs.length)];
     if (!h) return null;
     const r = plan.name === 'ambush' ? 4 : 8;
@@ -890,7 +904,7 @@ export class BotBrain {
   // pickSpot, as a goal for the path finder.
   spotGoal(key, rect, inset, keep) {
     this.pickSpot(key, rect, inset, keep);
-    return [this.objSpot[0], 0, this.objSpot[1]];
+    return [this.objSpot[0], this.objSpot[2] ?? 0, this.objSpot[1]];
   }
 
   // A square of half-size r around the middle of the map.
@@ -963,10 +977,10 @@ export class BotBrain {
       for (let k = 0; k < 12; k++) {
         const a = a0 + (k * Math.PI) / 6;
         const [ci, cj] = nav.cellOf(p.pos[0] + Math.cos(a) * r, p.pos[2] + Math.sin(a) * r);
-        if (!nav.isMain(ci, cj)) continue;
+        if (!nav.isMain(ci, cj, p.pos[1])) continue;
         const [x, z] = nav.cellCenter(ci, cj);
-        const fy = nav.floorAt(x, z);
-        if (Math.abs(fy - p.pos[1]) > 1.5 || !nav.walkable(p.pos[0], p.pos[2], x, z)) continue;
+        const fy = nav.floorAt(x, z, p.pos[1]);
+        if (Math.abs(fy - p.pos[1]) > 1.5 || !nav.walkable(p.pos[0], p.pos[2], x, z, p.pos[1])) continue;
         const de = Math.hypot(ex - x, ez - z);
         if (de < 6) continue;
         const standSeen = seen(x, fy + STAND_EYE, z);
@@ -984,8 +998,8 @@ export class BotBrain {
             for (const step of [0.9, 1.5]) {
               const qx = x - vz * sgn * step, qz = z + vx * sgn * step;
               const [qi, qj] = nav.cellOf(qx, qz);
-              if (!nav.isMain(qi, qj) || !nav.walkable(x, z, qx, qz)) continue;
-              if (seen(qx, nav.floorAt(qx, qz) + STAND_EYE, qz)) { peek = [qx, qz]; break; }
+              if (!nav.isMain(qi, qj, fy) || !nav.walkable(x, z, qx, qz, fy)) continue;
+              if (seen(qx, nav.floorAt(qx, qz, fy) + STAND_EYE, qz)) { peek = [qx, qz]; break; }
             }
             if (peek) break;
           }
@@ -1119,7 +1133,7 @@ export class BotBrain {
     const key = 'post' + b.site + ':' + b.pos[0].toFixed(1);
     if (this.objSpotKey !== key || !this.objSpot) this.pickGuardSpot(b, key);
     return {
-      goal: [this.objSpot[0], 0, this.objSpot[1]],
+      goal: [this.objSpot[0], this.objSpot[2] ?? 0, this.objSpot[1]],
       look: [b.pos[0], b.pos[2]],
       duck: this.guardDuck,
       tether: { pos: b.pos, r: 18 },
@@ -1136,10 +1150,11 @@ export class BotBrain {
     for (let i = 0; i < 40; i++) {
       const a = Math.random() * Math.PI * 2, r = r0 + Math.random() * (r1 - r0);
       const x = bx + Math.cos(a) * r, z = bz + Math.sin(a) * r;
-      const [ci, cj] = nav.cellOf(x, z);
-      if (!nav.isMain(ci, cj)) continue;
-      const fy = nav.floorAt(x, z);
-      if (Math.abs(fy - b.pos[1]) > 3) continue;
+      const floors = nav.floorsAt(x, z);
+      if (!floors.length) continue;
+      // Any floor here: the ground, or a walkway or roof above it.
+      const fy = floors[Math.floor(Math.random() * floors.length)];
+      if (fy - b.pos[1] > 8 || b.pos[1] - fy > 3) continue;
       // Must see the bomb even crouched, so a defuser can't hide from us.
       if (!world.visible(x, fy + DUCK_EYE, z, bx, by, bz)) continue;
       // Something solid close by on a side or two: a spot to play off,
@@ -1150,8 +1165,9 @@ export class BotBrain {
         if (!world.visible(x, fy + 1.1, z, x + Math.cos(ka) * 1.6, fy + 1.1, z + Math.sin(ka) * 1.6)) walls++;
       }
       let score = Math.min(walls, 3) * 2 - Math.max(0, walls - 4) * 2 + Math.random() * 2;
+      score += Math.max(0, Math.min(fy - b.pos[1], 6)) * 0.8; // looking down on the bomb
       for (const o of taken) if (Math.hypot(o[0] - x, o[1] - z) < 4) score -= 8;
-      if (score > bestScore) { bestScore = score; best = [x, z]; }
+      if (score > bestScore) { bestScore = score; best = [x, z, fy]; }
     }
     if (best) {
       this.objSpot = best; this.objSpotKey = key; this.objSpotUntil = Infinity; this.path = null;
@@ -1170,13 +1186,18 @@ export class BotBrain {
     const nav = this.nav;
     const w = rect.max[0] - rect.min[0], h = rect.max[1] - rect.min[1];
     let spot = null;
+    // Where a spot has floors stacked (a catwalk over the floor, a roof),
+    // careful roles often take the high one for the angle.
+    const highChance = { anchor: 0.6, lurk: 0.5, support: 0.4, flank: 0.3, rush: 0.15 }[this.role] ?? 0.3;
     for (let i = 0; i < 20 && !spot; i++) {
       const x = rect.min[0] + w * (inset + Math.random() * (1 - 2 * inset));
       const z = rect.min[1] + h * (inset + Math.random() * (1 - 2 * inset));
-      const [ci, cj] = nav.cellOf(x, z);
-      if (nav.isMain(ci, cj)) spot = [x, z];
+      const floors = nav.floorsAt(x, z);
+      if (!floors.length) continue;
+      const y = floors.length > 1 && key !== 'plant' && key !== 'rescue' && Math.random() < highChance ? floors[floors.length - 1] : floors[0];
+      spot = [x, z, y];
     }
-    this.objSpot = spot ?? [(rect.min[0] + rect.max[0]) / 2, (rect.min[1] + rect.max[1]) / 2];
+    this.objSpot = spot ?? [(rect.min[0] + rect.max[0]) / 2, (rect.min[1] + rect.max[1]) / 2, 0];
     this.objSpotKey = key;
     this.objSpotUntil = t + keep;
     this.path = null;
@@ -1299,7 +1320,7 @@ export class BotBrain {
   // Where an ally is heading, as [x, z].
   static heading(b) {
     if (b.roamGoal) return [b.roamGoal[0], b.roamGoal[2]];
-    if (b.objSpot) return b.objSpot;
+    if (b.objSpot) return [b.objSpot[0], b.objSpot[1]];
     if (b.viaFor) return b.viaFor;
     return [b.p.pos[0], b.p.pos[2]];
   }
@@ -1327,10 +1348,11 @@ export class BotBrain {
       pull = [p.pos[0], p.pos[2]]; pullW = 1;
     }
     let best = null, bestScore = -Infinity;
+    // Careful roles like a high spot (a roof, a walkway, a tower): a better
+    // angle on more of the map, and on more than one enemy at a time.
+    const highW = { anchor: 1.6, lurk: 1.3, support: 1, flank: 0.6, rush: 0.2 }[this.role] ?? 0.5;
     for (let i = 0; i < 14; i++) {
-      const [x, z] = nav.randomOpenPoint(Math.random);
-      const [ci, cj] = nav.cellOf(x, z);
-      if (!nav.isMain(ci, cj)) continue;
+      const [x, z, y] = nav.randomOpenPoint(Math.random);
       const self = Math.hypot(x - p.pos[0], z - p.pos[2]);
       let apart = 40;
       for (const h of heads) apart = Math.min(apart, Math.hypot(x - h[0], z - h[1]));
@@ -1339,8 +1361,9 @@ export class BotBrain {
       if (this.role === 'rush') score += Math.min(self, 40) * 0.6;
       else if (this.role === 'anchor') score -= Math.max(0, self - 20) * 0.8;
       if (pull) score -= Math.max(0, Math.hypot(x - pull[0], z - pull[1]) - 8) * pullW;
+      score += Math.min(y, 7) * highW;
       score += Math.random() * 6;
-      if (score > bestScore) { bestScore = score; best = [x, 0, z]; }
+      if (score > bestScore) { bestScore = score; best = [x, y, z]; }
     }
     return best ?? [...p.pos];
   }
@@ -1349,20 +1372,22 @@ export class BotBrain {
   // point, kept for as long as the goal stays roughly the same.
   // detour: true lets the role decide, false never, +1 / -1 always, on that
   // side of the straight line.
-  routeTo(goal, detour) {
+  routeTo(goal, detour, walkOnly = false) {
     const nav = this.nav, p = this.p;
     const gx = goal[0], gz = goal[2] ?? goal[1];
+    const gy = goal.length >= 3 ? goal[1] : undefined;
+    const from = { ay: p.pos[1], walkOnly };
     if (!this.viaFor || Math.hypot(this.viaFor[0] - gx, this.viaFor[1] - gz) > 6) {
       this.viaFor = [gx, gz];
       this.via = detour ? this.pickVia(gx, gz, detour === true ? 0 : detour) : null;
     }
     if (Array.isArray(this.via)) {
-      const a = nav.findPath(p.pos[0], p.pos[2], this.via[0], this.via[1], this.pathNoise());
-      const b = a && nav.findPath(this.via[0], this.via[1], gx, gz, this.pathNoise());
+      const a = nav.findPath(p.pos[0], p.pos[2], this.via[0], this.via[1], this.pathNoise(), { ...from, by: this.via[2] });
+      const b = a && nav.findPath(this.via[0], this.via[1], gx, gz, this.pathNoise(), { ay: this.via[2], by: gy, walkOnly });
       if (a && b) return a.concat(b);
       this.via = null;
     }
-    return nav.findPath(p.pos[0], p.pos[2], gx, gz, this.pathNoise());
+    return nav.findPath(p.pos[0], p.pos[2], gx, gz, this.pathNoise(), { ...from, by: gy });
   }
 
   pathNoise() {
@@ -1398,7 +1423,7 @@ export class BotBrain {
     for (let pass = 0; pass < (sideSign ? 2 : 1) && !best; pass++) {
     const maxDetour = pass ? 2.1 : 1.7, minSide = pass ? 0.12 : 0.2;
     for (let i = 0; i < 24; i++) {
-      const [x, z] = nav.randomOpenPoint(Math.random);
+      const [x, z, y] = nav.randomOpenPoint(Math.random);
       const [ci, cj] = nav.cellOf(x, z);
       if (!nav.isMain(ci, cj)) continue;
       const detour = (Math.hypot(x - ax, z - az) + Math.hypot(gx - x, gz - z)) / L;
@@ -1410,7 +1435,7 @@ export class BotBrain {
       let apart = 20;
       for (const o of others) apart = Math.min(apart, Math.hypot(x - o[0], z - o[1]));
       const score = side + apart - detour * 8;
-      if (score > bestScore) { bestScore = score; best = [x, z]; }
+      if (score > bestScore) { bestScore = score; best = [x, z, y]; }
     }
     }
     return best;

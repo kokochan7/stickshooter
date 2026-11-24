@@ -384,12 +384,14 @@ function updateHostage(g, h, dt) {
       // Straight at the leader only if the whole body fits along the line,
       // not just its middle (or a hostage snags on a door's edge).
       const ox = (-dz / dist) * 0.35, oz = (dx / dist) * 0.35;
-      const clear = nav.walkable(h.pos[0], h.pos[2], tx, tz)
-        && nav.walkable(h.pos[0] + ox, h.pos[2] + oz, tx + ox, tz + oz)
-        && nav.walkable(h.pos[0] - ox, h.pos[2] - oz, tx - ox, tz - oz);
+      const hy = h.pos[1];
+      const clear = Math.abs(leader.pos[1] - hy) < 0.6
+        && nav.walkable(h.pos[0], h.pos[2], tx, tz, hy)
+        && nav.walkable(h.pos[0] + ox, h.pos[2] + oz, tx + ox, tz + oz, hy)
+        && nav.walkable(h.pos[0] - ox, h.pos[2] - oz, tx - ox, tz - oz, hy);
       if (!clear) {
         if (!h.path || g.time >= h.repathAt || h.pathIdx >= h.path.length) {
-          h.path = nav.findPath(h.pos[0], h.pos[2], tx, tz);
+          h.path = nav.findPath(h.pos[0], h.pos[2], tx, tz, null, { ay: h.pos[1], by: leader.pos[1], walkOnly: true });
           h.pathIdx = 0;
           h.repathAt = g.time + 0.5;
         }

@@ -12,7 +12,8 @@
 //   East   - a tall metal overlook tower beside the street with a clear view
 //            of the yard and warehouse roof.
 // Ways into the warehouse:
-//   - the wide garage bay on the south wall facing the front yard
+//   - the east door, off the strip between the warehouse and the map edge
+//     (the south wall facing the yard is solid: the garage bay is closed)
 //   - the side entry door off the west alley beneath the overpass
 //   - the roof, reached by ladder-stairs on either the west or east exterior
 //     wall: drop through two skylights onto the warehouse floor, or enter the
@@ -36,14 +37,14 @@ m.perimeter(XW, ZN, X, ZS, 9, 'wall2');
 // ---------- The warehouse (north-east) ----------
 const W0 = -6, W1 = 28, N0 = -38, S0 = -4, H = 6.4;
 m.wallX(N0, W0, W1, H, 0.35, 'concrete', 'wall'); // solid north wall
-m.wallX(S0 - 0.35, W0, W1, H, 0.35, 'concrete', 'wall', [[10, 18]], 4.2); // main garage bay
+m.wallX(S0 - 0.35, W0, W1, H, 0.35, 'concrete', 'wall'); // solid south wall (garage bay closed)
 // West wall, open where the hostage office annex joins it (z -35..-23):
 // the office's own east wall, door and window stand there instead.
 m.wallZ(W0, N0 + 0.35, -34.7, H, 0.35, 'concrete', 'wall');
 m.wallZ(W0, -23.3, S0 - 0.35, H, 0.35, 'concrete', 'wall', [[-14, -11.2]]); // west side door
 m.box(W0, 0, -34.7, W0 + 0.35, 3.2, -23.3, 'concrete', 'wall'); // the threshold between office and catwalk
-m.wallZ(W1 - 0.35, N0 + 0.35, S0 - 0.35, H, 0.35, 'concrete', 'wall'); // solid east wall
-m.box(9.4, 4.2, S0 - 0.5, 18.6, 4.55, S0 + 0.15, 'metal', 'trim'); // rolled-up garage door housing
+m.wallZ(W1 - 0.35, N0 + 0.35, S0 - 0.35, H, 0.35, 'concrete', 'wall', [[-30, -27]]); // east door
+m.box(10, 0, S0, 18, 4.2, S0 + 0.12, 'metal', 'trim'); // shut garage door, on the yard side
 
 // Warehouse roof with a vent hatch and two skylights over the main floor.
 const HX0 = 8.4, HX1 = 9.8, HZ0 = -20.8, HZ1 = -19.4;
@@ -116,7 +117,7 @@ m.box(W0 + 0.35, 3.0, -35.2, 22, 3.2, -31.8, 'concrete', 'step'); // north upper
 m.box(W0 + 0.35, 0, -31.8, -2.5, 3.2, -14.6, 'concrete', 'step'); // west catwalk, north half
 m.stairs(-2.5, -31.6, 1.5, -29.2, '-x', 3.2, 8, 'concrete', 'step');
 m.box(W0 + 0.35, 3.0, -14.6, -2.5, 3.2, -6.2, 'concrete', 'step'); // west catwalk, over the side door
-m.box(W0 + 0.35, 3.0, -6.2, 18.5, 3.2, -4.35, 'concrete', 'step'); // south catwalk over garage
+m.box(W0 + 0.35, 3.0, -6.2, 18.5, 3.2, -4.35, 'concrete', 'step'); // south catwalk
 m.box(-2.6, 3.2, -22, -2.5, 4.15, -6.2, 'grate', 'rail'); // west catwalk railing
 m.box(-2.5, 3.2, -6.3, 18.5, 4.15, -6.2, 'grate', 'rail'); // south catwalk railing
 m.box(0, 3.2, -31.9, 14, 4.15, -31.8, 'grate', 'rail'); // north deck railing
