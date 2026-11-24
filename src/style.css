@@ -34,13 +34,6 @@ canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); text-align: center;
 }
 .menu-card { position: relative; }
-.icon-btn { position: absolute; top: 14px; right: 14px; width: 40px; height: 40px; border-radius: 12px; border: 0; background: rgba(255,255,255,.08); cursor: pointer; display: grid; place-items: center; }
-.icon-btn:hover { background: rgba(255,255,255,.16); }
-.icon-btn svg { width: 22px; height: 22px; fill: none; stroke: var(--text); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.icon-btn .spk { fill: var(--text); }
-.icon-btn .cross { display: none; }
-.icon-btn.muted .wave { display: none; }
-.icon-btn.muted .cross { display: block; stroke: var(--red); }
 .menu-card.small { width: min(340px, 100%); }
 .logo {
   font-family: var(--title); font-weight: 400; font-size: clamp(44px, 10vw, 64px); line-height: 0.9; margin: 4px 0 6px;

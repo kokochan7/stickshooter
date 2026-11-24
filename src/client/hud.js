@@ -13,7 +13,6 @@ export const DEFAULT_SETTINGS = {
   fov: 74,
   volume: 0.6,
   music: 0.5,
-  musicMuted: false,
   // Crosshair, CS 1.6 style. Lengths are in screen pixels.
   // Green (style.css), length 9, gap 3, thickness 2, dot, outline, static.
   chSize: 9,
