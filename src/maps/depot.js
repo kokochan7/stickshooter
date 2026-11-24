@@ -109,9 +109,9 @@ m.box(1, 1.2, -24.5, 2.4, 2.6, -24.3, 'metal', 'rail');
 
 // Raised walkway along the inside of the west wall: stairs up by the garage
 // end, a railing, and a hop up onto the cold store's roof at the far end.
-m.box(W0 + 0.3, 0, -23.85, -23, 2.4, -12, 'concrete', 'step');
-m.stairs(W0 + 0.3, -12, -23, -8.3, '-z', 2.4, 6, 'concrete', 'step');
-m.box(-23.1, 2.4, -23.85, -23, 3.4, -12, 'grate', 'rail');
+m.box(W0 + 0.3, 0, -23.85, -23, 2.4, -15, 'concrete', 'step');
+m.stairs(W0 + 0.3, -15, -23, -10, '-z', 2.4, 6, 'concrete', 'step'); // foot clear of the wall
+m.box(-23.1, 2.4, -23.85, -23, 3.4, -15, 'grate', 'rail');
 
 // Shipping office by the garage doors, in the south-east corner: wooden
 // walls, a door to the floor and a window looking at the garage bays.

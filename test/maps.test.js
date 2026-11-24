@@ -580,17 +580,21 @@ test('Depot: the fire escape, roof hatch and crawl vent lead into the cold store
   assert.ok(a.ducked, 'still crouched under the duct ceiling');
 });
 
-test('Depot: bots keep to the ground; the roof is off their map', () => {
+test('Depot: bots can reach the roof, and lead hostages home on foot', () => {
   const nav = new Game(MAPS.depot).nav;
-  const [i, j] = nav.cellOf(0, -20 * 1.5);
-  assert.equal(nav.floorAt(0, -20 * 1.5), 0, 'the warehouse floor, not its roof');
-  assert.ok(nav.isMain(i, j));
-  // The landing at the top of the fire escape and the roof edge aren't
-  // reachable on foot (it takes a jump).
-  const roof = nav.cellOf(-26.1 * 1.5, -17.5 * 1.5);
-  assert.ok(!nav.isMain(...roof) || nav.floorAt(-26.1 * 1.5, -17.5 * 1.5) < 6);
-  const blue = MAPS.depot.teamSpawns.blue[0].pos, h = MAPS.depot.hostages[0];
-  for (const [x, z] of nav.findPath(blue[0], blue[2], h[0], h[2])) assert.ok(nav.floorAt(x, z) < 0.5, `path stays on the ground at ${x},${z}`);
+  // The warehouse floor and its roof are both on the bots' map.
+  const fl = nav.floorsAt(0, -20 * 1.5);
+  assert.ok(fl.some((y) => y < 0.5), 'warehouse floor');
+  assert.ok(fl.some((y) => y > 6), `roof above it (${fl})`);
+  // A route from the street up onto the roof exists (ladder + hop).
+  const blue = MAPS.depot.teamSpawns.blue[0].pos;
+  const up = nav.findPath(blue[0], blue[2], 0, -20 * 1.5, null, { ay: blue[1], by: 6.5 });
+  assert.ok(up && up.length && up[up.length - 1][2] > 6, 'path ends on the roof');
+  // Leading hostages back uses walk-only routes: no jumps, no crawling.
+  const h = MAPS.depot.hostages[0];
+  const path = nav.findPath(h[0], h[2], blue[0], blue[2], null, { ay: h[1] ?? 0, by: 0, walkOnly: true });
+  assert.ok(path && path.length, 'hostage route home');
+  for (const wp of path) assert.equal(wp[3] ?? 0, 0, `walk-only waypoint at ${wp[0].toFixed(1)},${wp[1].toFixed(1)}`);
 });
 
 test('Depot: the ladder reaches the roof, a skylight drops you inside, bots can use the rail yard', () => {
