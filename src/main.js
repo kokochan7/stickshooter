@@ -597,8 +597,20 @@ input.on('keyup', (code) => {
   if (code === settings.binds.scores && scoresForced === null) showScoreboard(false);
 });
 
+// The bomb carrier is marked only for Red, who can see it in CS too.
 function showScoreboard(show, title = '') {
-  hud.showScores(show, game.players, me?.id, game.mode, game.objective ? game.rounds : game.teamKills, title);
+  scoresAge = 0;
+  const bomb = game.objective === 'bomb' && me?.team === 'red' && game.bomb.state === 'carried' ? game.bomb.carrier : null;
+  const goal = me && game.players.includes(me) ? goalText() : '';
+  hud.showScores(show, game.players, me?.id, game.mode, game.objective ? game.rounds : game.teamKills, title, { goal, bomb });
+}
+
+// While Tab is held the board keeps up with kills, deaths and the bomb.
+let scoresAge = 0;
+function refreshScoreboard(dt) {
+  if (scoresForced !== null || hud.scoreboard.classList.contains('hidden')) return;
+  scoresAge += dt;
+  if (scoresAge >= 0.25) showScoreboard(true);
 }
 
 // G: pick up the gun in reach (swapping with yours), or drop the one in hand.
@@ -1419,7 +1431,7 @@ function updateView(dt, alpha) {
     hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 && !!def?.scope, chOffset, eye });
     document.body.classList.toggle('mode-gungame', game.mode === 'gungame');
     hud.top({ mode: game.mode, myTeam: me.team, scores: game.objective ? game.rounds : game.teamKills, players: game.players, meId: me.id });
-    hud.goal(goalText());
+    refreshScoreboard(dt);
     hud.message(centerMessage());
     if (specActive() && !buyMenu.open) hud.prompt(spectatePrompt(), 'spec');
     else hud.prompt(pickupPrompt() || objectivePrompt());

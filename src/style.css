@@ -201,6 +201,10 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #scoreboard .sb-sub > table { flex: 1 1 0; min-width: 0; }
 #scoreboard.cols-3 .sb-cols, #scoreboard.cols-4 .sb-cols { gap: 16px; }
 #scoreboard .sb-bar { display: flex; justify-content: space-between; font: 800 11px var(--body); letter-spacing: 1.5px; color: var(--muted); margin: 0 4px 10px; }
+#scoreboard .sb-goal { margin: -4px 4px 12px; padding: 7px 10px; border-radius: 8px; background: rgba(0,0,0,.28); text-align: center; font: 800 13px var(--body); letter-spacing: 1.5px; color: #fff; }
+#scoreboard td.nm .sb-c4 { display: inline-block; vertical-align: -2px; margin-left: 7px; }
+#scoreboard td.nm .sb-c4 svg { width: 26px; height: 13px; fill: #ff6b5f; filter: drop-shadow(0 0 4px rgba(255,90,80,.6)); }
+#scoreboard td.nm .sb-c4 svg .cut { fill: #1b1f27; }
 #scoreboard .sb-head { text-align: center; font: 400 24px var(--title); letter-spacing: 1px; color: var(--accent); margin: 0 0 12px; }
 #scoreboard .sb-head .win { display: block; font: 400 52px/1.05 var(--title); letter-spacing: 1px; color: var(--accent); text-shadow: 0 4px 0 #1b1f27; }
 #scoreboard .sb-head .win.team-red { color: #ff5a5f; }
@@ -270,8 +274,7 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 .buy-stats .kv span:last-child { color: #ffd98a; }
 .buy-tip { margin: auto 0 0; font-size: 12px; color: rgba(255, 217, 138, .55); font-weight: 600; }
 
-/* ---------- Match: goal line, countdown, winner, pickup prompt ---------- */
-#goal:empty { display: none; }
+/* ---------- Match: countdown, winner, pickup prompt ---------- */
 @keyframes countPop { from { transform: scale(1.5); opacity: 0; } }
 #prompt { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: var(--panel); font-weight: 700; font-size: 16px; }
 #prompt kbd { font-size: 13px; padding: 3px 8px; background: var(--accent); color: var(--accent-ink); }
@@ -411,13 +414,13 @@ body.touch .pause-hint { display: none; }
 #scorebox.teams:not(:has(#round-timer:not(.hidden))) .sbx-row span { font-size: 22px; padding: 3px 8px; }
 #scorebox.ffa .sbx-row span:first-child { color: rgba(255,255,255,.6); font-size: 11px; letter-spacing: 1px; background: none; min-width: 0; padding-right: 0; }
 #scorebox.ffa .sbx-row span:last-child { background: none; color: #fff; min-width: 0; padding-left: 0; }
-#goal { font: 800 11px var(--body); letter-spacing: 1.5px; color: rgba(255,255,255,.75); text-shadow: 0 1px 2px #000; }
-#goal:empty { display: none; }
 
 .hud-tl { position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 #perf { display: flex; flex-direction: column; gap: 2px; font: 700 13px ui-monospace, monospace; }
 #perf:has(#fps:empty):has(#room-info.hidden):has(#net.hidden) { display: none; }
-.money { position: relative; font: 400 26px/1 var(--title); letter-spacing: .5px; color: var(--hud); }
+/* Money sits on the left, a bit below the middle, clear of the touch buttons. */
+.hud-ml { position: absolute; left: 18px; top: 62%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.money { position: relative; font: 400 32px/1 var(--title); letter-spacing: .5px; color: var(--hud); }
 .money span { margin-right: 3px; }
 #bomb-tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 6px; background: rgba(224,70,74,.85); font: 800 13px var(--body); letter-spacing: 1.5px; }
 #bomb-tag svg { width: 18px; height: 18px; fill: #fff; }
