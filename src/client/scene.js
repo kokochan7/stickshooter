@@ -12,38 +12,7 @@ import { ViewModel } from './viewmodel.js';
 import { buildGun } from './gunModels.js';
 import { WATER_DEPTH } from '../maps/builder.js';
 import { zoneFloor } from '../sim/world.js';
-
-function gridTexture() {
-  const S = 256;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const g = c.getContext('2d');
-  g.fillStyle = '#ffffff';
-  g.fillRect(0, 0, S, S);
-  // Soft noise.
-  const img = g.getImageData(0, 0, S, S);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const n = 236 + Math.random() * 19;
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = n;
-  }
-  g.putImageData(img, 0, 0);
-  // Panel lines.
-  g.strokeStyle = 'rgba(0,0,0,0.16)';
-  g.lineWidth = 3;
-  g.strokeRect(1.5, 1.5, S - 3, S - 3);
-  g.strokeStyle = 'rgba(0,0,0,0.06)';
-  g.lineWidth = 2;
-  g.beginPath();
-  g.moveTo(S / 2, 0); g.lineTo(S / 2, S);
-  g.moveTo(0, S / 2); g.lineTo(S, S / 2);
-  g.stroke();
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  t.generateMipmaps = true;
-  return t;
-}
+import { buildMapLook } from './mapLook.js';
 
 function shadowTexture() {
   const c = document.createElement('canvas');
@@ -198,44 +167,6 @@ function zoneGeometry(rect, cells, y) {
   return g;
 }
 
-const _c = new THREE.Color();
-
-function buildMapGeometry(boxes) {
-  const geos = [];
-  let seed = 1;
-  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (const b of boxes) {
-    if (b.render === false) continue;
-    const w = b.max[0] - b.min[0], h = b.max[1] - b.min[1], d = b.max[2] - b.min[2];
-    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
-    g.translate((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
-    const pos = g.attributes.position.array, nrm = g.attributes.normal.array, uv = g.attributes.uv.array;
-    const n = g.attributes.position.count;
-    const col = new Float32Array(n * 3);
-    _c.setHex(b.color);
-    const tint = 0.96 + rand() * 0.08;
-    for (let i = 0; i < n; i++) {
-      const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
-      const nx = nrm[i * 3], ny = nrm[i * 3 + 1];
-      // World-space UVs: 1 texture tile per meter.
-      if (Math.abs(nx) > 0.5) { uv[i * 2] = z; uv[i * 2 + 1] = y; }
-      else if (Math.abs(ny) > 0.5) { uv[i * 2] = x; uv[i * 2 + 1] = z; }
-      else { uv[i * 2] = x; uv[i * 2 + 1] = y; }
-      // Fake ambient occlusion near the floor + face shading.
-      let shade = ny > 0.5 ? 1.06 : ny < -0.5 ? 0.6 : 0.94;
-      if (ny > 0.5) { /* floors and tops stay bright */ }
-      else if (y < 0.05) shade *= 0.72;
-      else if (y < 0.4 && ny === 0) shade *= 0.72 + (y / 0.4) * 0.28;
-      col[i * 3] = _c.r * shade * tint;
-      col[i * 3 + 1] = _c.g * shade * tint;
-      col[i * 3 + 2] = _c.b * shade * tint;
-    }
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    geos.push(g);
-  }
-  return mergeGeometries(geos);
-}
-
 // Where a bomb site's sign post stands: the painted floor nearest (cx, cz)
 // with a metre clear all round and room above the sign.
 function signSpot(world, cells, y, cx, cz) {
@@ -280,10 +211,9 @@ export class GameView {
 
     this.scene.add(new THREE.HemisphereLight(0xe6f0ff, 0x9a8a72, 1.7));
     const sun = new THREE.DirectionalLight(0xfff1dc, 2.0);
-    sun.position.set(0.45, 1, 0.3);
+    sun.position.set(0.5, 0.75, 0.32);
     this.scene.add(sun);
 
-    this.tex = gridTexture();
     this.waterTex = waterTexture();
     this.mapGroup = null;
 
@@ -316,12 +246,13 @@ export class GameView {
     if (this.mapGroup) {
       this.scene.remove(this.mapGroup);
       // A mesh can carry one material or a list of them (the bomb site
-      // signs do). The shared grid and water textures stay.
-      const keep = new Set([this.tex, this.waterTex]);
+      // signs do). The water texture and the cached surface textures stay.
+      const keep = new Set([this.waterTex]);
       this.mapGroup.traverse((o) => {
         o.geometry?.dispose();
+        o.userData.cover?.dispose();
         for (const m of [o.material ?? []].flat()) {
-          if (m.map && !keep.has(m.map)) m.map.dispose();
+          if (m.map && !keep.has(m.map) && !m.map.userData.shared) m.map.dispose();
           m.dispose();
         }
       });
@@ -337,21 +268,10 @@ export class GameView {
     this.sky.material.uniforms.top.value.setHex(map.sky.top);
     this.sky.material.uniforms.bottom.value.copy(skyBottom);
 
-    const mapMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: this.tex });
-    grp.add(new THREE.Mesh(buildMapGeometry(map.boxes), mapMat));
     // Maps with water draw their ground as boxes (so the banks show) and the
     // big plane becomes the riverbed.
     const hasWater = map.water?.length > 0;
-    // Big enough to reach past the walls of the largest map in every direction.
-    const reach = Math.max(...map.bounds.min.map(Math.abs), ...map.bounds.max.map(Math.abs));
-    const size = Math.ceil(reach * 2 + 60);
-    const groundGeo = new THREE.PlaneGeometry(size, size);
-    groundGeo.rotateX(-Math.PI / 2);
-    const uv = groundGeo.attributes.uv.array;
-    for (let i = 0; i < uv.length; i++) uv[i] *= size;
-    const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ color: hasWater ? map.bedColor : map.groundColor, map: this.tex }));
-    ground.position.y = hasWater ? -WATER_DEPTH : 0;
-    grp.add(ground);
+    grp.add(buildMapLook(map, hasWater ? { groundY: -WATER_DEPTH, groundColor: map.bedColor } : {}));
 
     if (hasWater) {
       const geos = map.water.map((w) => {
