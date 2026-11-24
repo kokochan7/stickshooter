@@ -395,13 +395,6 @@ export class Hud {
     this.center.innerHTML = html;
   }
 
-  // Text under the top bar: what wins the match.
-  goal(text) {
-    if (this.last.goal === text) return;
-    this.last.goal = text;
-    $('goal').textContent = text;
-  }
-
   // Round clock under the team scores (objective rounds). cls: '', 'low' or 'bomb'.
   roundTimer(text, cls = '') {
     const key = text + '|' + cls;
@@ -512,7 +505,10 @@ export class Hud {
   // Teams sit side by side; a big FFA splits its ranking into two columns.
   // Rows get denser as columns get longer, and if the board still doesn't fit
   // (huge rooms on short screens) it is scaled down to fit the HUD frame.
-  showScores(show, players, meId, mode = 'ffa', kills = { red: 0, blue: 0 }, title = '') {
+  // goal: the round / match line shown in the bar at the top (what wins,
+  // what your side has to do). bomb: id of the C4 carrier, passed only to
+  // Red players so Blue never learns who has it.
+  showScores(show, players, meId, mode = 'ffa', kills = { red: 0, blue: 0 }, title = '', { goal = '', bomb = null } = {}) {
     const sb = this.scoreboard;
     sb.classList.toggle('hidden', !show);
     if (!show) return;
@@ -525,13 +521,13 @@ export class Hud {
       const hs = p.kills ? Math.round((p.headshots / p.kills) * 100) : 0;
       const last = gg ? `${Math.min(GG_LADDER.length, (p.ggLevel ?? 0) + 1)}` : `${hs}%`;
       const cls = `${p.id === meId ? 'me' : ''} ${p.alive ? '' : 'dead'}`;
-      return `<tr class="${cls}"><td class="rk">${from + i + 1}</td><td class="nm"><span>${esc(p.name)}</span>${p.isBot ? '<small>BOT</small>' : ''}</td><td class="num">${p.kills}</td><td class="num">${p.deaths}</td><td class="num hs">${last}</td></tr>`;
+      return `<tr class="${cls}"><td class="rk">${from + i + 1}</td><td class="nm"><span>${esc(p.name)}</span>${bomb !== null && p.id === bomb ? `<i class="sb-c4" title="Has the bomb">${C4_ICON}</i>` : ''}${p.isBot ? '<small>BOT</small>' : ''}</td><td class="num">${p.kills}</td><td class="num">${p.deaths}</td><td class="num hs">${last}</td></tr>`;
     }).join('');
     const table = (list, from) => `<table><colgroup><col class="c-rk"><col><col class="c-n"><col class="c-n"><col class="c-hs"></colgroup><tr><th class="rk">#</th><th>PLAYER</th><th class="num">K</th><th class="num">D</th><th class="num hs">${gg ? 'LVL' : 'HS'}</th></tr>${rows(list, from)}</table>`;
     const teams = mode === 'teams';
     const head = title
       ? `<div class="sb-head">${title}</div>`
-      : `<div class="sb-bar"><span>${teams ? 'TEAMS' : gg ? 'GUN GAME' : 'FREE FOR ALL'}</span><span>${players.length} PLAYER${players.length === 1 ? '' : 'S'}</span></div>`;
+      : `<div class="sb-bar"><span>${teams ? 'TEAMS' : gg ? 'GUN GAME' : 'FREE FOR ALL'}</span><span>${players.length} PLAYER${players.length === 1 ? '' : 'S'}</span></div>${goal ? `<div class="sb-goal">${esc(goal)}</div>` : ''}`;
     // Split a ranking into k columns, top of the ranking first.
     const chunk = (list, k) => {
       const per = Math.ceil(list.length / k) || 1;
