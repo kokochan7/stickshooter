@@ -1,4 +1,4 @@
-// Third-person stickman: shaped low-poly body in the Classic textured look
+// Third-person stickman: smooth tapered body in the Smooth stickman look
 // (playerLook.js), posed every frame with a procedural walk cycle and
 // two-bone IK so the hands always hold the gun.
 import * as THREE from 'three';
@@ -184,10 +184,10 @@ export class Stickman {
       this.limbs['shin' + s] = new Limb(this.body, mats.shin, 1, null, 0, k.shin);
       this.limbs['upper' + s] = new Limb(this.body, mats.upper, 1, null, 0, k.upper);
       this.limbs['fore' + s] = new Limb(this.body, mats.fore, 1, null, 0, k.fore);
-      // Gloved fists (the left one mirrored) and boots, not team-tinted.
-      this.limbs['hand' + s] = new Joint(this.body, k.gloveMat, 1, null, 0, k.hand);
+      // Mitten hands (the left one mirrored) and rounded feet.
+      this.limbs['hand' + s] = new Joint(this.body, mats.torso, 1, null, 0, k.hand);
       if (s === 'L') this.limbs.handL.mesh.scale.x = -1;
-      this.limbs['foot' + s] = new Joint(this.body, k.bootMat, 1, null, 0, k.foot);
+      this.limbs['foot' + s] = new Joint(this.body, mats.torso, 1, null, 0, k.foot);
     }
 
     // Head with two tall oval eyes.

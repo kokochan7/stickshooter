@@ -45,7 +45,7 @@ export class ViewModel {
     this.gunHolder = new THREE.Group();
     this.rig.add(this.gunHolder);
 
-    // Same Classic textured suit and gloves as the third-person body.
+    // Same smooth body material and mitten hands as the third-person body.
     const k = playerKit();
     this.armMats = suitMaterials(['upper', 'fore']);
     tintSuit(this.armMats, 0xffffff);
@@ -54,7 +54,7 @@ export class ViewModel {
     for (const s of ['L', 'R']) {
       this.arms['upper' + s] = new Limb(this.rig, this.armMats.upper, 1, null, 0, k.vmUpper);
       this.arms['fore' + s] = new Limb(this.rig, this.armMats.fore, 1, null, 0, k.vmFore);
-      this.arms['hand' + s] = new Joint(this.rig, k.gloveMat, 1, null, 0, k.vmHand);
+      this.arms['hand' + s] = new Joint(this.rig, this.armMats.upper, 1, null, 0, k.vmHand);
     }
     this.arms.handL.mesh.scale.x = -1;
 
