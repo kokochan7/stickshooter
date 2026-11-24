@@ -19,7 +19,8 @@ A fast, lightweight 3D multiplayer shooter that runs in your browser, on desktop
 Most browser shooters feel floaty. Stick Shooter is built on the rules that
 made Counter-Strike 1.6 a classic: real damage numbers, hitboxes, armor,
 wall penetration, spray patterns and movement. It wraps them in a clean,
-original look with a white stickman, detailed low-poly guns and bright arenas.
+original look with a white stickman, detailed low-poly guns and textured, classic-style maps
+(brick, concrete, rusty metal and wood, all generated in code, so nothing extra to download).
 
 Open a link and you're in a match within seconds. No download, no account,
 no launcher.

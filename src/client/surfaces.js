@@ -1,4 +1,4 @@
-// PROTOTYPE (graphics style lab): procedural, tileable surface textures,
+// Procedural, tileable surface textures for the map look (mapLook.js),
 // generated at load time so the game ships no image files. Each generator
 // returns colour (linear-ish 0..1), height (for the normal map) and
 // roughness per pixel. `q` is the style's quality config:
@@ -118,7 +118,7 @@ const GEN = {
       if (e < 0.005) { b *= 0.6; h = 0.2; }
       if (Math.abs(v - 0.5) < 0.004) { b *= 0.8; h = 0.35; }
       const rr = rust(u, v);
-      const ru = q.smooth ? 0 : smooth(0.62, 0.72, rr);
+      const ru = q.smooth ? 0 : smooth(0.7, 0.78, rr) * 0.8;
       o.c[0] = mix(b, 0.42, ru); o.c[1] = mix(b, 0.26, ru); o.c[2] = mix(b * 0.98, 0.15, ru);
       o.h = h - ru * 0.1; o.r = mix(r, 0.92, ru); o.m = 1 - ru;
     };
