@@ -3,8 +3,9 @@
 // later without touching either side's game logic.
 //
 // client -> server
-//   { t: 'hello', v, name, map }               v = PROTOCOL_VERSION; the room's mode comes from its name (see roomMode);
-//                                               map is used if the room is empty, otherwise you join the room's map
+//   { t: 'hello', v, name, map, weapons }      v = PROTOCOL_VERSION; the room's mode comes from its name (see roomMode);
+//                                               map and weapons (free for all weapon filter) are used if the room is
+//                                               empty, otherwise you join the room's map and filter
 //   { t: 'cmds', seq, vt, cmds: [cmd, ...] }   seq = seq of the LAST cmd in the batch,
 //                                               vt = server time the client is viewing others at
 //                                               (each cmd also carries its own vt, which lag
@@ -12,7 +13,7 @@
 //   { t: 'ping', c }
 //   { t: 'admin', key, line, login }           admin console command; key = the ADMIN_KEY secret
 // server -> client
-//   { t: 'welcome', id, mode, map, time, tickRate, snapEvery }
+//   { t: 'welcome', id, mode, map, weapons, time, tickRate, snapEvery }
 //   { t: 'snap', time, ack, me, players: [...], events: [...], match, drops: [...], nades: [...], obj }
 //     obj = Game.objectiveInfo(): rounds, the bomb and the hostages (null outside objective rounds)
 //     match = Game.matchInfo(): state 'live' | 'over', endsAt, winner, winnerTeam, teamKills
@@ -25,7 +26,7 @@
 //   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 18; // 18: Warehouse garage shut + east door, layered bot nav (17: Warehouse map, hostage follow fix) (16: flashbang removed)
+export const PROTOCOL_VERSION = 19; // 19: free for all weapon filter; (18: Warehouse garage shut + east door, layered bot nav (17: Warehouse map, hostage follow fix) (16: flashbang removed)
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past

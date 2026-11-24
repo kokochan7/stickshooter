@@ -1,6 +1,6 @@
 // DOM HUD, buy menu, scoreboard and settings.
 import * as THREE from 'three';
-import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT, NADE_SLOTS, teamCanBuy } from '../sim/weapons.js';
+import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT, NADE_SLOTS, WEAPON_FILTERS, teamCanBuy } from '../sim/weapons.js';
 import { buildGun } from './gunModels.js';
 import { DEFAULT_BINDS, BIND_LABELS, keyName } from './input.js';
 import { MAX_BOTS } from '../sim/admin.js';
@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS = {
   touchSens: 1, // look speed for touch controls
   mode: 'ffa', // 'ffa' or 'teams', for practice and online
   map: 'yard', // see src/maps/index.js
+  weaponFilter: 'all', // free for all weapon filter, see WEAPON_FILTERS
   version: 8,
 };
 
@@ -248,8 +249,9 @@ export class Hud {
   }
 
   // Mode and head count of the online room, above the ping.
-  room(mode, players = 0) {
-    const text = mode ? `${mode === 'teams' ? 'TEAMS' : 'FFA'} · ${players} ONLINE` : '';
+  room(mode, players = 0, filter = 'all') {
+    const tag = filter && filter !== 'all' ? ` · ${WEAPON_FILTERS[filter]?.label.toUpperCase() ?? ''}` : '';
+    const text = mode ? `${mode === 'teams' ? 'TEAMS' : 'FFA'}${tag} · ${players} ONLINE` : '';
     if (this.last.room === text) return;
     this.last.room = text;
     this.roomInfo.textContent = text;
@@ -590,6 +592,7 @@ export class BuyMenu {
     this.sel = 0;
     this.p = null;
     this.team = null; // set by main.js: your team in team modes, else null
+    this.allow = null; // set by main.js: (id) => whether the match's weapon filter allows it
     this.list.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-n]');
       // Stop here: key() rebuilds the rows, so the detached target would look
@@ -610,8 +613,10 @@ export class BuyMenu {
 
   // The page's items this player's shop offers.
   items(pg) {
-    return pg.items.filter((id) => teamCanBuy(id, this.team));
+    return pg.items.filter((id) => teamCanBuy(id, this.team) && (!this.allow || this.allow(id)));
   }
+
+  static OFF_NOTE = '<p class="buy-tip">Not allowed in this match (Free for all weapon filter).</p>';
 
   // A number key (0-9) or 'back'. Returns true if the key was used.
   key(n) {
@@ -673,7 +678,8 @@ export class BuyMenu {
     let rows = '';
     if (!pg) {
       BUY_PAGES.forEach((c, i) => {
-        rows += `<button class="buy-row ${i === this.sel ? 'sel' : ''}" data-n="${i + 1}"><b>${i + 1}</b> ${c.label}</button>`;
+        const off = !this.items(c).length;
+        rows += `<button class="buy-row ${i === this.sel ? 'sel' : ''} ${off ? 'cant' : ''}" data-n="${i + 1}"><b>${i + 1}</b> ${c.label}</button>`;
       });
     } else {
       this.items(pg).forEach((id, i) => {
@@ -682,6 +688,7 @@ export class BuyMenu {
         rows += `<button class="buy-row ${i === this.sel ? 'sel' : ''} ${st.cant ? 'cant' : ''} ${st.owned ? 'owned' : ''}" data-n="${i + 1}"><b>${i + 1}</b> ${name}<span class="pr">${st.owned ? 'OWNED' : `$${st.price}`}</span></button>`;
       });
     }
+    if (pg && !rows) rows = BuyMenu.OFF_NOTE;
     if (rebuildList) {
       this.list.innerHTML = `<div class="buy-rows">${rows}</div><button class="buy-row cancel" data-n="0"><b>0</b> Cancel</button>`;
     } else {
@@ -692,6 +699,7 @@ export class BuyMenu {
 
   pageInfo(c) {
     const items = this.items(c);
+    if (!items.length) return BuyMenu.OFF_NOTE;
     const rows = items.map((id) => {
       const it = WEAPONS[id] ?? GEAR[id];
       return `<div class="kv"><span>${it.name}</span><span>$${it.price}</span></div>`;
@@ -701,6 +709,7 @@ export class BuyMenu {
   }
 
   itemInfo(id) {
+    if (!id) return BuyMenu.OFF_NOTE;
     if (id === 'defuser') {
       const kv = [
         ['Price', `$${GEAR.defuser.price}`],

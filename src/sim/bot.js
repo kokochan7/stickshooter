@@ -1,7 +1,7 @@
 // Bot brain: looks at the game state and produces the same cmd a human client
 // would send. Bots never touch game state directly except to buy on spawn.
 import { emptyCmd } from './game.js';
-import { WEAPONS, GEAR, weaponValue, teamCanBuy } from './weapons.js';
+import { WEAPONS, GEAR, WEAPON_FILTERS, weaponValue, teamCanBuy } from './weapons.js';
 import { STAND_EYE, DUCK_EYE, U, GRAVITY, NADE_GRAVITY, NADE_PIN_TIME } from './constants.js';
 import { forwardVec, rightVec, aimDir } from './movement.js';
 import { isEnemy } from './combat.js';
@@ -227,11 +227,13 @@ export class BotBrain {
   considerNade(tgt, dist, lost) {
     const g = this.game, p = this.p, t = g.time;
     if (t < this.nadeNextTry || p.task || p.reloading || g.frozen(p)) return;
-    this.nadeNextTry = t + 1.5 + Math.random();
-    if (dist < 8 || dist > 26) return;
+    // Grenades only: the HE is the gun, so throw it whenever it can land.
+    const nadeWar = g.weaponRule() === 'grenade';
+    this.nadeNextTry = t + (nadeWar ? 0.3 : 1.5 + Math.random());
+    if (dist < (nadeWar ? 5 : 8) || dist > 26) return;
     if (!(p.weapons.grenade?.clip > 0)) return;
     // A lost enemy is the classic grenade; in a straight fight it's rarer.
-    if (Math.random() > (lost ? 0.45 : 0.12)) return;
+    if (Math.random() > (nadeWar ? 0.8 : lost ? 0.45 : 0.12)) return;
     const pos = lost ? this.lastSeenPos : tgt.pos;
     // Don't land it on teammates.
     if (g.mode === 'teams' && this.allies().some((b) => Math.hypot(b.p.pos[0] - pos[0], b.p.pos[2] - pos[2]) < 6)) return;
@@ -240,7 +242,8 @@ export class BotBrain {
 
   startNade(slot, aim) {
     this.nadeThrow = { slot, aim, phase: 'draw', until: this.game.time + 2.5 };
-    this.nadeNextTry = this.game.time + 6 + Math.random() * 6;
+    const nadeWar = this.game.weaponRule() === 'grenade';
+    this.nadeNextTry = this.game.time + (nadeWar ? 1 + Math.random() : 6 + Math.random() * 6);
   }
 
   // Draw the grenade, turn to the throwing angle, pull the pin, let go.
@@ -1469,7 +1472,7 @@ export class BotBrain {
     for (const d of g.drops) {
       const slot = WEAPONS[d.weapon.id].slot;
       const gain = weaponValue(d.weapon) - weaponValue(p.weapons[slot]);
-      if (gain <= 0 || (d.noPickup.pid === p.id && g.time < d.noPickup.until)) continue;
+      if (gain <= 0 || !g.allows(d.weapon.id) || (d.noPickup.pid === p.id && g.time < d.noPickup.until)) continue;
       const dist = Math.hypot(d.pos[0] - p.pos[0], d.pos[2] - p.pos[2]);
       if (dist > 20 || Math.abs(d.pos[1] - p.pos[1]) > 3) continue;
       const score = gain - dist * 60;
@@ -1511,8 +1514,13 @@ export class BotBrain {
   buyLoadout(rand = Math.random) {
     const g = this.game, p = this.p;
     const team = g.buyTeam(p);
-    const pool = Object.keys(PRIMARY_WEIGHTS).filter((id) => WEAPONS[id] && teamCanBuy(id, team));
-    const pistols = PISTOL_POOL.filter((id) => teamCanBuy(id, team));
+    // The free for all weapon filter narrows both (Pistol only: no primary).
+    let pool = Object.keys(PRIMARY_WEIGHTS).filter((id) => WEAPONS[id] && teamCanBuy(id, team) && g.allows(id));
+    // Filtered free for all spawns with a free starter primary: buy only a
+    // better (pricier) gun of the class in its place.
+    const starter = p.weapons.primary && p.weapons.primary.id === WEAPON_FILTERS[g.weaponRule()].start ? p.weapons.primary.id : null;
+    if (starter) pool = pool.filter((id) => WEAPONS[id].price > WEAPONS[starter].price);
+    const pistols = PISTOL_POOL.filter((id) => teamCanBuy(id, team) && g.allows(id));
     // 0 at $1000 or less, 1 at $5500 and up.
     const rich = Math.max(0, Math.min(1, (p.money - 1000) / 4500));
     const needArmor = p.armor < 100 || !p.helmet;
@@ -1525,7 +1533,7 @@ export class BotBrain {
     // On a full buy, keep a grenade's worth back.
     const nadeMoney = rich > 0.4 ? WEAPONS.hegrenade.price : 0;
     let boughtGun = false;
-    if (!p.weapons.primary) {
+    if (!p.weapons.primary || (starter && pool.length)) {
       let pick = this.pickPrimary(pool, p.money - armorCost - nadeMoney, rich, rand) ??
         this.pickPrimary(pool, p.money - armorCost, rich, rand);
       // Can't have both a gun and armor: sometimes take the gun instead.
@@ -1534,6 +1542,7 @@ export class BotBrain {
         if (pick) wantArmor = false;
       }
       if (pick) boughtGun = g.buy(p, pick, true);
+      else if (starter) g.buyAmmo(p, 'primary', true);
     } else g.buyAmmo(p, 'primary', true); // kept gun: top up its ammo
     if (wantArmor && !g.buy(p, armorItem, true) && p.armor < 100) g.buy(p, 'kevlar', true);
     if (g.objective === 'bomb' && p.team === 'blue' && rand() < 0.5 + rich) g.buy(p, 'defuser', true);

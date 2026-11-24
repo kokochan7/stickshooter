@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { Game, emptyCmd, nextNadeSlot } from './sim/game.js';
 import { BotBrain } from './sim/bot.js';
-import { WEAPONS, NADE_SLOTS } from './sim/weapons.js';
+import { WEAPONS, NADE_SLOTS, WEAPON_FILTERS, cleanWeaponFilter } from './sim/weapons.js';
 import { runAdmin, MAX_BOTS } from './sim/admin.js';
 import {
   TICK_DT, STAND_EYE, DUCK_EYE, U, FOOTSTEP_TIME, FOOTSTEP_MIN_SPEED, FFA_KILL_LIMIT, TEAM_KILL_LIMIT,
@@ -35,7 +35,8 @@ const DEG = Math.PI / 180;
 
 const settings = loadSettings();
 const canvas = $('game');
-const game = new Game(getMap(settings.map), { mode: settings.mode });
+settings.weaponFilter = cleanWeaponFilter(settings.weaponFilter);
+const game = new Game(getMap(settings.map), { mode: settings.mode, weaponFilter: settings.weaponFilter });
 const view = new GameView(canvas, game.map, game.world, settings);
 const audio = new Audio();
 audio.setVolume(settings.volume);
@@ -130,6 +131,17 @@ botsBox.addEventListener('change', () => {
 botsBox.addEventListener('keydown', (e) => { if (e.key === 'Enter') botsBox.blur(); });
 $('m-diff').addEventListener('change', () => { settings.difficulty = $('m-diff').value; onSettingChange('difficulty'); });
 
+// Free for all weapon filter: All, Pistol only, ... Grenades only.
+const weaponsBox = $('m-weapons');
+weaponsBox.innerHTML = Object.entries(WEAPON_FILTERS).map(([id, f]) => `<option value="${id}">${f.label}</option>`).join('');
+weaponsBox.value = settings.weaponFilter;
+weaponsBox.addEventListener('change', () => {
+  settings.weaponFilter = cleanWeaponFilter(weaponsBox.value);
+  saveSettings(settings);
+  renderMapPick();
+  onSettingChange('weaponFilter');
+});
+
 // Practice bots. In FFA everyone (bots included) fights everyone. In Teams the
 // bots are dealt Blue first so the player, who joins Red, evens the sides.
 function setupBots() {
@@ -137,6 +149,7 @@ function setupBots() {
   brains.clear();
   view.clearCorpses();
   game.setMode(settings.mode);
+  game.setWeaponFilter(settings.weaponFilter);
   for (let i = 0; i < settings.bots; i++) addBot(game.mode === 'teams' ? (i % 2 ? 'red' : 'blue') : 'ffa');
   // Start them playing behind the menu (objective rounds need a round going).
   game.restartMatch();
@@ -170,6 +183,7 @@ function onSettingChange(k) {
   if (k === 'name' && me) me.name = settings.name;
   if (k === 'bots' && !net) setupBots();
   if (k === 'mode' && !net) setupBots();
+  if (k === 'weaponFilter' && !net) setupBots();
   if (k === 'difficulty' && !net) for (const b of brains.values()) b.setDifficulty(settings.difficulty);
 }
 
@@ -206,8 +220,9 @@ function renderMapPick() {
   $('map-name').textContent = m.name.toUpperCase();
   $('map-kind').textContent = m.type === 'bomb' ? 'BOMB' : m.type === 'hostage' ? 'HOSTAGE' : 'DM';
   let note;
-  if (m.type === 'dm') note = settings.mode === 'teams' ? `<b>${m.name}</b> · Teams: first team to ${TEAM_KILL_LIMIT} kills` : `<b>${m.name}</b> · Free for all: first to ${FFA_KILL_LIMIT} kills`;
-  else if (settings.mode !== 'teams') note = `<b>${m.name}</b> · Free for all deathmatch. Pick Teams for ${MAP_TYPE_LABEL[m.type].toLowerCase()}.`;
+  const only = settings.weaponFilter !== 'all' ? ` · ${WEAPON_FILTERS[settings.weaponFilter].label}` : '';
+  if (m.type === 'dm') note = settings.mode === 'teams' ? `<b>${m.name}</b> · Teams: first team to ${TEAM_KILL_LIMIT} kills` : `<b>${m.name}</b> · Free for all: first to ${FFA_KILL_LIMIT} kills${only}`;
+  else if (settings.mode !== 'teams') note = `<b>${m.name}</b> · Free for all deathmatch${only}. Pick Teams for ${MAP_TYPE_LABEL[m.type].toLowerCase()}.`;
   else if (m.type === 'bomb') note = `<b>${m.name}</b> · Rounds: Red plants the bomb at A or B, Blue defends`;
   else note = `<b>${m.name}</b> · Rounds: Blue rescues the hostages, Red guards them`;
   $('map-note').innerHTML = note;
@@ -233,6 +248,8 @@ function renderModePick() {
     b.classList.toggle('on', on);
     b.setAttribute('aria-checked', String(on));
   }
+  // The weapon filter is a free for all option.
+  $('weapons-row').classList.toggle('hidden', settings.mode !== 'ffa');
 }
 renderModePick();
 for (const b of document.querySelectorAll('.mode-btn')) {
@@ -369,6 +386,7 @@ async function goOnline() {
     url: roomUrl(room),
     name: settings.name,
     map: settings.map,
+    weaponFilter: settings.weaponFilter,
     onMap: (id) => loadMap(getMap(id).id),
     onWelcome: (p) => {
       me = p;
@@ -533,6 +551,7 @@ function setBuyMenu(open) {
   if (open && !game.canBuy(me)) { buyTimeOver(); open = false; }
   buyMenu.kitAllowed = game.objective === 'bomb' && me?.team === 'blue';
   buyMenu.team = me ? game.buyTeam(me) : null;
+  buyMenu.allow = (id) => game.allows(id);
   buyMenu.show(open, me);
   input.menuKeys = open;
   // Without pointer lock the real mouse cursor already works on the menu.
@@ -1616,7 +1635,7 @@ function netFrame(dt) {
   for (let i = timers.length - 1; i >= 0; i--) if (game.time >= timers[i].t) { timers[i].fn(); timers.splice(i, 1); }
   if (net?.ready) {
     hud.ping(net.rtt);
-    hud.room(game.mode, game.players.filter((p) => !p.isBot).length);
+    hud.room(game.mode, game.players.filter((p) => !p.isBot).length, game.weaponRule());
   }
 }
 
