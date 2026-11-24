@@ -52,7 +52,7 @@ function lerpAngle(a, b, t) {
 export class OnlineSession {
   // onMap(mapId) runs before onWelcome when the room plays another map.
   // onAdmin({ ok, lines, auth }) gets admin console replies.
-  constructor(game, { url, name, map, onWelcome, onClose, onRemove, onMap, onAdmin }) {
+  constructor(game, { url, name, map, weaponFilter = 'all', onWelcome, onClose, onRemove, onMap, onAdmin }) {
     this.game = game;
     this.onMap = onMap;
     this.onAdmin = onAdmin;
@@ -74,7 +74,7 @@ export class OnlineSession {
     this.predicted = []; // { type, weapon, at } shown locally, not yet confirmed
 
     this.ws = new WebSocket(url);
-    this.ws.onopen = () => this.send({ t: 'hello', v: PROTOCOL_VERSION, name, map });
+    this.ws.onopen = () => this.send({ t: 'hello', v: PROTOCOL_VERSION, name, map, weapons: weaponFilter });
     this.ws.onmessage = (e) => this.receive(JSON.parse(e.data));
     this.ws.onclose = (e) => this.finish(e.reason || (this.myId ? 'Disconnected' : 'Could not reach the server'));
     this.pinger = setInterval(() => this.send({ t: 'ping', c: performance.now() }), PING_EVERY);
@@ -114,6 +114,7 @@ export class OnlineSession {
         this.myId = msg.id;
         this.onMap?.(msg.map);
         this.game.setMode(msg.mode ?? 'ffa');
+        this.game.setWeaponFilter(msg.weapons ?? 'all');
         this.syncClock(msg.time);
         break;
       case 'snap':

@@ -98,6 +98,8 @@ export class GameRoom extends DurableObject {
       const map = cleanMap(msg.map, MAPS);
       if (first && map && map !== this.game.map.id) this.game.setMap(MAPS[map]);
       if (mode && first && this.game.mode !== mode) this.game.setMode(mode);
+      // ...and the free for all weapon filter.
+      if (first) this.game.setWeaponFilter(msg.weapons);
       const p = this.game.addPlayer({ name: cleanName(msg.name) });
       c.player = p;
       this.fillBots();
@@ -106,7 +108,7 @@ export class GameRoom extends DurableObject {
       if (first) this.game.restartMatch();
       else this.game.join(p);
       ws.send(JSON.stringify({
-        t: 'welcome', v: PROTOCOL_VERSION, id: p.id, mode: this.game.mode, map: this.game.map.id, time: this.game.time,
+        t: 'welcome', v: PROTOCOL_VERSION, id: p.id, mode: this.game.mode, map: this.game.map.id, weapons: this.game.weaponFilter, time: this.game.time,
         tickRate: TICK_RATE, snapEvery: SNAP_EVERY,
       }));
       this.start();

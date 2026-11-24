@@ -428,6 +428,32 @@ export function teamCanBuy(id, team) {
   return !team || !TEAM_ONLY[id] || TEAM_ONLY[id] === team;
 }
 
+// Free for all weapon filter (menu dropdown): which guns the match allows.
+// Buying, pickups, bots and spawn loadouts all follow it; the knife and armor
+// are always allowed. Outside 'all', everyone spawns with the class's starter
+// (free), and Grenades only hands out a fresh HE after every throw.
+export const WEAPON_FILTERS = {
+  all: { label: 'All', cats: null },
+  pistol: { label: 'Pistol only', cats: ['Pistols'], start: 'usp' },
+  shotgun: { label: 'Shotgun only', cats: ['Shotguns'], start: 'shotgun' },
+  smg: { label: 'SMGs only', cats: ['SMGs'], start: 'mp5' },
+  rifle: { label: 'Rifle only', cats: ['Rifles'], start: 'galil' },
+  sniper: { label: 'Snipers only', cats: ['Snipers'], start: 'scout' },
+  grenade: { label: 'Grenades only', cats: ['Grenades'], start: 'hegrenade' },
+};
+
+export function cleanWeaponFilter(f) {
+  return Object.hasOwn(WEAPON_FILTERS, f) ? f : 'all';
+}
+
+// Whether `filter` allows weapon (or gear) `id`.
+export function filterAllows(filter, id) {
+  const cats = WEAPON_FILTERS[filter]?.cats;
+  const def = W[id];
+  if (!cats || !def || def.melee || def.bomb) return true;
+  return cats.includes(def.category);
+}
+
 export const SHOP_ORDER = [
   'glock18', 'usp', 'p228', 'deagle', 'fiveseven', 'elites',
   'shotgun', 'autoshotgun',

@@ -11,7 +11,7 @@ import {
   NADE_FUSE, NADE_GRAVITY, NADE_PIN_TIME, NADE_SWITCH_TIME, NADE_BOUNCE, NADE_RADIUS,
   PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL, BUY_TIME, SMOKE_GROW, SMOKE_FADE, SMOKE_HEIGHT, SMOKE_MAX_WAIT,
 } from './constants.js';
-import { WEAPONS, GEAR, AMMO, NADE_SLOTS, teamCanBuy } from './weapons.js';
+import { WEAPONS, GEAR, AMMO, NADE_SLOTS, WEAPON_FILTERS, teamCanBuy, filterAllows, cleanWeaponFilter } from './weapons.js';
 import { World } from './world.js';
 import { movePlayer, aimDir, forwardVec, rightVec, playerBox, hullTouches } from './movement.js';
 import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
@@ -88,8 +88,10 @@ export function shotRng(playerId, shotSeed) {
 }
 
 export class Game {
-  constructor(map, { seed = Date.now(), mode = 'ffa' } = {}) {
+  constructor(map, { seed = Date.now(), mode = 'ffa', weaponFilter = 'all' } = {}) {
     this.mode = MODES.includes(mode) ? mode : 'ffa';
+    // Free for all weapon filter (see WEAPON_FILTERS); team modes ignore it.
+    this.weaponFilter = cleanWeaponFilter(weaponFilter);
     this.setMap(map);
     this.players = [];
     this.time = 0;
@@ -227,6 +229,23 @@ export class Game {
     for (const p of order) p.team = null;
     for (const p of order) p.team = this.defaultTeam();
     this.resetScores();
+  }
+
+  // The weapon filter in effect: the chosen one in free for all, else 'all'.
+  weaponRule() {
+    return this.mode === 'ffa' ? this.weaponFilter : 'all';
+  }
+
+  // Whether this match lets anyone buy, carry or pick up weapon `id`.
+  allows(id) {
+    return filterAllows(this.weaponRule(), id);
+  }
+
+  // Change the free for all weapon filter. Call restartMatch() afterwards so
+  // everyone respawns with the right guns.
+  setWeaponFilter(f) {
+    this.weaponFilter = cleanWeaponFilter(f);
+    this.drops = [];
   }
 
   // ---------- Match ----------
@@ -400,9 +419,17 @@ export class Game {
     } else if (!keepGear) {
       p.armor = 0; p.helmet = false; p.defuser = false;
       p.weapons = emptyWeapons();
-      p.weapons.secondary = makeWeapon(this.mode === 'teams' && p.team === 'red' ? 'glock18' : 'usp');
       p.weapons.melee = makeWeapon('knife');
-      p.active = 'secondary';
+      const start = WEAPON_FILTERS[this.weaponRule()].start;
+      if (start) {
+        // Filtered free for all: a free starter of the allowed class.
+        const w = makeWeapon(start);
+        p.active = WEAPONS[start].slot;
+        p.weapons[p.active] = w;
+      } else {
+        p.weapons.secondary = makeWeapon(this.mode === 'teams' && p.team === 'red' ? 'glock18' : 'usp');
+        p.active = 'secondary';
+      }
     } else {
       if (!p.weapons.melee) p.weapons.melee = makeWeapon('knife');
       if (!p.weapons[p.active]) p.active = ['primary', 'secondary', 'melee'].find((s) => p.weapons[s]);
@@ -529,7 +556,7 @@ export class Game {
     }
     const def = WEAPONS[item];
     if (!def || def.bomb || def.melee) return false;
-    if (!teamCanBuy(item, this.buyTeam(p))) return false;
+    if (!teamCanBuy(item, this.buyTeam(p)) || !this.allows(item)) return false;
     const cur = p.weapons[def.slot];
     // Already have it: buying it again buys its ammo, or another grenade
     // up to as many as you can carry.
@@ -784,6 +811,7 @@ export class Game {
 
   canPickup(p, d, range = PICKUP_RANGE) {
     if (!p.alive || (d.noPickup.pid === p.id && this.time < d.noPickup.until)) return false;
+    if (!this.allows(d.weapon.id)) return false;
     const dy = d.pos[1] - p.pos[1];
     return dy > -1 && dy < 2 && Math.hypot(d.pos[0] - p.pos[0], d.pos[2] - p.pos[2]) < range;
   }
@@ -1093,6 +1121,8 @@ export class Game {
       explodeAt: t + (g.fuse ?? NADE_FUSE), rest: false, lastBounce: -1,
     });
     w.clip--;
+    // Grenades only: the HE is the only gun, so a new one comes with every throw.
+    if (w.clip <= 0 && def.id === 'hegrenade' && this.weaponRule() === 'grenade') w.clip = 1;
     p.nadePin = 0;
     p.lastFire = t;
     p.nextAttack = t + NADE_SWITCH_TIME;
