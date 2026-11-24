@@ -796,6 +796,16 @@ state and the guns on the ground (protocol v3).
 4. **Round-based (CS style)**: buy time, round money, bomb or elimination
    rounds. Needs a round-state machine in `game.js` and a CS-style economy
    (round win/loss money, kill rewards per weapon class).
+5. **Gun Game** (done, practice and online room `public-gungame`): free for
+   all with the classic CS 1.6 GunGame ladder (`src/sim/gungame.js`): Glock,
+   USP, P228, Deagle, Five-SeveN, Elites, Shotgun, Auto Shotgun, TMP, MAC-10,
+   MP5, UMP45, P90, Galil, FAMAS, AK47, Scout, M4A1, SG 552, AUG, M249, HE,
+   knife (23 levels). Each kill swaps your gun for the next one; a knife kill
+   also takes a level from the victim; only a knife kill on the knife level
+   wins. Everyone spawns with the level's gun, the knife and kevlar + helmet;
+   no buying, no drops, the reserve never runs out, and on the HE level a new
+   grenade comes once the last one has gone off. Late joiners start at the
+   room's lowest level. `ggLevel` is in snapshots (protocol v19).
 
 ### 6.10 Milestones
 
