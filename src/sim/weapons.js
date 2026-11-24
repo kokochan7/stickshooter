@@ -386,20 +386,6 @@ W.hegrenade = {
   grenade: { kind: 'he', radius: 700, fuse: 2, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
 };
 
-// CS 1.6 flashbang ($200, carry two). Goes off 1.5 s after the throw and
-// whites out everyone who can see it, teammates and the thrower included.
-// RadiusFlash: strength 4 falling off to 0 at 1500 units; looking at it
-// (dot >= 0.55) holds full white for strength / 1.5 s and fades over
-// strength * 3 s; side-on (>= 0.15) holds /3.5 and fades * 1.75; behind
-// you holds /4.5 and fades * 1. No damage.
-W.flashbang = {
-  name: 'Flashbang', slot: 'flash', category: 'Grenades', price: 200,
-  damage: 0, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
-  cycle: 0.5, auto: false, clip: 2, reserve: 0, deploy: 0.6, speed: 250,
-  accuracy: { type: 'none' }, kick: { punch: [0, 0] },
-  grenade: { kind: 'flash', radius: 1500, strength: 4, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
-};
-
 // CS 1.6 smoke grenade ($300, carry one). Once it has stopped (and the
 // 1.5 s fuse is up) it pours out a cloud that blocks sight, bots' too, for
 // about 20 seconds. Bullets still go through it.
@@ -450,8 +436,8 @@ export const SHOP_ORDER = [
   'm249', 'minigun',
 ];
 
-// Grenade slots. Key 4 cycles through the ones you carry (HE, flash, smoke).
-export const NADE_SLOTS = ['grenade', 'flash', 'smoke'];
+// Grenade slots. Key 4 cycles through the ones you carry (HE, smoke).
+export const NADE_SLOTS = ['grenade', 'smoke'];
 
 // Ammo packs per bullet type, CS 1.6 prices: [rounds per pack, price].
 export const AMMO = {
@@ -466,7 +452,7 @@ export const GEAR = {
 };
 
 // The buy menu's Equipment page, in CS 1.6 order (armor, grenades, kit).
-export const EQUIPMENT = ['kevlar', 'kevlarHelmet', 'flashbang', 'hegrenade', 'smokegrenade', 'defuser'];
+export const EQUIPMENT = ['kevlar', 'kevlarHelmet', 'hegrenade', 'smokegrenade', 'defuser'];
 
 // Rough 0..1 ratings for the shop's stat bars.
 export function weaponRatings(w) {

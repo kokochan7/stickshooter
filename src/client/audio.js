@@ -642,7 +642,6 @@ const GROUPS = {
   pinpull: ['pinpull'],
   heBounce: ['he_bounce-1'],
   heExplode: ['hegrenade-2'],
-  flashPop: ['flashbang-1', 'flashbang-2'],
   smokePop: ['sg_explode'],
   nadeBounceSoft: ['grenade_hit1', 'grenade_hit2', 'grenade_hit3'],
   zoom: ['zoom'],
@@ -686,9 +685,21 @@ export const RELOAD_SOUNDS = {
 };
 export const SHELL_SOUNDS = { shotgun: 'm3_insertshell', autoshotgun: 'xm1014_insertshell' };
 export const RELOADED_SOUNDS = { awp: 'scout_bolt', scout: 'scout_bolt', shotgun: 'm3_pump' };
+// Drawing a gun: its own CS 1.6 draw sound, a slide racked, a bolt pulled
+// or a mag slapped home, so each gun sounds different when you switch to it.
 export const DEPLOY_SOUNDS = {
-  awp: 'awp_deploy', scout: 'awp_deploy', m4a1: 'm4a1_deploy', deagle: 'de_deploy', elites: 'elite_deploy',
-  p228: 'p228_slidepull', fiveseven: 'fiveseven_sliderelease', aug: 'aug_forearm',
+  // Pistols: the slide.
+  glock18: 'slideback1', usp: 'usp_sliderelease', p228: 'p228_slidepull', deagle: 'de_deploy',
+  fiveseven: 'fiveseven_sliderelease', elites: 'elite_deploy',
+  // Shotguns: the pump, or the XM1014's bolt let go.
+  shotgun: 'm3_pump', autoshotgun: 'sliderelease1',
+  // SMGs: the bolt or charging handle.
+  tmp: 'clipin1', uzi: 'boltpull1', mac10: 'mac10_boltpull', mp5: 'mp5_slideback', ump45: 'ump45_boltslap', p90: 'p90_boltpull',
+  // Rifles and snipers.
+  galil: 'galil_boltpull', famas: 'famas_forearm', ak47: 'ak47_boltpull', m4a1: 'm4a1_deploy', sg552: 'sg552_boltpull',
+  aug: 'aug_forearm', scout: 'scout_bolt', awp: 'awp_deploy', g3sg1: 'g3sg1_slide', sg550: 'sg550_boltpull',
+  // Machine guns: the belt.
+  m249: 'm249_chain', minigun: 'boltup',
 };
 
 // Surface under the feet -> footstep sound. Wood has no file in the pack,

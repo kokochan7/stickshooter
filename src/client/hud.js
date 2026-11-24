@@ -141,7 +141,7 @@ export function renderGunIcons(renderer) {
   const prevColor = renderer.getClearColor(new THREE.Color());
   const prevAlpha = renderer.getClearAlpha();
   renderer.setClearColor(0x000000, 0);
-  for (const id of [...SHOP_ORDER, 'knife', 'hegrenade', 'flashbang', 'smokegrenade']) {
+  for (const id of [...SHOP_ORDER, 'knife', 'hegrenade', 'smokegrenade']) {
     const gun = buildGun(id);
     const box = new THREE.Box3().setFromObject(gun.group);
     const size = box.getSize(new THREE.Vector3());
@@ -443,7 +443,7 @@ export class Hud {
   }
 
   // Weapon list on the right: 1 primary, 2 pistol, 3 knife (and the bomb,
-  // which 3 swaps to), 4 grenades (HE, flash, smoke). The gun in hand is
+  // which 3 swaps to), 4 grenades (HE, smoke). The gun in hand is
   // bright, the rest dim.
   slots(p) {
     const w = p.weapons ?? {};
@@ -725,14 +725,12 @@ export class BuyMenu {
       const g = w.grenade;
       const have = st.count ? ` (you have ${st.count})` : '';
       const kv = [['Price', `$${w.price}${have}`], ['Slot', `Grenade (key 4 cycles them), carry ${w.clip}`]];
-      if (g.kind === 'flash') {
-        kv.push(['Effect', 'Blinds everyone who can see it, you and your team too'], ['Reach', `${Math.round(g.radius * 0.025)} m, worse if you look away`]);
-      } else if (g.kind === 'smoke') {
+      if (g.kind === 'smoke') {
         kv.push(['Effect', 'A cloud nobody can see through, bots included'], ['Lasts', `${g.duration} seconds`]);
       } else {
         kv.push(['Damage', `Up to ${w.damage}, less with distance`], ['Blast radius', `${Math.round(g.radius * 0.025)} m`]);
       }
-      kv.push(['Fuse', g.kind === 'smoke' ? 'Goes off once it stops rolling' : '1.5 seconds after the throw'],
+      kv.push(['Fuse', g.kind === 'smoke' ? 'Goes off once it stops rolling' : `${g.fuse ?? 1.5} seconds after the throw`],
         ['Throw', 'Hold fire to pull the pin, let go to throw. Mouse 2 lobs it.']);
       return `<div class="buy-pic"><img src="${this.icons[id]}" alt=""></div>${statsHtml(kv)}`;
     }

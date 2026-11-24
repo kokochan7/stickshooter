@@ -1,8 +1,8 @@
 // Bot brain: looks at the game state and produces the same cmd a human client
 // would send. Bots never touch game state directly except to buy on spawn.
-import { emptyCmd, blindLevel } from './game.js';
+import { emptyCmd } from './game.js';
 import { WEAPONS, GEAR, weaponValue, teamCanBuy } from './weapons.js';
-import { STAND_EYE, DUCK_EYE, U, GRAVITY, NADE_GRAVITY, NADE_PIN_TIME, NADE_FUSE } from './constants.js';
+import { STAND_EYE, DUCK_EYE, U, GRAVITY, NADE_GRAVITY, NADE_PIN_TIME } from './constants.js';
 import { forwardVec, rightVec, aimDir } from './movement.js';
 import { isEnemy } from './combat.js';
 import { siteAt, canPlant, canDefuse, hostageInReach } from './objective.js';
@@ -59,7 +59,7 @@ const PRIMARY_POOL = [
 // Pistol upgrades a bot with money to spare might buy.
 const PISTOL_POOL = ['deagle', 'deagle', 'p228', 'fiveseven', 'elites'];
 // Grenades a bot might pick up with what's left: [id, chance].
-const NADE_BUYS = [['hegrenade', 0.45], ['flashbang', 0.4], ['flashbang', 0.15], ['smokegrenade', 0.3]];
+const NADE_BUYS = [['hegrenade', 0.55], ['smokegrenade', 0.3]];
 
 function wrapAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -201,27 +201,23 @@ export class BotBrain {
     this.guardDuck = false;
     this.nadeThrow = null; // { slot, aim: [x, y, z], phase, until }
     this.nadeNextTry = 0;
-    this.avertUntil = 0; // looking away from our own flashbang
-    this.avertYaw = 0;
     this.smokeTried = 0;
   }
 
-  // Throw a grenade now and then: an HE or flashbang at someone at mid
+  // Throw a grenade now and then: an HE at someone at mid
   // range, or at the spot an enemy just ducked out of sight.
   considerNade(tgt, dist, lost) {
     const g = this.game, p = this.p, t = g.time;
     if (t < this.nadeNextTry || p.task || p.reloading || g.frozen(p)) return;
     this.nadeNextTry = t + 1.5 + Math.random();
     if (dist < 8 || dist > 26) return;
-    const he = p.weapons.grenade?.clip > 0, flash = p.weapons.flash?.clip > 0;
-    if (!he && !flash) return;
+    if (!(p.weapons.grenade?.clip > 0)) return;
     // A lost enemy is the classic grenade; in a straight fight it's rarer.
     if (Math.random() > (lost ? 0.45 : 0.12)) return;
     const pos = lost ? this.lastSeenPos : tgt.pos;
     // Don't land it on teammates.
     if (g.mode === 'teams' && this.allies().some((b) => Math.hypot(b.p.pos[0] - pos[0], b.p.pos[2] - pos[2]) < 6)) return;
-    const slot = he && (!flash || Math.random() < 0.55) ? 'grenade' : 'flash';
-    this.startNade(slot, [pos[0], pos[1], pos[2]]);
+    this.startNade('grenade', [pos[0], pos[1], pos[2]]);
   }
 
   startNade(slot, aim) {
@@ -233,11 +229,7 @@ export class BotBrain {
   nadeStep(cmd, dt) {
     const g = this.game, p = this.p, t = g.time;
     const nt = this.nadeThrow;
-    if (!nt) {
-      // Our own flash is about to pop: look away until it has.
-      this.turnTowards(this.avertYaw, -0.3, dt, 1.5);
-      return;
-    }
+    if (!nt) return;
     const w = p.weapons[nt.slot];
     if (t > nt.until || ((!w || w.clip <= 0) && nt.phase !== 'thrown')) { this.nadeThrow = null; return; }
     const solve = this.throwAngles(nt.aim);
@@ -253,10 +245,6 @@ export class BotBrain {
       if (t < p.nadePin + NADE_PIN_TIME || err > 0.06) { cmd.fire = true; return; }
       // Let go: the throw happens this tick.
       nt.phase = 'thrown';
-      if (nt.slot === 'flash') {
-        this.avertUntil = t + NADE_FUSE + 0.3;
-        this.avertYaw = wrapAngle(solve.yaw + Math.PI);
-      }
       this.nadeThrow = null;
     }
   }
@@ -612,7 +600,7 @@ export class BotBrain {
 
     // Grenades: maybe start a throw, and if one is under way it takes over
     // the hands and the aim.
-    if (this.nadeThrow || this.avertUntil > t) {
+    if (this.nadeThrow) {
       wantFire = false;
     } else if (tgt && tgt.alive && this.targetVisible && fightDist < Infinity) {
       this.considerNade(tgt, fightDist, false);
@@ -626,12 +614,11 @@ export class BotBrain {
       const k = Math.min(0.5, 6 / Math.max(1, fightDist));
       this.startNade('smoke', [p.pos[0] + (tgt.pos[0] - p.pos[0]) * k, p.pos[1], p.pos[2] + (tgt.pos[2] - p.pos[2]) * k]);
     }
-    if (this.nadeThrow || this.avertUntil > t) {
+    if (this.nadeThrow) {
       this.nadeStep(cmd, dt);
       if (this.nadeThrow?.phase === 'pin') moveDir = null;
     } else if (def?.grenade) {
-      // A grenade in hand we didn't mean to throw (a second flashbang
-      // coming up after a throw): put a gun back in hand.
+      // A grenade in hand we didn't mean to throw: put a gun back in hand.
       wantFire = false;
       if (!p.nadeRedrawAt) cmd.slot = ['primary', 'secondary'].find((s) => weaponValue(p.weapons[s]) > 0) ?? 'melee';
     }
@@ -1150,8 +1137,6 @@ export class BotBrain {
 
   scan(eye) {
     const g = this.game, p = this.p, t = g.time;
-    // Flashed: can't see a thing (but still hears).
-    const blind = blindLevel(p, t) > 0.5;
     const allies = this.allies();
     let best = null, bestScore = Infinity;
     let noise = null, noiseD = Infinity;
@@ -1169,7 +1154,7 @@ export class BotBrain {
       if (!inFov && !recentlyHurtBy && !heard) continue;
       // Visible if head or chest is in line of sight.
       const oEye = o.ducked ? DUCK_EYE : STAND_EYE;
-      const vis = !blind && (g.world.visible(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye, o.pos[2]) ||
+      const vis = (g.world.visible(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye, o.pos[2]) ||
         g.world.visible(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye * 0.7, o.pos[2])) &&
         !(g.smokes.length && g.smokeBlocks(eye[0], eye[1], eye[2], o.pos[0], o.pos[1] + oEye * 0.8, o.pos[2]));
       if (vis && (inFov || recentlyHurtBy)) {
