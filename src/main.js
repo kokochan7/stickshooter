@@ -41,7 +41,7 @@ const audio = new Audio();
 audio.setVolume(settings.volume);
 audio.setSfx(false); // main menu: music only, no background gunfire
 const music = new MenuMusic(audio);
-music.set({ level: settings.music, muted: settings.musicMuted });
+music.set({ level: settings.music });
 const input = new Input(canvas, settings);
 const hud = new Hud();
 hud.chSettings = settings;
@@ -286,18 +286,6 @@ function startAudio() {
   music.start();
 }
 for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, startAudio, { once: true });
-
-function renderMusicToggle() {
-  $('music-toggle').classList.toggle('muted', settings.musicMuted);
-  $('music-toggle').setAttribute('aria-label', settings.musicMuted ? 'Unmute menu music' : 'Mute menu music');
-}
-renderMusicToggle();
-$('music-toggle').addEventListener('click', () => {
-  settings.musicMuted = !settings.musicMuted;
-  saveSettings(settings);
-  music.set({ muted: settings.musicMuted });
-  renderMusicToggle();
-});
 
 function showPlaying() {
   $('menu').classList.add('hidden');
