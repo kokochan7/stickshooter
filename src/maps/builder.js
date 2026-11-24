@@ -7,8 +7,29 @@
 export const WATER_DEPTH = 4.4; // riverbed below ground level (doubled from 2.2 at Kenny's request)
 export const WATER_LEVEL = -0.1; // water surface
 
+// Cover sizes. A crouched player is 1.15 m tall with eyes at 1.0 m, a
+// standing one 1.8 m with eyes at 1.6 m: COVER_H hides a crouched body and
+// lets a standing player shoot over.
+export const COVER_H = 1.3;
+export const COVER_SCALE = 1.25; // crates: the old 1.2 m crate is now 1.5 m
+export const TRUNK_R = 0.42; // tree trunks are 0.84 m thick (a body is 0.82 m wide)
+
+// Push a new prop (half size h at x, z) away from one of the same kind and
+// height it would overlap, so their faces touch instead (no z-fighting).
+function settle(props, kind, x, z, h, y) {
+  for (const o of props) {
+    if (o.kind !== kind || Math.abs(o.y - y) > 0.02) continue;
+    const dx = x - o.x, dz = z - o.z, need = o.h + h + 0.002;
+    if (Math.abs(dx) >= need || Math.abs(dz) >= need) continue;
+    if (Math.abs(dx) >= Math.abs(dz)) x = o.x + Math.sign(dx || 1) * need;
+    else z = o.z + Math.sign(dz) * need;
+  }
+  return [x, z];
+}
+
 export function mapBuilder(palette = {}) {
   const boxes = [];
+  const props = []; // crates and barrels placed so far, for settle()
   const holes = []; // water rects cut out of the ground: [x0, z0, x1, z1]
   const waterRects = []; // { min: [x, z], max: [x, z], y }
   const C = palette;
@@ -26,18 +47,49 @@ export function mapBuilder(palette = {}) {
       });
     },
 
+    // Props are sized to hide behind (Kenny: "they look like decorations"):
+    // a crate is crouch cover (a crouched body, 1.15 m, fits behind it and
+    // a standing player shoots over it), a stack of two is standing cover.
+    // Sizes passed in are the old ones and get COVER_SCALE'd. A crate put
+    // down next to one it would now overlap is pushed out to touch it, and
+    // one stacked on another (y = the lower crate's old top) sits on its new
+    // top, so map files keep their old numbers.
     crate(x, z, size = 1.2, y = 0, col = 'crate') {
-      b.box(x - size / 2, y, z - size / 2, x + size / 2, y + size, z + size / 2, 'wood', col, { kind: 'crate' });
+      const s = size * COVER_SCALE;
+      if (y > 0) {
+        const under = props.find((o) => o.kind === 'crate' && Math.abs(o.oldTop - y) < 0.02 && Math.abs(o.x - x) < o.h && Math.abs(o.z - z) < o.h);
+        const oldTop = y + size;
+        if (under) y = under.top;
+        [x, z] = settle(props, 'crate', x, z, s / 2, y);
+        props.push({ kind: 'crate', x, z, h: s / 2, y, top: y + s, oldTop });
+      } else {
+        [x, z] = settle(props, 'crate', x, z, s / 2, y);
+        props.push({ kind: 'crate', x, z, h: s / 2, y, top: y + s, oldTop: y + size });
+      }
+      b.box(x - s / 2, y, z - s / 2, x + s / 2, y + s, z + s / 2, 'wood', col, { kind: 'crate' });
     },
 
-    // A stack of crates: big one with a smaller one on top.
+    // A stack of crates: big one with a smaller one on top (standing cover).
     crates(x, z) {
       b.crate(x, z, 1.2);
       b.crate(x + 0.1, z - 0.05, 0.9, 1.2);
     },
 
-    barrel(x, z, col = 'barrel') {
-      b.box(x - 0.32, 0, z - 0.32, x + 0.32, 1.0, z + 0.32, 'metal', col, { kind: 'barrel' });
+    // Oil drum: metal, so it stops almost everything. Tall enough to crouch
+    // behind; a pair side by side hides a crouched body.
+    barrel(x, z, col = 'barrel', y = 0) {
+      const h = 0.4;
+      [x, z] = settle(props, 'barrel', x, z, h, y);
+      props.push({ kind: 'barrel', x, z, h, y });
+      b.box(x - h, y, z - h, x + h, y + 1.25, z + h, 'metal', col, { kind: 'barrel' });
+    },
+
+    // Waist-high (crouch) cover wall: a run of sandbags or a concrete
+    // barrier, `len` long along `axis`, centered on x, z. It stretches with
+    // the map like a wall does.
+    cover(x, z, len, axis = 'x', { h = COVER_H, t = 0.7, material = 'concrete', col = 'stone' } = {}) {
+      if (axis === 'x') b.box(x - len / 2, 0, z - t / 2, x + len / 2, h, z + t / 2, material, col);
+      else b.box(x - t / 2, 0, z - len / 2, x + t / 2, h, z + len / 2, material, col);
     },
 
     // Wall along X at depth z..z+t, from x0 to x1, with door gaps [[a, b], ...].
@@ -100,13 +152,14 @@ export function mapBuilder(palette = {}) {
     // long sides.
     bridge(x0, z0, x1, z1, axis, { material = 'wood', col = 'bridge', rail = 'rail', deck = 0.15 } = {}) {
       b.box(x0, -0.12, z0, x1, deck, z1, material, col, { kind: 'bridge' });
-      const t = 0.08;
+      // Plank side walls a crouched player hides behind while crossing.
+      const t = 0.2, h = deck + COVER_H;
       if (axis === 'z') {
-        b.box(x0, deck, z0, x0 + t, deck + 1.0, z1, 'grate', rail);
-        b.box(x1 - t, deck, z0, x1, deck + 1.0, z1, 'grate', rail);
+        b.box(x0, deck, z0, x0 + t, h, z1, material, rail);
+        b.box(x1 - t, deck, z0, x1, h, z1, material, rail);
       } else {
-        b.box(x0, deck, z0, x1, deck + 1.0, z0 + t, 'grate', rail);
-        b.box(x0, deck, z1 - t, x1, deck + 1.0, z1, 'grate', rail);
+        b.box(x0, deck, z0, x1, h, z0 + t, material, rail);
+        b.box(x0, deck, z1 - t, x1, h, z1, material, rail);
       }
     },
 
@@ -117,8 +170,8 @@ export function mapBuilder(palette = {}) {
       b.box(x0, h - 0.3, z0, x1, h, z1, 'concrete', col, { kind: 'bridge' });
       b.stairs(x0, z0 - run, x1, z0, '+z', h, 5, 'concrete', col);
       b.stairs(x0, z1, x1, z1 + run, '-z', h, 5, 'concrete', col);
-      b.box(x0, h, z0, x0 + 0.3, h + 0.9, z1, 'concrete', rail);
-      b.box(x1 - 0.3, h, z0, x1, h + 0.9, z1, 'concrete', rail);
+      b.box(x0, h, z0, x0 + 0.4, h + COVER_H, z1, 'concrete', rail);
+      b.box(x1 - 0.4, h, z0, x1, h + COVER_H, z1, 'concrete', rail);
     },
 
     // Same, running along X.
@@ -126,14 +179,16 @@ export function mapBuilder(palette = {}) {
       b.box(x0, h - 0.3, z0, x1, h, z1, 'concrete', col, { kind: 'bridge' });
       b.stairs(x0 - run, z0, x0, z1, '+x', h, 5, 'concrete', col);
       b.stairs(x1, z0, x1 + run, z1, '-x', h, 5, 'concrete', col);
-      b.box(x0, h, z0, x1, h + 0.9, z0 + 0.3, 'concrete', rail);
-      b.box(x0, h, z1 - 0.3, x1, h + 0.9, z1, 'concrete', rail);
+      b.box(x0, h, z0, x1, h + COVER_H, z0 + 0.4, 'concrete', rail);
+      b.box(x0, h, z1 - 0.4, x1, h + COVER_H, z1, 'concrete', rail);
     },
 
-    // Pine: a trunk you can hide behind, and stacked tiers bullets go
+    // Pine: a trunk thick enough to hide a standing body behind (pistols
+    // can't punch through it, rifles barely), and stacked tiers bullets go
     // through. The lowest tier starts above head height so it never snags.
     pine(x, z, s = 1) {
-      b.box(x - 0.18, 0, z - 0.18, x + 0.18, 2.4, z + 0.18, 'wood', 'trunk', { kind: 'trunk' });
+      const r = TRUNK_R * Math.max(0.9, Math.min(1.2, s));
+      b.box(x - r, 0, z - r, x + r, 2.4, z + r, 'wood', 'trunk', { kind: 'trunk' });
       b.box(x - 1.3 * s, 2.0, z - 1.3 * s, x + 1.3 * s, 2.0 + 1.0 * s, z + 1.3 * s, 'foliage', 'leaves');
       b.box(x - 0.95 * s, 2.0 + 1.0 * s, z - 0.95 * s, x + 0.95 * s, 2.0 + 2.0 * s, z + 0.95 * s, 'foliage', 'leaves');
       b.box(x - 0.55 * s, 2.0 + 2.0 * s, z - 0.55 * s, x + 0.55 * s, 2.0 + 2.9 * s, z + 0.55 * s, 'foliage', 'leaves');
@@ -141,7 +196,7 @@ export function mapBuilder(palette = {}) {
 
     // Palm: a tall trunk and a flat crown.
     palm(x, z) {
-      b.box(x - 0.16, 0, z - 0.16, x + 0.16, 4.2, z + 0.16, 'wood', 'trunk', { kind: 'trunk' });
+      b.box(x - TRUNK_R * 0.9, 0, z - TRUNK_R * 0.9, x + TRUNK_R * 0.9, 4.2, z + TRUNK_R * 0.9, 'wood', 'trunk', { kind: 'trunk' });
       b.box(x - 1.6, 4.2, z - 0.4, x + 1.6, 4.5, z + 0.4, 'foliage', 'leaves');
       b.box(x - 0.4, 4.2, z - 1.6, x + 0.4, 4.5, z + 1.6, 'foliage', 'leaves');
     },

@@ -22,7 +22,7 @@
 // Outside is wide open with long sightlines; inside is shelving, crates and
 // pillars, close and tight. Bots walk the ground routes; the fire escape
 // ends in a ledge you jump onto, so the roof and vent are for players.
-import { mapBuilder, scaleMap, spawnGrid, subtractRects, toSpawn } from './builder.js';
+import { COVER_H, mapBuilder, scaleMap, spawnGrid, subtractRects, toSpawn } from './builder.js';
 
 const m = mapBuilder({
   ground: 0x8f8f8a, wall: 0xa4573a, wall2: 0xcfc6b4, trim: 0x6b3a28, roof: 0x4d5359, stone: 0xa9a59b, step: 0x7d8288,
@@ -126,7 +126,7 @@ m.crate(15, -9, 0.9);
 
 // ---------- Red's back lot (north) ----------
 m.crates(-30, -40); m.crate(24, -41); m.crate(25.2, -41); m.barrel(33, -38); m.barrel(33.6, -38.6);
-m.box(-4, 0, -36.5, 4, 1.0, -35.9, 'concrete', 'stone'); // loading dock step-wall
+m.box(-4, 0, -36.5, 4, COVER_H, -35.9, 'concrete', 'stone'); // loading dock step-wall
 m.box(14, 0, -42.5, 20, 2.8, -40, 'metal', 'red', { kind: 'container' });
 
 // ---------- West alley: the fire escape ----------
@@ -170,8 +170,8 @@ m.box(8, 0, 1, 14, 2.6, 3.6, 'metal', 'teal', { kind: 'container' });
 m.box(19, 0, 10, 21.6, 2.6, 16, 'metal', 'orange', { kind: 'container' });
 m.box(19, 2.6, 10, 21.6, 5.2, 16, 'metal', 'yellow', { kind: 'container' });
 m.box(-31, 0, 8, -28.4, 2.6, 14, 'metal', 'orange', { kind: 'container' });
-m.box(-6, 0, 7, -2, 1.0, 7.6, 'concrete', 'stone'); m.box(3, 0, 15, 7, 1.0, 15.6, 'concrete', 'stone');
-m.box(-12, 0, 21, -8, 1.0, 21.6, 'concrete', 'stone'); m.box(10, 0, 22, 14, 1.0, 22.6, 'concrete', 'stone');
+m.box(-6, 0, 7, -2, COVER_H, 7.6, 'concrete', 'stone'); m.box(3, 0, 15, 7, COVER_H, 15.6, 'concrete', 'stone');
+m.box(-12, 0, 21, -8, COVER_H, 21.6, 'concrete', 'stone'); m.box(10, 0, 22, 14, COVER_H, 22.6, 'concrete', 'stone');
 m.crates(-10, -3); m.crate(7, -3.5); m.crate(8.2, -3.5); m.crates(30, 2); m.crate(-35, 20); m.crates(-25, 24);
 m.crate(28, 18); m.barrel(-4, 18); m.barrel(-3.4, 18.6);
 for (const [x, z] of [[-14, 2], [16, 6], [-36, -2], [26, 24]]) m.box(x - 0.15, 0, z - 0.15, x + 0.15, 6.5, z + 0.15, 'metal', 'pole');
@@ -187,6 +187,11 @@ m.box(-38, 0, 29.8, -18, 0.2, 31, 'concrete', 'curb'); m.box(18, 0, 29.8, X, 0.2
 m.box(-31, 0, 32, -27, 1.4, 34, 'metal', 'car1'); m.box(21, 0, 32, 25.5, 1.4, 34, 'metal', 'car2');
 m.box(30, 0, 39, 34.5, 1.4, 41, 'metal', 'car3'); m.box(-36, 0, 40, -33, 2.4, 41, 'grate', 'rail'); // bus stop
 m.crate(-22, 42.5); m.barrel(18, 42); m.barrel(18.6, 42.6);
+// Extra cover: the yard's long looks from the garage doors to the gate, the
+// back lot and the street in front of Blue's spawn.
+m.crates(-9, 13); m.crates(13, 9); m.cover(-23, -2.5, 4);
+m.crates(-17, -38); m.crates(17, -37);
+m.cover(-12, 33.5, 4); m.cover(12, 33.5, 4);
 
 const ground = m.finishGround(XW, -Z, X, Z);
 
