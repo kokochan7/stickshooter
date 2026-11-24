@@ -105,6 +105,7 @@ let nextBeep = 0; // when the planted bomb beeps next (game time)
 let buyLog = [];
 let lastBuys = [];
 const spec = new Spectator(); // who/how we watch while dead in a round
+const specLook = { id: null, yaw: 0, pitch: 0 }; // their last view angles, for gun sway
 const timers = [];
 const underwaterEl = $('underwater');
 const smokeEl = $('smoke-screen');
@@ -745,8 +746,17 @@ function viewToWorld(out) {
   return out.applyMatrix4(view.camera.matrixWorld);
 }
 
+// Whose eyes the camera is in: you while alive, or the player you're
+// spectating in first person (CS 1.6 in-eye). Their gun, crosshair and
+// animations show as if you were them.
+function fpPlayer() {
+  if (!me || mode === 'menu') return null;
+  if (me.alive) return me;
+  return spec.mode === 'eye' ? spectateTarget() : null;
+}
+
 function isFirstPerson(p) {
-  return p === me;
+  return !!p && p === fpPlayer();
 }
 
 // Red <-> Blue. The sim takes us out and respawns us on the other side.
@@ -779,7 +789,7 @@ function handleEvent(e) {
         if (!def.pellets || def.id === 'autoshotgun') {
           const q = view.camera.quaternion;
           const vel = _v3.set(1.6 + Math.random(), 1.4 + Math.random(), 0.4).applyQuaternion(q);
-          vel.x += me.vel[0]; vel.z += me.vel[2];
+          vel.x += p.vel[0]; vel.z += p.vel[2];
           view.effects.shell(ej, vel);
         }
       } else {
@@ -850,7 +860,7 @@ function handleEvent(e) {
           const parts = RELOAD_SOUNDS[def.id] ?? [[0.14, 'magOut', 0.6], [0.6, 'magIn', 0.65]];
           parts.forEach(([f, name, volume], i) => {
             const alt = i === 0 ? 'magOut' : /clipin|boxin/.test(name) ? 'magIn' : 'bolt';
-            timers.push({ t: game.time + e.duration * f, fn: () => { if (me?.reloading) audio.play(name, { volume, alt }); } });
+            timers.push({ t: game.time + e.duration * f, fn: () => { if (p.reloading && isFirstPerson(p)) audio.play(name, { volume, alt }); } });
           });
         }
       } else if (p) {
@@ -866,10 +876,10 @@ function handleEvent(e) {
       }
       break;
     case 'shell':
-      if (p === me) audio.play(SHELL_SOUNDS[game.activeDef(p)?.id] ?? 'shell', { volume: 0.55, alt: 'shell' });
+      if (isFirstPerson(p)) audio.play(SHELL_SOUNDS[game.activeDef(p)?.id] ?? 'shell', { volume: 0.55, alt: 'shell' });
       break;
     case 'deploy':
-      if (p === me) {
+      if (isFirstPerson(p)) {
         view.viewModel.deploy();
         if (e.weapon === 'knife') audio.play('knifeDeploy', { volume: 0.35 });
         else audio.play(DEPLOY_SOUNDS[e.weapon] ?? 'deploy', { volume: 0.4, alt: 'deploy' });
@@ -878,7 +888,7 @@ function handleEvent(e) {
     case 'melee': {
       const sound = e.hit === 'flesh' ? 'knifeHit' : e.hit === 'wall' ? 'knifeWall' : null;
       const swing = e.kind === 'stab' ? 'knifeStab' : 'knifeSlash';
-      if (p === me) {
+      if (isFirstPerson(p)) {
         view.viewModel.melee(e.kind);
         audio.play(swing, { volume: 0.55 });
         if (sound) audio.play(sound, { volume: 0.7 });
@@ -893,11 +903,11 @@ function handleEvent(e) {
     }
     // ----- HE grenade -----
     case 'pin':
-      if (p === me) { view.viewModel.pinPull(); audio.play('pinpull', { volume: 0.7, alt: 'magOut' }); }
+      if (isFirstPerson(p)) { view.viewModel.pinPull(); audio.play('pinpull', { volume: 0.7, alt: 'magOut' }); }
       else if (p) audio.play('pinpull', { pos: p.pos, volume: 0.5, alt: 'magOut', range: FOOTSTEP_RANGE });
       break;
     case 'throw':
-      if (p === me) { view.viewModel.throwNade(e.lob); audio.play('throw', { volume: 0.4 }); }
+      if (isFirstPerson(p)) { view.viewModel.throwNade(e.lob); audio.play('throw', { volume: 0.4 }); }
       else if (p) {
         const v = view.views.get(p.id);
         if (v) v.man.kick = 1;
@@ -1137,7 +1147,7 @@ function footsteps(p, dt, x, z) {
     const ls = p.landSpeed ?? 0;
     if (ls > 3) {
       // CS plays a firm footstep on landing.
-      if (p === me) { audio.play(stepSound(p), { volume: 0.4 }); view.viewModel.land(ls); }
+      if (isFirstPerson(p)) { audio.play(stepSound(p), { volume: 0.4 }); view.viewModel.land(ls); }
       else audio.play(stepSound(p), { pos: p.pos, volume: 0.6, range: FOOTSTEP_RANGE });
     }
   }
@@ -1255,7 +1265,18 @@ function updateView(dt, alpha) {
     const ey = lerp(t.prevPos[1], t.pos[1], alpha) - (t.stepOffset ?? 0) + STAND_EYE + (DUCK_EYE - STAND_EYE) * duck;
     const ez = lerp(t.prevPos[2], t.pos[2], alpha);
     cam.position.set(ex, ey, ez);
-    cam.rotation.set(t.pitch, t.yaw, 0);
+    // Their recoil kicks the view too (bots carry it; online others don't).
+    if (t.punch && t.prevPunch) {
+      punchP = lerp(t.prevPunch[0], t.punch[0], alpha) * DEG;
+      punchY = lerp(t.prevPunch[1], t.punch[1], alpha) * DEG;
+    }
+    cam.rotation.set(t.pitch + punchP, t.yaw + punchY, 0);
+    const def = game.activeDef(t);
+    if (def?.zoomLevels && t.zoom > 0) {
+      const h = def.zoomLevels[t.zoom - 1] * DEG;
+      fov = (2 * Math.atan(Math.tan(h / 2) * 0.75)) / DEG;
+    }
+    showVm = !(t.zoom > 0 && def?.scope);
     audio.setListener(ex, ey, ez, t.yaw);
     underwater = game.underwater(ex, ey, ez);
   } else if (specT) {
@@ -1301,16 +1322,29 @@ function updateView(dt, alpha) {
   touch?.setHasNade(!!me?.alive && NADE_SLOTS.some((s) => me.weapons[s]?.clip > 0));
 
   // Viewmodel.
-  const [mdx, mdy] = input.takeFrameDelta();
-  if (me && me.alive) {
-    const w = me.weapons[me.active];
+  let [mdx, mdy] = input.takeFrameDelta();
+  // Whoever's eyes we're in: you, or the player you spectate in first person.
+  const fp = showVm ? (me?.alive ? me : specT && spec.mode === 'eye' ? specT : null) : null;
+  if (fp) {
+    const w = fp.weapons[fp.active];
     view.viewModel.setWeapon(w ? w.id : null);
-    view.viewModel.setTeam(me.team);
+    view.viewModel.setTeam(fp.team);
   }
+  if (fp && fp !== me) {
+    // Sway from how they turn, as if it were mouse movement.
+    const k = 0.022 * settings.sensitivity * DEG;
+    if (specLook.id === fp.id) {
+      let dy = fp.yaw - specLook.yaw;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      mdx = -dy / k; mdy = -(fp.pitch - specLook.pitch) / k;
+    } else { mdx = 0; mdy = 0; }
+    specLook.id = fp.id; specLook.yaw = fp.yaw; specLook.pitch = fp.pitch;
+  } else specLook.id = null;
+  const vmP = fp ?? me;
   view.viewModel.update(dt, {
-    mouseDX: mdx, mouseDY: mdy, speed: me ? Math.hypot(me.vel[0], me.vel[2]) : 0, onGround: (me?.onGround || me?.swimming) ?? true,
-    reloading: me?.reloading ?? false, spin: me?.spin ?? 0, visible: showVm,
-    plant: me?.alive && me.task?.kind === 'plant' ? (gunTime() - me.task.start) / (me.task.end - me.task.start) : -1,
+    mouseDX: mdx, mouseDY: mdy, speed: vmP ? Math.hypot(vmP.vel[0], vmP.vel[2]) : 0, onGround: (vmP?.onGround || vmP?.swimming) ?? true,
+    reloading: vmP?.reloading ?? false, spin: vmP?.spin ?? 0, visible: !!fp,
+    plant: fp && fp.task?.kind === 'plant' ? ((fp === me ? gunTime() : game.time) - fp.task.start) / (fp.task.end - fp.task.start) : -1,
   });
   view.effects.update(dt);
 
@@ -1330,7 +1364,20 @@ function updateView(dt, alpha) {
     // moves the crosshair, so it still marks where the next bullet goes.
     const f = (innerHeight / 2) / Math.tan((fov * DEG) / 2);
     const chOffset = me.alive ? [-Math.tan(punchY - shakeY) * f, -Math.tan(punchP - shakeP) * f] : null;
-    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 && !!def?.scope, chOffset });
+    // Spectating in first person shows their crosshair (and scope) instead.
+    let eye = null;
+    if (!me.alive && specT && spec.mode === 'eye') {
+      const tdef = game.activeDef(specT);
+      let px = 0;
+      if (tdef && !tdef.melee) {
+        let s2 = NaN;
+        try { s2 = game.currentSpread(specT, tdef); } catch { /* online: others carry no gun state */ }
+        if (Number.isFinite(s2)) px = Math.min(80, (s2 * 0.5 * (innerHeight / 2)) / Math.tan((fov * DEG) / 2));
+        if (specT.punch) px += Math.hypot(specT.punch[0], specT.punch[1]) * 1.5;
+      }
+      eye = { def: tdef, spreadPx: px, scoped: specT.zoom > 0 && !!tdef?.scope };
+    }
+    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 && !!def?.scope, chOffset, eye });
     hud.top({ mode: game.mode, myTeam: me.team, scores: game.objective ? game.rounds : game.teamKills, players: game.players, meId: me.id });
     hud.goal(goalText());
     hud.message(centerMessage());

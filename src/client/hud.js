@@ -264,7 +264,7 @@ export class Hud {
     $(id).textContent = value;
   }
 
-  update(dt, { p, def, w, spreadPx, reloadFrac, showFps, scoped, chOffset }) {
+  update(dt, { p, def, w, spreadPx, reloadFrac, showFps, scoped, chOffset, eye = null }) {
     // FPS counter (twice a second).
     this.fpsAcc += dt; this.fpsFrames++;
     if (this.fpsAcc >= 0.5) {
@@ -298,13 +298,15 @@ export class Hud {
     rb.style.opacity = reloadFrac !== null ? '1' : '0';
     if (reloadFrac !== null) rb.firstElementChild.style.width = `${Math.round(reloadFrac * 100)}%`;
 
-    // Dynamic crosshair (only restyled when the gap changes).
+    // Dynamic crosshair (only restyled when the gap changes). eye: the
+    // player you spectate in first person, whose crosshair shows instead.
+    if (eye) { def = eye.def; spreadPx = eye.spreadPx; scoped = eye.scoped; }
     const cs = this.chSettings;
     if (cs) {
       const key = `${cs.chSize},${cs.chGap},${cs.chThick},${cs.chDot},${cs.chOutline},${cs.chDynamic},${cs.chDynamic ? Math.round(spreadPx) : 0}`;
       if (this.last.ch !== key) { this.last.ch = key; styleCrosshair(this.crosshair, cs, spreadPx); }
     }
-    this.crosshair.style.display = scoped || !p.alive || def?.scope ? 'none' : '';
+    this.crosshair.style.display = scoped || (!p.alive && !eye) || !def || def.scope ? 'none' : '';
     // Recoil the camera doesn't show moves the crosshair instead.
     const ox = Math.round(chOffset?.[0] ?? 0), oy = Math.round(chOffset?.[1] ?? 0);
     const chKey = `${ox},${oy}`;
