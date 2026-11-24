@@ -20,6 +20,7 @@ import {
 } from './sim/constants.js';
 import { canPlant, canDefuse, hostageInReach, siteAt, bombBeepInterval } from './sim/objective.js';
 import { MAP_LIST, MAP_TYPE_LABEL, MAPS, getMap } from './maps/index.js';
+import { GG_LADDER, GG_LAST, ggWeapon, ggRank } from './sim/gungame.js';
 import { GameView } from './client/scene.js';
 import { Audio, RELOAD_SOUNDS, SHELL_SOUNDS, RELOADED_SOUNDS, DEPLOY_SOUNDS, STEP_SOUNDS, speak } from './client/audio.js';
 import { Input, keyName } from './client/input.js';
@@ -221,7 +222,8 @@ function renderMapPick() {
   $('map-kind').textContent = m.type === 'bomb' ? 'BOMB' : m.type === 'hostage' ? 'HOSTAGE' : 'DM';
   let note;
   const only = settings.weaponFilter !== 'all' ? ` · ${WEAPON_FILTERS[settings.weaponFilter].label}` : '';
-  if (m.type === 'dm') note = settings.mode === 'teams' ? `<b>${m.name}</b> · Teams: first team to ${TEAM_KILL_LIMIT} kills` : `<b>${m.name}</b> · Free for all: first to ${FFA_KILL_LIMIT} kills${only}`;
+  if (settings.mode === 'gungame') note = `<b>${m.name}</b> · Gun Game: every kill gives you the next gun, ${GG_LADDER.length} levels. Win with a knife kill on the last level`;
+  else if (m.type === 'dm') note = settings.mode === 'teams' ? `<b>${m.name}</b> · Teams: first team to ${TEAM_KILL_LIMIT} kills` : `<b>${m.name}</b> · Free for all: first to ${FFA_KILL_LIMIT} kills${only}`;
   else if (settings.mode !== 'teams') note = `<b>${m.name}</b> · Free for all deathmatch${only}. Pick Teams for ${MAP_TYPE_LABEL[m.type].toLowerCase()}.`;
   else if (m.type === 'bomb') note = `<b>${m.name}</b> · Rounds: Red plants the bomb at A or B, Blue defends`;
   else note = `<b>${m.name}</b> · Rounds: Blue rescues the hostages, Red guards them`;
@@ -293,7 +295,10 @@ setInterval(refreshRoomCounts, 5000);
 function renderControls() {
   const b = settings.binds;
   const teamHint = settings.mode === 'teams' ? ` &nbsp;·&nbsp; ${keyName(b.switchTeam)} — switch team` : '';
-  $('hint').innerHTML = `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.melee)}/${keyName(b.grenade)}/${keyName(b.lastWeapon)} — weapons &nbsp;·&nbsp; ${keyName(b.drop)} — drop / pick up${teamHint}`;
+  const weapons = `${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.melee)}/${keyName(b.grenade)}/${keyName(b.lastWeapon)} — weapons`;
+  $('hint').innerHTML = settings.mode === 'gungame'
+    ? `Gun Game: each kill gives you the next gun · knife kills steal a level &nbsp;·&nbsp; ${weapons}`
+    : `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${weapons} &nbsp;·&nbsp; ${keyName(b.drop)} — drop / pick up${teamHint}`;
 }
 renderControls();
 
@@ -523,6 +528,10 @@ input.on('cursorClick', (c) => {
 });
 
 function buyTimeOver() {
+  if (game.mode === 'gungame') {
+    alertMsg = { html: '<span class="alert">NO BUYING IN GUN GAME</span>', until: performance.now() + 1500 };
+    return;
+  }
   alertMsg = { html: `<span class="alert">BUY TIME IS OVER (${BUY_TIME} SECONDS)</span>`, until: performance.now() + 1800 };
 }
 
@@ -962,6 +971,17 @@ function handleEvent(e) {
     case 'drop':
       if (p === me && e.alive) audio.play('magOut', { volume: 0.5 });
       break;
+    case 'ggLevel':
+      // Gun Game: a kill moved someone up the ladder.
+      if (p === me) {
+        const lvl = e.level;
+        const what = lvl >= GG_LAST ? 'KNIFE LEVEL' : WEAPONS[e.weapon]?.name.toUpperCase();
+        alertMsg = { html: `<span class="gg-up">LEVEL ${lvl + 1}${e.stolen ? ' · STOLEN' : ''}</span><small>${what}</small>`, until: performance.now() + 1400 };
+        audio.play('buy', { volume: 0.5 });
+      } else if (me && e.victim === me.id && e.stolen) {
+        alertMsg = { html: '<span class="alert">KNIFED · LEVEL LOST</span>', until: performance.now() + 1600 };
+      }
+      break;
     case 'matchEnd':
       audio.play('win', { volume: 0.6 });
       break;
@@ -1397,6 +1417,7 @@ function updateView(dt, alpha) {
       eye = { def: tdef, spreadPx: px, scoped: specT.zoom > 0 && !!tdef?.scope };
     }
     hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 && !!def?.scope, chOffset, eye });
+    document.body.classList.toggle('mode-gungame', game.mode === 'gungame');
     hud.top({ mode: game.mode, myTeam: me.team, scores: game.objective ? game.rounds : game.teamKills, players: game.players, meId: me.id });
     hud.goal(goalText());
     hud.message(centerMessage());
@@ -1529,6 +1550,15 @@ function goalText() {
     return me.team === 'blue' ? `${n} · RESCUE THE HOSTAGES (${left} LEFT)` : `${n} · GUARD THE HOSTAGES (${left} LEFT)`;
   }
   if (game.mode === 'teams') return `FIRST TEAM TO ${TEAM_KILL_LIMIT} KILLS`;
+  if (game.mode === 'gungame') {
+    let lead = null;
+    for (const p of game.players) if (!lead || ggRank(p, lead) < 0) lead = p;
+    const lv = (p) => Math.min(GG_LADDER.length, (p.ggLevel ?? 0) + 1);
+    const leader = lead && lead.ggLevel > 0 ? ` · LEADER ${lead === me ? 'YOU' : lead.name.toUpperCase()} ${lv(lead)}` : '';
+    const lvl = me.ggLevel ?? 0;
+    const next = lvl >= GG_LAST ? 'KNIFE KILL TO WIN' : `NEXT: ${WEAPONS[ggWeapon(lvl + 1)].name.toUpperCase()}`;
+    return `LEVEL ${lv(me)}/${GG_LADDER.length} · ${next}${leader}`;
+  }
   let lead = null;
   for (const p of game.players) if (!lead || p.kills > lead.kills) lead = p;
   const leader = lead && lead.kills > 0 ? ` · LEADER ${lead === me ? 'YOU' : lead.name.toUpperCase()} ${lead.kills}` : '';

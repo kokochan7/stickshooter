@@ -26,7 +26,7 @@
 //   { t: 'map', map }  an admin changed the map (the match restarts on it)
 //   (an outdated client is closed with code 4002 and a "refresh" reason)
 
-export const PROTOCOL_VERSION = 19; // 19: free for all weapon filter; (18: Warehouse garage shut + east door, layered bot nav (17: Warehouse map, hostage follow fix) (16: flashbang removed)
+export const PROTOCOL_VERSION = 20; // 20: free for all weapon filter (19: Gun Game mode (ggLevel)) (18: Warehouse garage shut + east door, layered bot nav) (17: Warehouse map, hostage follow fix) (16: flashbang removed)
 export const SNAP_EVERY = 4; // ticks per snapshot: 128 Hz sim -> 32 Hz snapshots
 export const SEND_EVERY = 2; // client sends a cmd batch every 2 ticks (64 Hz)
 export const INTERP_DELAY = 0.1; // remote players are drawn 100 ms in the past
@@ -35,14 +35,18 @@ export const MAX_HUMANS = 10;
 export const BOT_FILL = 0; // bots keep the room at this many players until humans fill it (0 = no bots)
 export const DEFAULT_ROOM = 'public';
 export const TEAMS_ROOM = 'public-teams';
+export const GUNGAME_ROOM = 'public-gungame';
 
-// A room plays Teams when its name ends in "teams"; every other room is FFA.
+// A room plays Teams when its name ends in "teams", Gun Game when it ends in
+// "gungame"; every other room is FFA.
 export function roomMode(room) {
-  return /(^|-)teams$/.test(room) ? 'teams' : 'ffa';
+  if (/(^|-)teams$/.test(room)) return 'teams';
+  if (/(^|-)gungame$/.test(room)) return 'gungame';
+  return 'ffa';
 }
 
 // The quick play rooms PLAY ONLINE picks from, by mode.
-export const PUBLIC_ROOMS = { ffa: DEFAULT_ROOM, teams: TEAMS_ROOM };
+export const PUBLIC_ROOMS = { ffa: DEFAULT_ROOM, teams: TEAMS_ROOM, gungame: GUNGAME_ROOM };
 
 // PLAY ONLINE should put everyone together, so when the room for your mode is
 // empty but the other mode has people, join them instead of sitting alone.
@@ -66,12 +70,12 @@ const OWN = [
   'shotSeed', 'recoilDir', 'delayFire', 'decreaseShotsAt', 'fireHeld', 'altHeld', 'reloadHeld',
   'shellNext', 'resumeZoom', 'resumeZoomAt',
   'nextStab', 'frozenUntil', 'spawnedAt', 'life', 'task', 'defuser', 'useHeld',
-  'nadePin', 'nadeRedrawAt', 'swimming', 'waterJump', 'wjDir', 'burstLeft', 'burstNext',
+  'nadePin', 'nadeRedrawAt', 'swimming', 'waterJump', 'wjDir', 'burstLeft', 'burstNext', 'ggLevel',
 ];
 // What other clients need to draw, interpolate and list someone.
 const OTHER = [
   'id', 'name', 'team', 'isBot', 'alive', 'pos', 'vel', 'yaw', 'pitch', 'onGround', 'ducked', 'duckAmount',
-  'health', 'kills', 'deaths', 'headshots', 'active', 'reloading', 'zoom', 'spin', 'task', 'swimming',
+  'health', 'kills', 'deaths', 'headshots', 'active', 'reloading', 'zoom', 'spin', 'task', 'swimming', 'ggLevel',
 ];
 
 function pick(p, keys) {

@@ -4,6 +4,7 @@ import { WEAPONS, SHOP_ORDER, GEAR, EQUIPMENT, NADE_SLOTS, WEAPON_FILTERS, teamC
 import { buildGun } from './gunModels.js';
 import { DEFAULT_BINDS, BIND_LABELS, keyName } from './input.js';
 import { MAX_BOTS } from '../sim/admin.js';
+import { GG_LADDER, ggRank } from '../sim/gungame.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -30,7 +31,7 @@ export const DEFAULT_SETTINGS = {
   // Off by default; players can turn it on in settings.
   fullscreen: false,
   touchSens: 1, // look speed for touch controls
-  mode: 'ffa', // 'ffa' or 'teams', for practice and online
+  mode: 'ffa', // 'ffa', 'teams' or 'gungame', for practice and online
   map: 'yard', // see src/maps/index.js
   weaponFilter: 'all', // free for all weapon filter, see WEAPON_FILTERS
   version: 8,
@@ -88,7 +89,7 @@ export function loadSettings() {
       }
     }
     s.bots = clamp(Math.round(+s.bots) || 0, 0, MAX_BOTS);
-    if (s.mode !== 'teams') s.mode = 'ffa';
+    if (!['ffa', 'teams', 'gungame'].includes(s.mode)) s.mode = 'ffa';
     if (typeof s.map !== 'string') s.map = DEFAULT_SETTINGS.map; // unknown ids fall back in getMap
     return s;
   } catch {
@@ -251,7 +252,7 @@ export class Hud {
   // Mode and head count of the online room, above the ping.
   room(mode, players = 0, filter = 'all') {
     const tag = filter && filter !== 'all' ? ` · ${WEAPON_FILTERS[filter]?.label.toUpperCase() ?? ''}` : '';
-    const text = mode ? `${mode === 'teams' ? 'TEAMS' : 'FFA'}${tag} · ${players} ONLINE` : '';
+    const text = mode ? `${mode === 'teams' ? 'TEAMS' : mode === 'gungame' ? 'GUN GAME' : 'FFA'}${tag} · ${players} ONLINE` : '';
     if (this.last.room === text) return;
     this.last.room = text;
     this.roomInfo.textContent = text;
@@ -481,6 +482,14 @@ export class Hud {
       const alive = (t) => players.filter((q) => q.team === t && q.alive).length;
       L = alive('red'); Ll = 'ALIVE'; R = alive('blue'); Rl = 'ALIVE';
       sl = scores.red; sr = scores.blue; mid = ''; cls = `teams me-${myTeam}`;
+    } else if (mode === 'gungame') {
+      // Your rung on the ladder, and where you stand against everyone else.
+      const lv = Math.min(GG_LADDER.length, (p?.ggLevel ?? 0) + 1);
+      const rank = 1 + players.filter((q) => q.id !== meId && ggRank(q, p ?? q) < 0).length;
+      L = lv; Ll = 'LEVEL'; R = GG_LADDER.length; Rl = 'LEVELS';
+      mid = `#${rank}<small>/${players.length}</small>`;
+      sl = 'KILLS'; sr = p?.kills ?? 0;
+      cls = 'ffa';
     } else {
       const k = p?.kills ?? 0;
       const rank = 1 + players.filter((q) => q.id !== meId && q.kills > k).length;
@@ -506,17 +515,22 @@ export class Hud {
     const sb = this.scoreboard;
     sb.classList.toggle('hidden', !show);
     if (!show) return;
-    const rank = (a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name);
+    // Gun Game ranks by level and swaps the HS column for the level.
+    const gg = mode === 'gungame';
+    const rank = gg
+      ? (a, b) => ggRank(a, b) || a.name.localeCompare(b.name)
+      : (a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name);
     const rows = (list, from = 0) => list.map((p, i) => {
       const hs = p.kills ? Math.round((p.headshots / p.kills) * 100) : 0;
+      const last = gg ? `${Math.min(GG_LADDER.length, (p.ggLevel ?? 0) + 1)}` : `${hs}%`;
       const cls = `${p.id === meId ? 'me' : ''} ${p.alive ? '' : 'dead'}`;
-      return `<tr class="${cls}"><td class="rk">${from + i + 1}</td><td class="nm"><span>${esc(p.name)}</span>${p.isBot ? '<small>BOT</small>' : ''}</td><td class="num">${p.kills}</td><td class="num">${p.deaths}</td><td class="num hs">${hs}%</td></tr>`;
+      return `<tr class="${cls}"><td class="rk">${from + i + 1}</td><td class="nm"><span>${esc(p.name)}</span>${p.isBot ? '<small>BOT</small>' : ''}</td><td class="num">${p.kills}</td><td class="num">${p.deaths}</td><td class="num hs">${last}</td></tr>`;
     }).join('');
-    const table = (list, from) => `<table><colgroup><col class="c-rk"><col><col class="c-n"><col class="c-n"><col class="c-hs"></colgroup><tr><th class="rk">#</th><th>PLAYER</th><th class="num">K</th><th class="num">D</th><th class="num hs">HS</th></tr>${rows(list, from)}</table>`;
+    const table = (list, from) => `<table><colgroup><col class="c-rk"><col><col class="c-n"><col class="c-n"><col class="c-hs"></colgroup><tr><th class="rk">#</th><th>PLAYER</th><th class="num">K</th><th class="num">D</th><th class="num hs">${gg ? 'LVL' : 'HS'}</th></tr>${rows(list, from)}</table>`;
     const teams = mode === 'teams';
     const head = title
       ? `<div class="sb-head">${title}</div>`
-      : `<div class="sb-bar"><span>${teams ? 'TEAMS' : 'FREE FOR ALL'}</span><span>${players.length} PLAYER${players.length === 1 ? '' : 'S'}</span></div>`;
+      : `<div class="sb-bar"><span>${teams ? 'TEAMS' : gg ? 'GUN GAME' : 'FREE FOR ALL'}</span><span>${players.length} PLAYER${players.length === 1 ? '' : 'S'}</span></div>`;
     // Split a ranking into k columns, top of the ranking first.
     const chunk = (list, k) => {
       const per = Math.ceil(list.length / k) || 1;
