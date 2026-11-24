@@ -8,7 +8,7 @@
 // interpolates player positions between ticks. Mouse look is applied every
 // frame for the lowest possible input latency.
 import * as THREE from 'three';
-import { Game, emptyCmd, blindLevel, nextNadeSlot } from './sim/game.js';
+import { Game, emptyCmd, nextNadeSlot } from './sim/game.js';
 import { BotBrain } from './sim/bot.js';
 import { WEAPONS, NADE_SLOTS } from './sim/weapons.js';
 import { runAdmin, MAX_BOTS } from './sim/admin.js';
@@ -108,8 +108,7 @@ const spec = new Spectator(); // who/how we watch while dead in a round
 const timers = [];
 const underwaterEl = $('underwater');
 const smokeEl = $('smoke-screen');
-const flashEl = $('flash-screen');
-let smokeShown = 0, flashShown = 0;
+let smokeShown = 0;
 const stepState = new Map();
 
 // ---------- Setup ----------
@@ -920,10 +919,6 @@ function handleEvent(e) {
     case 'nadeBounce':
       audio.play(e.weapon && e.weapon !== 'hegrenade' ? 'nadeBounceSoft' : 'heBounce', { pos: e.pos, volume: 0.6, jitter: 0.08 });
       break;
-    case 'flashPop':
-      audio.play('flashPop', { pos: e.pos, volume: 0.9, jitter: 0.03, alt: 'explode' });
-      view.effects.flashBang(e.pos, e.water);
-      break;
     case 'smokePop':
       audio.play('smokePop', { pos: e.pos, volume: 0.7, jitter: 0.04 });
       break;
@@ -1310,11 +1305,9 @@ function updateView(dt, alpha) {
   view.setUnderwater(underwater);
   audio.setUnderwater(underwater);
   if (underwaterEl.classList.contains('on') !== underwater) underwaterEl.classList.toggle('on', underwater);
-  // Standing in smoke greys the screen out; a flashbang whites it out.
+  // Standing in smoke greys the screen out.
   const smokeK = mode === 'menu' ? 0 : smokeInside(cam.position);
   if (Math.abs(smokeK - smokeShown) > 0.01) { smokeShown = smokeK; smokeEl.style.opacity = smokeK.toFixed(2); }
-  const blindK = me?.alive && mode !== 'menu' ? blindLevel(me, game.time) : 0;
-  if (Math.abs(blindK - flashShown) > 0.005 || (blindK === 0 && flashShown !== 0)) { flashShown = blindK; flashEl.style.opacity = blindK.toFixed(3); }
   const aw = me?.weapons[me.active], adef = aw && WEAPONS[aw.id];
   touch?.setAltLabel(adef?.burst ? (aw.burst ? 'BURST' : adef.auto ? 'AUTO' : 'SEMI') : adef?.melee ? 'STAB' : 'SCOPE');
   touch?.setHasNade(!!me?.alive && NADE_SLOTS.some((s) => me.weapons[s]?.clip > 0));

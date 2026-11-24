@@ -1034,27 +1034,6 @@ Object.assign(SPECS, {
   }),
 });
 
-// Flashbang: a slim steel body with rows of vent holes, fuse, spoon and
-// ring like the HE grenade.
-SPECS.flashbang = () => {
-  const parts = [
-    latheY([[0.004, -0.004], [0.022, -0.002], [0.024, 0.006], [0.024, 0.074], [0.02, 0.08], [0.012, 0.082]], 0, 0, 0, 'metal', 14),
-    latheY([[0.0245, 0.03], [0.0245, 0.042]], 0, 0, 0, 'steel', 14),
-    ycyl(0.014, 0.018, 0, 0.09, 0, 'steel', 10),
-    ycyl(0.01, 0.01, 0, 0.103, 0, 'silver', 10),
-    prof([[0.012, 0.104], [0.02, 0.102], [0.03, 0.08], [0.032, 0.04], [0.03, 0.01], [0.025, 0.01], [0.027, 0.04],
-      [0.025, 0.078], [0.017, 0.097], [0.012, 0.098]], 0.012, 'silver', { bevel: 0.001 }),
-    torus(0.013, 0.0026, 0.026, 0.096, 0, 'silver', 0, Math.PI / 2),
-  ];
-  for (let row = 0; row < 2; row++) {
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + row * 0.5;
-      parts.push(box(0.006, 0.012, 0.004, Math.cos(a) * 0.0235, 0.016 + row * 0.042, Math.sin(a) * 0.0235, 'bore', 0, -a + Math.PI / 2, 0));
-    }
-  }
-  return { parts, muzzle: [0, 0.05, -0.05], fore: [-0.16, -0.32, 0.12], gripPoint: [0.012, 0.03, 0.03], hold: 'grenade', eject: [0, 0, 0], ring: [0.026, 0.096, 0] };
-};
-
 // Smoke grenade: a fat can with a colored band, vent ports on top, the
 // same fuse, spoon and ring.
 SPECS.smokegrenade = () => ({

@@ -575,28 +575,23 @@ rebought on respawn with the rest of the loadout; it can't be dropped. CS 1.6
 - Online, snapshots carry `nades` (position, velocity, weapon) and clients fly
   them on between snapshots.
 
-### 5.10c Flashbang and smoke
+### 5.10c Smoke
 
-Each grenade type has its own slot (`grenade`, `flash`, `smoke`, listed in
+Each grenade type has its own slot (`grenade`, `smoke`, listed in
 `NADE_SLOTS`). Key 4 draws the next one you carry, so pressing it again
-cycles HE, flash, smoke. All three throw the same way as the HE.
+cycles HE and smoke. Both throw the same way. The flashbang was removed
+in Nov 2026 at Kenny's request.
 
-- **Flashbang** ($200, carry 2): goes off 1.5 s after the throw. CS
-  `RadiusFlash` rules: anyone within 1500 u with line of sight to the blast
-  and not behind a smoke is blinded, fully if they face it (dot >= 0.55),
-  partly if it's off to the side (>= 0.15), not at all if it's behind them.
-  It blinds you and your team too. The screen goes white and fades out
-  (`blindLevel`). A bot that is more than half blind can't see anyone.
 - **Smoke** ($300, carry 1): goes off once it stops rolling (or after 3 s),
   grows a cloud over 1.5 s that lasts 20 s, then fades over 3 s. The cloud is
-  a squashed sphere (radius 180 u, 3.6 m tall) that blocks sight for bots
-  and for flashbangs. It's drawn as 22 instanced billboard puffs per cloud,
+  a squashed sphere (radius 180 u, 3.6 m tall) that blocks sight for bots.
+  It's drawn as 22 instanced billboard puffs per cloud,
   one draw call for all clouds; inside it the screen goes grey.
-- **Bots** buy grenades with spare money, throw HE and flashes at enemies they
-  know about behind cover (and look away from their own flash), and throw a
-  smoke when they retreat. They aim with a solved throw pitch.
-- Online, snapshots carry `smokes`, and own-player state carries the blind
-  and grenade fields. Protocol v14.
+- **Bots** buy grenades with spare money, throw HEs at enemies they
+  know about behind cover, and throw a smoke when they retreat. They aim
+  with a solved throw pitch.
+- Online, snapshots carry `smokes`, and own-player state carries the
+  grenade fields. Protocol v16.
 
 ### 5.11 Dropped guns
 

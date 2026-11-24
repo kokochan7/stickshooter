@@ -40,7 +40,6 @@ const TAKEOVER_FIELDS = [
   'stamina', 'health', 'armor', 'helmet', 'defuser', 'active', 'lastActive', 'nextAttack', 'deployEnd',
   'reloading', 'reloadEnd', 'shellNext', 'shotsFired', 'pistolAcc', 'accuracy', 'zoom', 'spin', 'tagMul',
   'swimming', 'waterJump', 'nadePin', 'nadeRedrawAt', 'burstLeft', 'burstNext',
-  'blindStart', 'blindHold', 'blindFade', 'blindAlpha',
 ];
 
 // A grenade comes one at a time (def.clip is how many you can carry).
@@ -50,12 +49,12 @@ function makeWeapon(id) {
 }
 
 // Slots in the order the number keys use them: 1 primary, 2 pistol, 3 knife,
-// 4 grenades (HE, flash, smoke; 4 again picks the next one). The bomb
+// 4 grenades (HE, smoke; 4 again picks the next one). The bomb
 // carrier also has the C4, which key 3 swaps to.
-export const SLOTS = ['primary', 'secondary', 'melee', 'grenade', 'flash', 'smoke', 'c4'];
+export const SLOTS = ['primary', 'secondary', 'melee', 'grenade', 'smoke', 'c4'];
 
 export function emptyWeapons() {
-  return { primary: null, secondary: null, melee: null, grenade: null, flash: null, smoke: null, c4: null };
+  return { primary: null, secondary: null, melee: null, grenade: null, smoke: null, c4: null };
 }
 
 // The grenade slot key 4 switches to: the next one you carry after the one
@@ -65,16 +64,6 @@ export function nextNadeSlot(p) {
   if (!owned.length) return null;
   const i = owned.indexOf(p.active);
   return owned[(i + 1) % owned.length];
-}
-
-// How white a flashbang has left p's screen at time t, 0..1 (1 = fully
-// blind): the hold at full strength, then a linear fade.
-export function blindLevel(p, t) {
-  if (!p.blindAlpha) return 0;
-  const e = t - p.blindStart;
-  if (e < 0) return 0;
-  if (e <= p.blindHold) return p.blindAlpha;
-  return Math.max(0, p.blindAlpha * (1 - (e - p.blindHold) / Math.max(0.01, p.blindFade)));
 }
 
 // Small seeded RNG.
@@ -205,7 +194,6 @@ export class Game {
       spawnedAt: 0,
       nadePin: 0, nadeLob: false, nadeRedrawAt: 0, swimming: false, waterJump: 0,
       burstLeft: 0, burstNext: 0,
-      blindStart: 0, blindHold: 0, blindFade: 0, blindAlpha: 0,
     };
     this.players.push(p);
     return p;
@@ -415,7 +403,7 @@ export class Game {
     p.zoom = 0; p.spin = 0; p.reloading = false; p.shotsFired = 0;
     p.tagMul = 1;
     p.nadePin = 0; p.nadeRedrawAt = 0; p.swimming = false; p.waterJump = 0;
-    p.burstLeft = 0; p.blindAlpha = 0;
+    p.burstLeft = 0;
     p.task = null;
     p.deployEnd = this.time + 0.3; p.nextAttack = this.time + 0.3; p.nextStab = this.time + 0.3;
     if (this.match.state === 'over') p.frozenUntil = this.match.endsAt + 1;
@@ -491,7 +479,7 @@ export class Game {
     if (!teamCanBuy(item, this.buyTeam(p))) return false;
     const cur = p.weapons[def.slot];
     // Already have it: buying it again buys its ammo, or another grenade
-    // up to as many as you can carry (two flashbangs).
+    // up to as many as you can carry.
     if (cur && cur.id === item && !def.grenade) return this.buyAmmo(p, def.slot, silent);
     if (cur && cur.id === item && cur.clip >= def.clip) return false;
     if (p.money < def.price) return false;
@@ -996,7 +984,7 @@ export class Game {
 
   // Grenades, CS style: press fire (or Mouse 2) to pull the pin, let go to
   // throw (Mouse 2 lobs it underhand). Once it's gone your last gun comes
-  // back, or the next one of the same kind (a second flashbang).
+  // back, or the next one of the same kind.
   updateGrenade(p, cmd, def, w) {
     const t = this.time;
     p.fireHeld = !!cmd.fire;
@@ -1151,7 +1139,6 @@ export class Game {
   explodeNade(n) {
     const def = WEAPONS[n.weapon];
     const kind = def.grenade.kind;
-    if (kind === 'flash') { this.popFlash(n, def); return; }
     if (kind === 'smoke') { this.popSmoke(n, def); return; }
     const owner = this.getPlayer(n.owner) ?? null;
     const src = [n.pos[0], n.pos[1] + 0.12, n.pos[2]];
@@ -1169,36 +1156,6 @@ export class Game {
       if (!w.visible(src[0], src[1], src[2], mid[0], mid[1], mid[2]) && !w.visible(src[0], src[1], src[2], head[0], head[1], head[2])) continue;
       const d = dist > 1e-3 ? [(mid[0] - src[0]) / dist, (mid[1] - src[1]) / dist, (mid[2] - src[2]) / dist] : [0, 1, 0];
       this.damage(v, owner, dmg, 'chest', mid, def, false, d, src);
-    }
-  }
-
-  // CS 1.6 RadiusFlash: everyone who can see the bang goes white, more so
-  // the closer they are and the more directly they're looking at it.
-  popFlash(n, def) {
-    const g = def.grenade;
-    const src = [n.pos[0], n.pos[1] + 0.1, n.pos[2]];
-    const water = this.underwater(src[0], src[1], src[2]);
-    this.emit({ type: 'flashPop', pid: n.owner, pos: src, water });
-    if (water) return; // a flashbang under water is just a dull thud
-    for (const v of this.players) {
-      if (!v.alive) continue;
-      const eye = this.eyePos(v);
-      const dx = src[0] - eye[0], dy = src[1] - eye[1], dz = src[2] - eye[2];
-      const dist = Math.hypot(dx, dy, dz);
-      const strength = g.strength * (1 - dist / U / g.radius);
-      if (strength <= 0) continue;
-      if (!this.world.visible(src[0], src[1], src[2], eye[0], eye[1], eye[2])) continue;
-      if (this.smokeBlocks(src[0], src[1], src[2], eye[0], eye[1], eye[2])) continue;
-      const f = aimDir(v.yaw, v.pitch);
-      const dot = dist > 1e-3 ? (dx * f[0] + dy * f[1] + dz * f[2]) / dist : 1;
-      let hold, fade, alpha;
-      if (dot >= 0.55) { hold = strength / 1.5; fade = strength * 3; alpha = 1; }
-      else if (dot >= 0.15) { hold = strength / 3.5; fade = strength * 1.75; alpha = 0.8; }
-      else { hold = strength / 4.5; fade = strength; alpha = 0.8; }
-      // A weaker flash doesn't cut short a stronger one still on screen.
-      if (alpha < blindLevel(v, this.time)) continue;
-      v.blindStart = this.time; v.blindHold = hold; v.blindFade = fade; v.blindAlpha = alpha;
-      this.emit({ type: 'blind', pid: v.id, by: n.owner, hold, fade, alpha });
     }
   }
 
@@ -1495,7 +1452,6 @@ export class Game {
     victim.nadePin = 0;
     victim.nadeRedrawAt = 0;
     victim.burstLeft = 0;
-    victim.blindAlpha = 0;
     victim.swimming = false;
     if (this.objective) {
       if (victim.task?.kind === 'defuse') this.bomb.defuser = null;
