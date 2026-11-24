@@ -295,7 +295,7 @@ setInterval(refreshRoomCounts, 5000);
 function renderControls() {
   const b = settings.binds;
   const teamHint = settings.mode === 'teams' ? ` &nbsp;·&nbsp; ${keyName(b.switchTeam)} — switch team` : '';
-  const weapons = `${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.melee)}/${keyName(b.grenade)}/${keyName(b.lastWeapon)} — weapons`;
+  const weapons = `${keyName(b.primary)}/${keyName(b.secondary)}/${keyName(b.melee)}/${keyName(b.grenade)}/${keyName(b.bomb)}/${keyName(b.lastWeapon)} — weapons`;
   $('hint').innerHTML = settings.mode === 'gungame'
     ? `Gun Game: each kill gives you the next gun · knife kills steal a level &nbsp;·&nbsp; ${weapons}`
     : `${keyName(b.buy)} — buy menu &nbsp;·&nbsp; ${weapons} &nbsp;·&nbsp; ${keyName(b.drop)} — drop / pick up${teamHint}`;
@@ -971,7 +971,7 @@ function handleEvent(e) {
       break;
     case 'nadeExplode': {
       audio.play('heExplode', { pos: e.pos, volume: 1, jitter: 0.03, alt: 'explode' });
-      view.effects.explosion(e.pos, e.water);
+      view.effects.explosion(e.pos, e.water, WEAPONS.hegrenade.grenade.radius * U);
       if (me?.alive) {
         const d = Math.hypot(me.pos[0] - e.pos[0], me.pos[1] + 1 - e.pos[1], me.pos[2] - e.pos[2]);
         shakeP += Math.max(0, 0.12 - d * 0.005) * (Math.random() < 0.5 ? 1 : -1);
@@ -1391,6 +1391,7 @@ function updateView(dt, alpha) {
   const aw = me?.weapons[me.active], adef = aw && WEAPONS[aw.id];
   touch?.setAltLabel(adef?.burst ? (aw.burst ? 'BURST' : adef.auto ? 'AUTO' : 'SEMI') : adef?.melee ? 'STAB' : 'SCOPE');
   touch?.setHasNade(!!me?.alive && NADE_SLOTS.some((s) => me.weapons[s]?.clip > 0));
+  touch?.setHasBomb(!!me?.alive && !!me.weapons.c4);
 
   // Viewmodel.
   let [mdx, mdy] = input.takeFrameDelta();
@@ -1555,7 +1556,7 @@ function objectivePrompt() {
   if (game.objective === 'bomb') {
     if (me.task) return '';
     if (canPlant(game, me)) {
-      if (me.active !== 'c4') return `Press <kbd>${keyName(settings.binds.melee)}</kbd> to take out the bomb`;
+      if (me.active !== 'c4') return `Press <kbd>${TOUCH ? 'C4' : keyName(settings.binds.bomb)}</kbd> to take out the bomb`;
       return `Hold ${k} or <kbd>${TOUCH ? 'FIRE' : 'Click'}</kbd> to plant the bomb`;
     }
     if (b.state === 'carried' && b.carrier === me.id) return siteAt(game.map, me.pos) ? '' : `<small style="opacity:.75">You have the bomb: plant it at site A or B</small>`;

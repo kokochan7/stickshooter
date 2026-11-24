@@ -6,7 +6,7 @@
 //   right half  drag anywhere to look
 //   FIRE        hold to shoot; you can keep dragging on it to aim while firing
 //   buttons     jump, crouch, reload, scope/stab, weapon switch, knife,
-//               grenade (then hold FIRE and let go to throw), drop, buy,
+//               bomb (only while you carry it), grenade (then hold FIRE and let go to throw), drop, buy,
 //               scores and pause
 // The stick has no analog speed in the sim, so a short push walks (quiet) and
 // a full push runs.
@@ -29,6 +29,7 @@ const BUTTONS = [
   ['swap', '⇄', 'lastWeapon', ''],
   ['knife', 'KNIFE', 'melee', ''],
   ['nade', 'NADE', 'grenade', ''],
+  ['bomb', 'C4', 'bomb', 'none'],
   ['drop', 'G', 'drop', ''],
   ['use', 'USE', 'use', ''],
   ['buy', 'BUY', 'buy', 'top'],
@@ -184,6 +185,7 @@ export class TouchControls {
       case 'swap': this.actions.cycle(); break;
       case 'knife': this.actions.knife(); break;
       case 'nade': this.actions.nade(); break;
+      case 'bomb': this.input.pending.slot = 'c4'; break;
       case 'drop': this.actions.drop(); break;
       case 'buy': this.actions.buy(); break;
       case 'ammo': this.actions.ammo(); break;
@@ -207,6 +209,13 @@ export class TouchControls {
     if (this._hasNade === has) return;
     this._hasNade = has;
     this.el.querySelector('.t-nade').classList.toggle('none', !has);
+  }
+
+  // The C4 button only shows while you carry the bomb.
+  setHasBomb(has) {
+    if (this._hasBomb === has) return;
+    this._hasBomb = has;
+    this.el.querySelector('.t-bomb').classList.toggle('none', !has);
   }
 
   release(id) {

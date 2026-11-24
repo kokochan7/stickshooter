@@ -100,7 +100,7 @@ function giveBomb(g) {
   giveC4(p);
 }
 
-// The carrier has the C4 in its own weapon slot (key 3 swaps to it).
+// The carrier has the C4 in its own weapon slot (key 5).
 function giveC4(p) {
   p.weapons.c4 = { id: 'c4', clip: 0, reserve: 0 };
 }
@@ -160,7 +160,7 @@ export function preTick(g) {
 // ---------- Per player ----------
 
 // The use key (E): hold to plant or defuse, press to lead a hostage. The
-// bomb has to be in your hands to plant (key 3); then fire plants too, like
+// bomb has to be in your hands to plant (key 5); then fire plants too, like
 // CS 1.6.
 export function playerUse(g, p, cmd) {
   const pressed = cmd.use && !p.useHeld;

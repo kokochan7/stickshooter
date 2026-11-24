@@ -53,7 +53,7 @@ function makeWeapon(id) {
 
 // Slots in the order the number keys use them: 1 primary, 2 pistol, 3 knife,
 // 4 grenades (HE, smoke; 4 again picks the next one). The bomb
-// carrier also has the C4, which key 3 swaps to.
+// carrier also has the C4, on key 5.
 export const SLOTS = ['primary', 'secondary', 'melee', 'grenade', 'smoke', 'c4'];
 
 export function emptyWeapons() {
@@ -934,10 +934,8 @@ export class Game {
       p.punch[0] *= nl / len; p.punch[1] *= nl / len;
     }
 
-    // Weapon switching. With the bomb, key 3 takes it out, and again swaps
-    // to the knife.
+    // Weapon switching. The bomb has its own key (5), like CS 1.6.
     let slot = cmd.slot;
-    if (slot === 'melee' && p.weapons.c4 && p.active !== 'c4') slot = 'c4';
     if (slot === 'nade') slot = nextNadeSlot(p);
     if (slot && p.weapons[slot] && slot !== p.active) this.switchTo(p, slot);
     if (cmd.lastWeapon && p.weapons[p.lastActive]) this.switchTo(p, p.lastActive);

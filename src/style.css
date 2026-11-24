@@ -318,6 +318,8 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #touch .t-swap   { right: calc(212px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 20px; }
 #touch .t-nade   { right: calc(222px + env(safe-area-inset-right)); bottom: calc(208px + env(safe-area-inset-bottom)); --s: 50px; font-size: 11px; }
 #touch .t-nade.none { opacity: .35; }
+#touch .t-bomb   { right: calc(300px + env(safe-area-inset-right)); bottom: calc(170px + env(safe-area-inset-bottom)); --s: 50px; font-size: 12px; color: #ffb27a; border-color: rgba(255,140,80,.7); }
+#touch .t-bomb.none { display: none; }
 #touch .t-knife  { right: calc(222px + env(safe-area-inset-right)); bottom: calc(130px + env(safe-area-inset-bottom)); --s: 50px; font-size: 10px; }
 #touch .t-drop   { right: calc(36px + env(safe-area-inset-right)); bottom: calc(250px + env(safe-area-inset-bottom)); --s: 44px; }
 #touch .t-use    { right: calc(98px + env(safe-area-inset-right)); bottom: calc(272px + env(safe-area-inset-bottom)); --s: 44px; font-size: 10px; }

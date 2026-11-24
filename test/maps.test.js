@@ -206,10 +206,10 @@ function intoSite(g, p, site = 'A') {
   assert.equal(siteAt(g.map, p.pos), site);
 }
 
-// Key 3 takes the bomb out; wait for it to come up.
+// Key 5 takes the bomb out; wait for it to come up.
 function takeOutBomb(g, p) {
-  run(g, TICK_DT, (q) => (q === p ? hold(q, { slot: 'melee' }) : null));
-  assert.equal(p.active, 'c4', 'key 3 takes out the bomb');
+  run(g, TICK_DT, (q) => (q === p ? hold(q, { slot: 'c4' }) : null));
+  assert.equal(p.active, 'c4', 'key 5 takes out the bomb');
   run(g, 0.7);
 }
 
