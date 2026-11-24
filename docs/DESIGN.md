@@ -47,9 +47,16 @@ The first build (PR #1) is a complete single-player loop:
 - Objective rounds keep CS 1.6 rules: survivors carry their guns (ammo as
   left), grenades, armor, helmet and kit into the next round; anyone who died
   starts over with a USP and a knife and buys by hand. Bots follow the same rule.
-- Bots spend their own money like players: a gun that leaves room for armor,
-  then Kevlar + helmet (vest only if that's all they can afford) on a roll by
-  difficulty (easy 30%, normal 50%, hard 100%), then a kit on Blue.
+- Bots spend their own money like CS 1.6 bots, at random but tilted by money:
+  poor bots buy a cheap SMG or shotgun (or a vest and a pistol on an eco),
+  rich ones ($5,500+) always buy Kevlar + helmet, a rifle or better, an HE and
+  usually a smoke. Armor odds never drop below the old difficulty roll (easy
+  30%, normal 50%, hard 100%). Blue buys a kit on bomb maps.
+- Bot aim at range (18 m+): they stop (counter-strafe) before shooting, tap
+  1-3 rounds and wait for the spray to reset, and their angular aim error
+  shrinks with distance (to 45% by 40 m).
+- Bots each get a lane per round (straight, left or right of the direct way,
+  dealt out across the team) when heading to plant the bomb or to the hostages.
 - Bomb rounds: the Red bot nearest the carrier escorts it; only the nearest two
   go back for a dropped bomb; after the plant each Red bot holds a post near a
   wall that can see the bomb, doesn't chase far from it, and everyone within

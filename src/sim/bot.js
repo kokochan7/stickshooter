@@ -51,15 +51,32 @@ const ROLE = {
 
 // What bots buy, weighted like a CS lobby: lots of AKs and M4s, the odd
 // sniper or machine gun. In team modes each bot skips the other side's guns.
-const PRIMARY_POOL = [
-  'ak47', 'ak47', 'ak47', 'm4a1', 'm4a1', 'm4a1', 'galil', 'famas', 'sg552', 'aug',
-  'mp5', 'mp5', 'p90', 'ump45', 'uzi', 'mac10', 'tmp',
-  'shotgun', 'autoshotgun', 'awp', 'scout', 'g3sg1', 'sg550', 'm249', 'minigun',
-];
-// Pistol upgrades a bot with money to spare might buy.
+// The weight is then tilted by money (see pickPrimary): a poor bot leans to
+// cheap SMGs and shotguns, a rich one to rifles and up.
+export const PRIMARY_WEIGHTS = {
+  ak47: 10, m4a1: 10, galil: 3, famas: 3, sg552: 3, aug: 3,
+  mp5: 3, p90: 2, ump45: 2, uzi: 1, mac10: 2, tmp: 2,
+  shotgun: 1, autoshotgun: 1, awp: 2, scout: 1, g3sg1: 1, sg550: 1, m249: 1, minigun: 1,
+};
+// Pistol upgrades a bot with money to spare (or saving on an eco) buys.
 const PISTOL_POOL = ['deagle', 'deagle', 'p228', 'fiveseven', 'elites'];
-// Grenades a bot might pick up with what's left: [id, chance].
-const NADE_BUYS = [['hegrenade', 0.55], ['smokegrenade', 0.3]];
+
+// Beyond this many metres a bot plays a long-range fight: stops before it
+// shoots, taps short bursts and lines the shot up more carefully.
+const LONG_RANGE = 18;
+// How much of the bot's angular aim error is left at dist metres: all of it
+// up close, falling to 45% by about 40 m.
+export function rangeAim(dist) {
+  return Math.max(0.45, Math.min(1, LONG_RANGE / Math.max(1, dist)));
+}
+
+// Speed (CS units/s) a bot slows to before a long shot: snipers need to be
+// all but still, other guns just below their run spread.
+function stillSpeed(def) {
+  const type = def?.accuracy?.type;
+  if (type === 'sniper' || type === 'autosniper') return 12;
+  return (def?.runThreshold ?? 140) * 0.6;
+}
 
 function wrapAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -316,6 +333,8 @@ export class BotBrain {
     let moveDir = null; // world-space [x, z]
     let wantFire = false;
     let fightDist = Infinity;
+    let brake = null; // counter-strafe direction, [x, z]
+    this.braking = false;
 
     // Out of ammo: switch to a gun that still has some, or the knife.
     if (w && !def.melee && !def.bomb && w.clip === 0 && w.reserve === 0) {
@@ -350,18 +369,29 @@ export class BotBrain {
         this.aimErr[1] += (Math.random() * 2 - 1) * f * 0.6;
       }
       // A slow drift that never settles, larger while the bot or target moves.
+      // Far out, a player slows down and lines the shot up with care, so the
+      // drift and the starting miss shrink in angle (not all the way: the
+      // miss in metres still grows with range).
+      const far = rangeAim(dist);
       const moving = Math.min(1, (Math.hypot(p.vel[0], p.vel[2]) + Math.hypot(tgt.vel[0], tgt.vel[2])) / 4);
-      const wob = this.skill.wobble * (0.6 + 0.6 * moving);
-      wantYaw += (this.aimErr[0] + wob * Math.sin(t * 1.9 + this.wobblePhase[0])) * DEG;
-      wantPitch += (this.aimErr[1] + wob * 0.6 * Math.sin(t * 2.7 + this.wobblePhase[1])) * DEG;
+      const wob = this.skill.wobble * (0.6 + 0.6 * moving) * far;
+      wantYaw += (this.aimErr[0] * far + wob * Math.sin(t * 1.9 + this.wobblePhase[0])) * DEG;
+      wantPitch += (this.aimErr[1] * far + wob * 0.6 * Math.sin(t * 2.7 + this.wobblePhase[1])) * DEG;
       // Spray control: pull down against recoil.
       wantYaw -= p.punch[1] * DEG * this.skill.spray;
       wantPitch -= p.punch[0] * DEG * this.skill.spray;
       this.turnTowards(wantYaw, wantPitch, dt);
 
       const err = Math.hypot(wrapAngle(wantYaw - this.yaw), wantPitch - this.pitch);
-      const tolerance = Math.atan2(0.35, dist) + 0.01;
-      const ready = t >= this.reactionUntil && err < tolerance * 1.5;
+      const tolerance = Math.atan2(0.35, dist) + 0.01 * far;
+      // At range, only shoot once we've stopped (CS run spread would throw
+      // the bullet metres off) and, with a pistol, once its accuracy has
+      // come back since the last shot.
+      const hspeed = Math.hypot(p.vel[0], p.vel[2]) / U;
+      const settled = dist < LONG_RANGE || def?.pellets || def?.melee || (p.onGround && hspeed < stillSpeed(def));
+      const pistolReady = dist < LONG_RANGE || def?.accuracy?.type !== 'pistol' || t - p.lastFire > 0.18 + dist * 0.006;
+      const ready = t >= this.reactionUntil && err < tolerance * (dist > LONG_RANGE ? 1.1 : 1.5) && settled && pistolReady;
+      this.braking = dist >= LONG_RANGE && !def?.pellets && !def?.melee && t >= this.reactionUntil - 0.15;
 
       // Scope a sniper rifle at range; zoom the AUG / SG 552 only far out.
       if (def?.zoomLevels) {
@@ -377,8 +407,10 @@ export class BotBrain {
         if (def.auto && !def.pellets && !def.scope) {
           if (t >= this.burstPauseUntil) {
             if (this.burstLeft <= 0) {
-              const n = dist > 25 ? 2 + Math.random() * 2 : dist > 12 ? 4 + Math.random() * 4 : 8 + Math.random() * 8;
-              this.burstLeft = Math.round(n * this.skill.burst);
+              // Far out, tap one to three: the first bullets of a burst are
+              // the accurate ones.
+              const n = dist > 30 ? 1 + Math.random() * 1.5 : dist > LONG_RANGE ? 2 + Math.random() * 2 : dist > 12 ? 4 + Math.random() * 4 : 8 + Math.random() * 8;
+              this.burstLeft = Math.max(1, Math.round(n * (dist > LONG_RANGE ? 1 : this.skill.burst)));
             }
             wantFire = true;
           }
@@ -441,9 +473,15 @@ export class BotBrain {
         const f = forwardVec(this.yaw), r = rightVec(this.yaw);
         const weave = Math.sin(t * 3 + this.wobblePhase[0]) * 0.35;
         moveDir = [f[0] + r[0] * weave, f[2] + r[2] * weave];
-      } else if (wantFire) {
+      } else if (wantFire || this.braking) {
+        // Stop to shoot. Far out, counter-strafe: push against our own
+        // momentum so the shot isn't fired on the move.
         moveDir = null;
-        cmd.duck = this.crouchFire && dist > 15;
+        cmd.duck = (this.crouchFire || dist > 30) && dist > 15;
+        if (this.braking) {
+          const sp = Math.hypot(p.vel[0], p.vel[2]);
+          if (sp > 0.8 && p.onGround) brake = [-p.vel[0] / sp, -p.vel[2] / sp];
+        }
       } else {
         if (t >= this.strafeChangeAt) {
           this.strafeDir = Math.random() < 0.5 ? -1 : 1;
@@ -633,7 +671,11 @@ export class BotBrain {
         cmd.fire = true;
         if (p.fireHeld && p.lastFire >= t - 0.001) {
           this.burstLeft--;
-          if (this.burstLeft <= 0) this.burstPauseUntil = t + (0.2 + Math.random() * 0.3) / this.skill.burst;
+          // Pause long enough for the spray to reset; longer far out.
+          if (this.burstLeft <= 0) {
+            const reset = fightDist > LONG_RANGE ? 0.45 + Math.random() * 0.25 : (0.2 + Math.random() * 0.3) / this.skill.burst;
+            this.burstPauseUntil = t + reset;
+          }
         }
       } else {
         // Semi-auto: tap.
@@ -643,6 +685,11 @@ export class BotBrain {
     }
 
     // --- Movement to cmd ---
+    if (brake && !moveDir) {
+      const f = forwardVec(this.yaw), r = rightVec(this.yaw);
+      cmd.fwd = Math.max(-1, Math.min(1, brake[0] * f[0] + brake[1] * f[2]));
+      cmd.side = Math.max(-1, Math.min(1, brake[0] * r[0] + brake[1] * r[2]));
+    }
     if (moveDir) {
       const f = forwardVec(this.yaw), r = rightVec(this.yaw);
       cmd.fwd = Math.max(-1, Math.min(1, moveDir[0] * f[0] + moveDir[1] * f[2]));
@@ -705,7 +752,7 @@ export class BotBrain {
           // Slow and fake plans: the bomb waits in the middle until the call.
           if (waiting) return { goal: this.spotGoal('mid', this.midRect(8), 0, 10) };
           this.pickSpot('plant', g.map.sites[g.plan], 0.25);
-          return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: plan.name === 'rush' || late };
+          return { goal: [this.objSpot[0], 0, this.objSpot[1]], urgent: plan.name === 'rush' || late, detour: this.lane() };
         }
         // Dropped bomb: the two of us nearest go and get it, the rest carry on.
         if (b.state === 'dropped' && this.nearestTo(b.pos) < 2) return { goal: b.pos, urgent: true };
@@ -725,25 +772,25 @@ export class BotBrain {
         }
         switch (plan.name) {
           case 'rush':
-            return { goal: this.spotGoal('rush' + g.plan, site, 0.15, 6), urgent: true, detour: false };
+            return { goal: this.spotGoal('rush' + g.plan, site, 0.15, 6), urgent: true, detour: this.lane() };
           case 'split':
             // Two groups, each round its own side, meeting on the site.
             return { goal: this.spotGoal('split' + g.plan, site, 0.15, 10), detour: idx % 2 ? plan.flip : -plan.flip };
           case 'fake':
             if (waiting && other) return { goal: this.spotGoal('fake' + other, g.map.sites[other], 0.15, 8), detour: false };
-            return { goal: this.spotGoal('hit' + g.plan, site, 0.15, 10), urgent: true, detour: false };
+            return { goal: this.spotGoal('hit' + g.plan, site, 0.15, 10), urgent: true, detour: this.lane() };
           case 'slow':
             if (waiting) return { goal: this.spotGoal('mid', this.midRect(14), 0, 9) };
-            return { goal: this.spotGoal('hit' + g.plan, site, 0.15, 10) };
+            return { goal: this.spotGoal('hit' + g.plan, site, 0.15, 10), detour: this.lane() };
           case 'spread':
             // Lurkers hang around the other site for a while to catch
             // rotators; everyone else takes their own way in.
             if (this.role === 'lurk' && other && t < g.round.freezeEnd + 35) {
               return { goal: this.spotGoal('lurk' + other, g.map.sites[other], 0.2, 12) };
             }
-            return { goal: this.spotGoal('escort' + g.plan, site, 0.15, 10) };
-          default: // execute: everyone onto the site together, detours by role
-            return { goal: this.spotGoal('escort' + g.plan, site, 0.15, 10) };
+            return { goal: this.spotGoal('escort' + g.plan, site, 0.15, 10), detour: this.lane() };
+          default: // execute: everyone onto the site together, each by its own way
+            return { goal: this.spotGoal('escort' + g.plan, site, 0.15, 10), detour: this.lane() };
         }
       }
       // Blue.
@@ -805,12 +852,12 @@ export class BotBrain {
         free.sort((a, b2) => dist(a) - dist(b2));
         this.hostageGoal = free[0].id;
         if (plan.name === 'split') return { goal: free[0].pos, detour: idx % 2 ? plan.flip : -plan.flip };
-        return { goal: free[0].pos, urgent: true };
+        return { goal: free[0].pos, urgent: true, detour: this.lane() };
       }
       this.hostageGoal = null;
       // Nothing to do for the hostages: push toward them anyway.
       const h = hs[idx % Math.max(1, hs.length)];
-      return h ? { goal: h.pos } : null;
+      return h ? { goal: h.pos, detour: this.lane() } : null;
     }
     // Red: guard the hostages, one or two of us on each, moving around them
     // now and then. A rusher with enough teammates goes hunting instead.
@@ -822,6 +869,22 @@ export class BotBrain {
     if (!h) return null;
     const r = plan.name === 'ambush' ? 4 : 8;
     return { goal: this.spotGoal('guard' + h.id, { min: [h.pos[0] - r, h.pos[2] - r], max: [h.pos[0] + r, h.pos[2] + r] }, 0, 7) };
+  }
+
+  // This bot's way in for the round, as a routeTo detour: false (the
+  // straight way), or round the left or right of it. Dealt out by place in
+  // the team so a team splits across all three ways, and reshuffled each
+  // round, so the bots don't all file down the same corridor.
+  lane() {
+    const plan = this.plan();
+    if (this.laneKey !== plan.key || this.lanePlan !== plan) {
+      const [idx] = this.teamIndex();
+      const k = (idx + (plan.laneShift ?? 0)) % 3;
+      this.laneKey = plan.key;
+      this.lanePlan = plan;
+      this.laneVal = k === 0 ? false : k === 1 ? plan.flip : -plan.flip;
+    }
+    return this.laneVal;
   }
 
   // pickSpot, as a goal for the path finder.
@@ -1330,20 +1393,25 @@ export class BotBrain {
     if (L < 14) return null;
     const others = this.allies().map((b) => (Array.isArray(b.via) ? b.via : null)).filter(Boolean);
     let best = null, bestScore = -Infinity;
+    // A side we were told to take: if nothing fits, look again a little
+    // further out of the way before giving up on it.
+    for (let pass = 0; pass < (sideSign ? 2 : 1) && !best; pass++) {
+    const maxDetour = pass ? 2.1 : 1.7, minSide = pass ? 0.12 : 0.2;
     for (let i = 0; i < 24; i++) {
       const [x, z] = nav.randomOpenPoint(Math.random);
       const [ci, cj] = nav.cellOf(x, z);
       if (!nav.isMain(ci, cj)) continue;
       const detour = (Math.hypot(x - ax, z - az) + Math.hypot(gx - x, gz - z)) / L;
-      if (detour < 1.12 || detour > 1.7) continue;
+      if (detour < 1.12 || detour > maxDetour) continue;
       const cross = ((gx - ax) * (z - az) - (gz - az) * (x - ax)) / L;
       if (sideSign && Math.sign(cross) !== sideSign) continue;
       const side = Math.abs(cross);
-      if (side < L * 0.2) continue;
+      if (side < L * minSide) continue;
       let apart = 20;
       for (const o of others) apart = Math.min(apart, Math.hypot(x - o[0], z - o[1]));
       const score = side + apart - detour * 8;
       if (score > bestScore) { bestScore = score; best = [x, z]; }
+    }
     }
     return best;
   }
@@ -1385,42 +1453,76 @@ export class BotBrain {
     return best;
   }
 
-  // Spend our own money, like a player: a gun first (one that still leaves
-  // enough for armor, if we're buying armor), then Kevlar + helmet (or just
-  // the vest, if that's all we can afford), then a kit on Blue. Whether a bot
-  // bothers with armor at all is rolled each life by difficulty.
+  // A primary we can pay for out of budget, picked at random from
+  // PRIMARY_WEIGHTS. rich (0..1) tilts the odds by price: at 0 cheap guns are
+  // likelier, at 1 rifle-priced guns and up are much likelier (prices above
+  // an AK's don't count extra, so rich bots still mostly buy AKs and M4s).
+  pickPrimary(pool, budget, rich, rand) {
+    let ok = pool.filter((id) => WEAPONS[id].price <= budget);
+    if (!ok.length) return null;
+    // Rich bots skip the cheap SMGs and the pump shotgun when they can.
+    const floor = Math.max(0, (rich - 0.5) * 4000);
+    const strong = ok.filter((id) => WEAPONS[id].price >= floor);
+    if (strong.length) ok = strong;
+    const k = rich * 4 - 1;
+    const weight = (id) => (PRIMARY_WEIGHTS[id] ?? 1) * Math.pow(Math.min(WEAPONS[id].price, 2500) / 1000, k);
+    let sum = 0;
+    for (const id of ok) sum += weight(id);
+    let r = rand() * sum;
+    for (const id of ok) if ((r -= weight(id)) < 0) return id;
+    return ok[ok.length - 1];
+  }
+
+  // Spend our own money, like a CS 1.6 bot: the more we have, the more we
+  // buy. Everything is rolled at random, but money moves the odds:
+  //   - armor: a poor bot might buy a vest; a rich one always buys Kevlar +
+  //     helmet. The difficulty's old armor chance (easy 30%, normal 50%,
+  //     hard always) is the floor.
+  //   - gun: a poor bot buys a cheap SMG or shotgun (or nothing on an eco),
+  //     a rich one a rifle, sniper or machine gun. A bot that survived the
+  //     last round keeps its gun and only tops up its ammo.
+  //   - a kit on Blue, a pistol upgrade, HE and smoke grenades: likelier
+  //     the richer we are.
   buyLoadout(rand = Math.random) {
     const g = this.game, p = this.p;
-    const wantArmor = rand() < this.skill.armor;
-    const armorCost = p.armor >= 100 ? (p.helmet ? 0 : 350) : GEAR.kevlarHelmet.price;
-    let boughtGun = false;
     const team = g.buyTeam(p);
-    const pool = PRIMARY_POOL.filter((id) => teamCanBuy(id, team));
+    const pool = Object.keys(PRIMARY_WEIGHTS).filter((id) => WEAPONS[id] && teamCanBuy(id, team));
     const pistols = PISTOL_POOL.filter((id) => teamCanBuy(id, team));
-    // A bot that survived the last round keeps its gun, like everyone else.
+    // 0 at $1000 or less, 1 at $5500 and up.
+    const rich = Math.max(0, Math.min(1, (p.money - 1000) / 4500));
+    const needArmor = p.armor < 100 || !p.helmet;
+    let wantArmor = needArmor && rand() < Math.max(this.skill.armor, rich * 1.5);
+    const wantHelmet = wantArmor && rand() < 0.3 + rich * 1.2;
+    const armorItem = wantHelmet ? 'kevlarHelmet' : 'kevlar';
+    const armorCost = !wantArmor ? 0
+      : p.armor >= 100 ? (wantHelmet && !p.helmet ? 350 : 0)
+      : wantHelmet ? GEAR.kevlarHelmet.price : GEAR.kevlar.price;
+    // On a full buy, keep a grenade's worth back.
+    const nadeMoney = rich > 0.4 ? WEAPONS.hegrenade.price : 0;
+    let boughtGun = false;
     if (!p.weapons.primary) {
-      const budget = p.money - (wantArmor ? armorCost : 0);
-      let pick = pool[Math.floor(rand() * pool.length)];
-      if (WEAPONS[pick].price > budget) {
-        // Can't have that one: the best we can afford that leaves armor money,
-        // or failing that anything we can afford at all.
-        let ok = pool.filter((id) => WEAPONS[id].price <= budget);
-        if (!ok.length && !wantArmor) ok = pool.filter((id) => WEAPONS[id].price <= p.money);
-        pick = ok.length ? ok[Math.floor(rand() * ok.length)] : null;
+      let pick = this.pickPrimary(pool, p.money - armorCost - nadeMoney, rich, rand) ??
+        this.pickPrimary(pool, p.money - armorCost, rich, rand);
+      // Can't have both a gun and armor: sometimes take the gun instead.
+      if (!pick && wantArmor && rand() < 0.5) {
+        pick = this.pickPrimary(pool, p.money, rich, rand);
+        if (pick) wantArmor = false;
       }
       if (pick) boughtGun = g.buy(p, pick, true);
-    }
-    else if (p.weapons.primary) g.buyAmmo(p, 'primary', true); // kept gun: top up its ammo
-    if (wantArmor && !g.buy(p, 'kevlarHelmet', true) && p.armor < 100) g.buy(p, 'kevlar', true);
-    if (g.objective === 'bomb' && p.team === 'blue') g.buy(p, 'defuser', true);
+    } else g.buyAmmo(p, 'primary', true); // kept gun: top up its ammo
+    if (wantArmor && !g.buy(p, armorItem, true) && p.armor < 100) g.buy(p, 'kevlar', true);
+    if (g.objective === 'bomb' && p.team === 'blue' && rand() < 0.5 + rich) g.buy(p, 'defuser', true);
+    // A better pistol: on an eco (no primary) it's the gun we fight with.
     const pistol = pistols[Math.floor(rand() * pistols.length)];
-    if (boughtGun && p.weapons.secondary?.id !== pistol && rand() < 0.3 && p.money >= WEAPONS[pistol].price + 500) {
+    const hasPrimary = !!p.weapons.primary;
+    const pistolChance = hasPrimary ? (boughtGun ? 0.1 + rich * 0.4 : 0) : 0.6;
+    const spare = hasPrimary ? 600 : 0;
+    if (pistol && p.weapons.secondary?.id !== pistol && p.money >= WEAPONS[pistol].price + spare && rand() < pistolChance) {
       g.buy(p, pistol, true);
-      g.switchTo(p, 'primary', true);
+      if (hasPrimary) g.switchTo(p, 'primary', true);
     }
-    // Grenades with what's left (CS bots buy them too).
-    for (const [id, chance] of NADE_BUYS) {
-      if (p.money >= WEAPONS[id].price + 200 && rand() < chance) g.buy(p, id, true);
-    }
+    // Grenades with what's left: an HE, then a smoke, more often when rich.
+    if (rand() < 0.3 + rich * 0.8) g.buy(p, 'hegrenade', true);
+    if (rand() < 0.15 + rich * 0.9) g.buy(p, 'smokegrenade', true);
   }
 }

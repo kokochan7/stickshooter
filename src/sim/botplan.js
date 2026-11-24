@@ -80,6 +80,9 @@ export function teamPlan(g, side, rand = Math.random) {
     rally: null,
     // Which side of the map split / flank groups go round: +1 or -1.
     flip: rand() < 0.5 ? 1 : -1,
+    // Deals out each bot's way in (straight, left or right; see
+    // BotBrain.lane) so the deal differs from round to round.
+    laneShift: Math.floor(rand() * 3),
     called: null, // a site Blue saw Red at
     calledAt: -100,
   };
