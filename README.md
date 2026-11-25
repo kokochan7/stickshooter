@@ -6,7 +6,7 @@
 
 A fast, lightweight 3D multiplayer shooter that runs in your browser, on desktop or phone.
 
-### [▶ Play now at stickshooter.kennykao.workers.dev](https://stickshooter.kennykao.workers.dev)
+### [▶ Play now at stickshooter2.kennykao.workers.dev](https://stickshooter2.kennykao.workers.dev)
 
 ![Stick Shooter 2: an AK47 firefight against white stickman bots on the Yard map](docs/screenshot.jpg)
 

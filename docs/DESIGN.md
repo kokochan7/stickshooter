@@ -1,7 +1,7 @@
 # Stick Shooter 2 design doc
 
 Status: living document. Last updated 2026-10-31.
-Live build: <https://stickshooter.kennk.workers.dev> (practice vs bots on "Yard").
+Live build: <https://stickshooter2.kennykao.workers.dev> (practice vs bots on "Yard").
 
 This doc records how the game works today, with the real numbers from the
 code, and the plan for what comes next: online multiplayer on Cloudflare,
@@ -71,7 +71,7 @@ The first build (PR #1) is a complete single-player loop:
   counting a death). Menu music is a streamed mp3 (`public/audio`).
 - Synthesized audio (no downloads), pooled effects (tracers, impacts,
   muzzle flash, shell casings).
-- Deployed as static assets on the `stickshooter` Cloudflare Worker.
+- Deployed as static assets on the `stickshooter2` Cloudflare Worker.
 
 The player stickman is white with no headband or vest. Skins come later
 (see section 7).
@@ -628,7 +628,7 @@ in that slot, and switch to another gun or the knife when they run dry.
 ### 6.2 Topology
 
 ```
-Browser ──HTTPS──▶ Worker "stickshooter"   static assets (the game)
+Browser ──HTTPS──▶ Worker "stickshooter2"  static assets (the game)
    │                    │                   Worker code runs first only for /api/* and /ws/*
    │                    ├─ GET  /api/health
    │                    ├─ GET  /api/rooms        humans in each quick play room
@@ -637,7 +637,7 @@ Browser ──HTTPS──▶ Worker "stickshooter"   static assets (the game)
                                                     runs Game.tick() + server bots
 ```
 
-- The `stickshooter` Worker keeps serving `dist/` as static assets and gains
+- The `stickshooter2` Worker keeps serving `dist/` as static assets and gains
   a `main` script for `/api/*` and `/ws/*`.
 - **One Durable Object per room**: class `GameRoom`, binding `ROOMS`,
   SQLite-backed (works on the Workers free plan). A room is addressed by

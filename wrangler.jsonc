@@ -1,10 +1,10 @@
 {
-  // The "stickshooter" Worker at stickshooter.kennk.workers.dev:
+  // The "stickshooter2" Worker at stickshooter2.kennykao.workers.dev:
   // - dist/ (the built game) is served as static assets.
   // - worker/index.js handles /api/* and /ws/*; each online room is a GameRoom
   //   Durable Object running the same src/sim Game as the browser.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "stickshooter",
+  "name": "stickshooter2",
   "main": "worker/index.js",
   "compatibility_date": "2025-10-01",
   // Build the game before every deploy/upload, so Workers Builds works even
