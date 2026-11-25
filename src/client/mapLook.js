@@ -20,6 +20,37 @@ const BEVEL = 0.35, BEVEL_W = 0.06; // edge rim: brightness, width in metres
 const INDOOR_FILL = new THREE.Color(0.95, 0.9, 0.8).multiplyScalar(1.45);
 const CELL = 0.25;
 const BRICK_DESAT = 0.3;
+const DETAIL_GROW = 0.015; // metres a detail box is drawn bigger (render only)
+
+// Boxes that overlap a bigger box of another colour with a face in the same
+// plane (a stripe set into a wall, a sign on a container, a kerb round a
+// block). Both faces would fight for the same pixels and flicker, so the
+// smaller box is drawn a touch bigger to sit in front. Collision is untouched.
+function detailBoxes(boxes) {
+  const out = new Set();
+  const vol = (b) => (b.max[0] - b.min[0]) * (b.max[1] - b.min[1]) * (b.max[2] - b.min[2]);
+  for (let i = 0; i < boxes.length; i++) {
+    const a = boxes[i];
+    for (let j = i + 1; j < boxes.length; j++) {
+      const b = boxes[j];
+      if (a.color === b.color && a.material === b.material) continue;
+      let touch = true;
+      for (let k = 0; k < 3 && touch; k++) if (Math.min(a.max[k], b.max[k]) < Math.max(a.min[k], b.min[k]) - 1e-6) touch = false;
+      if (!touch) continue;
+      let shared = false;
+      for (let k = 0; k < 3 && !shared; k++) {
+        for (const side of ['min', 'max']) {
+          if (Math.abs(a[side][k] - b[side][k]) > 1e-4) continue;
+          let area = true;
+          for (let q = 0; q < 3; q++) if (q !== k && Math.min(a.max[q], b.max[q]) - Math.max(a.min[q], b.min[q]) < 1e-3) area = false;
+          if (area) { shared = true; break; }
+        }
+      }
+      if (shared) out.add(vol(a) <= vol(b) ? a : b);
+    }
+  }
+  return out;
+}
 
 const _c = new THREE.Color();
 
@@ -157,11 +188,13 @@ export function buildMapLook(map, { groundY = 0, groundColor = map.groundColor }
     return m;
   };
   const groups = new Map();
-  for (const b of map.boxes) {
-    if (b.render === false) continue;
+  const shown = map.boxes.filter((b) => b.render !== false);
+  const grow = detailBoxes(shown);
+  for (const b of shown) {
     const s = classify(b, map);
     if (!groups.has(s)) groups.set(s, []);
-    groups.get(s).push(b);
+    const e = grow.has(b) ? DETAIL_GROW : 0;
+    groups.get(s).push(e ? { ...b, min: b.min.map((v) => v - e), max: b.max.map((v) => v + e) } : b);
   }
   const gs = groundSurface(map);
   const tex = (s) => {
