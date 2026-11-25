@@ -355,19 +355,24 @@ W.minigun = {
   },
 };
 
-// CS 1.6 knife (wpn_knife.cpp). Mouse 1 slashes (20 on the first swing, 15
-// when swinging again right away). Mouse 2 stabs (65, x3 from behind). Reach
-// is 1.5x CS at Kenny's request (CS: 48 units slash, 32 stab), since a
-// stickman's hitbox is easy to whiff at CS distances. Hitgroup multipliers and armor apply like
-// they do for bullets. Always carried, can't be bought or dropped.
+// Knife, after CS 1.6 (wpn_knife.cpp) but deadlier and easier to land, at
+// Kenny's request. Mouse 1 slashes (30 on the first swing, 25 when swinging
+// again right away; CS 20/15). Mouse 2 stabs (80; CS 65). The blade goes
+// through kevlar (armorRatio 2 cancels the 0.5 armor ratio). Any hit in the
+// back, slash or stab, is an instant kill. Reach is measured to the body's
+// surface: slash 80 units (2 m), stab 64 (1.6 m), against CS's 48 and 32,
+// and a miss within the cone (35 / 30 degrees off the crosshair) still
+// connects, since a stickman is thin and easy to whiff. Hitgroup multipliers
+// apply like they do for bullets. Always carried, can't be bought or dropped.
 W.knife = {
   name: 'Knife', slot: 'melee', category: 'Melee', price: 0,
-  damage: 15, range: 72, bullet: null, penetration: 0, armorRatio: 1.0,
+  damage: 25, range: 80, bullet: null, penetration: 0, armorRatio: 2.0,
   cycle: 0.4, auto: true, clip: 0, reserve: 0, deploy: 0.5, speed: 250,
   accuracy: { type: 'none' }, kick: { punch: [0, 0] },
   melee: {
-    slash: { damage: 15, firstDamage: 20, range: 72, hitCycle: 0.4, missCycle: 0.35, altDelay: 0.5 },
-    stab: { damage: 65, range: 56, hitCycle: 1.1, missCycle: 1.0, backstabMul: 3 },
+    backstabCos: 0.5,
+    slash: { damage: 25, firstDamage: 30, range: 80, cone: 35, hitCycle: 0.4, missCycle: 0.35, altDelay: 0.5 },
+    stab: { damage: 80, range: 64, cone: 30, hitCycle: 1.1, missCycle: 1.0 },
   },
 };
 

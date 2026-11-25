@@ -180,32 +180,67 @@ function dominantAxis(d) {
   return [0, 0, Math.sign(d[2])];
 }
 
-// Knife trace (CS 1.6 FindHullIntersection, approximated): a ray along the
-// aim, then a small fan of rays around it standing in for the hull trace CS
-// falls back to, so a slash that's slightly off still connects. Returns
-// { victim, group, point, dist } for a player, { wall } for a wall, or null.
-const MELEE_FAN = [[0, 0], [0.12, 0], [-0.12, 0], [0, 0.1], [0, -0.1], [0.22, 0], [-0.22, 0], [0.1, 0.1], [-0.1, 0.1], [0.1, -0.1], [-0.1, -0.1]];
-export function traceMelee(world, players, shooter, origin, dir, right, up, range) {
+// Knife trace. First the exact ray along the aim (so a head slash counts as
+// a head hit), then a forgiving sweep standing in for CS 1.6's hull trace: any
+// enemy whose body is within reach and inside a cone around the aim, with no
+// wall in between, is hit. The sweep measures to the body's surface along the
+// nearest point of its spine, so crouching, height differences and a target
+// strafing across the crosshair still connect. Returns { victim, group,
+// point, dist } for a player, { wall } for a wall, or null.
+const BODY_HALF = 0.2; // half the chest hitbox's width
+export function traceMelee(world, players, shooter, origin, dir, range, coneDeg = 0) {
   const maxD = range * U;
+  const wh = world.raycast(origin[0], origin[1], origin[2], dir[0], dir[1], dir[2], maxD);
+  const lim = wh ? wh.t : maxD;
   let best = null;
-  for (const [ox, oy] of MELEE_FAN) {
-    const d = [dir[0] + right[0] * ox + up[0] * oy, dir[1] + right[1] * ox + up[1] * oy, dir[2] + right[2] * ox + up[2] * oy];
-    const l = Math.hypot(d[0], d[1], d[2]);
-    d[0] /= l; d[1] /= l; d[2] /= l;
-    const wh = world.raycast(origin[0], origin[1], origin[2], d[0], d[1], d[2], maxD);
-    const lim = wh ? wh.t : maxD;
-    for (const p of players) {
-      if (p === shooter || !p.alive || (shooter && !isEnemy(shooter, p))) continue;
-      const h = rayPlayer(p, origin, d, lim);
-      if (h && (!best?.victim || h.t < best.dist)) {
-        best = { victim: p, group: h.group, dist: h.t, point: [origin[0] + d[0] * h.t, origin[1] + d[1] * h.t, origin[2] + d[2] * h.t] };
-      }
+  for (const p of players) {
+    if (p === shooter || !p.alive || (shooter && !isEnemy(shooter, p))) continue;
+    const h = rayPlayer(p, origin, dir, lim);
+    if (h && (!best || h.t < best.dist)) {
+      best = { victim: p, group: h.group, dist: h.t, point: [origin[0] + dir[0] * h.t, origin[1] + dir[1] * h.t, origin[2] + dir[2] * h.t] };
     }
-    // The center ray decides what wall we hit if no one is in reach.
-    if (!best && wh && ox === 0 && oy === 0) {
-      best = { wall: { pos: [origin[0] + d[0] * wh.t, origin[1] + d[1] * wh.t, origin[2] + d[2] * wh.t], normal: wh.normal, material: wh.box.material } };
-    }
-    if (best?.victim && ox === 0 && oy === 0) break; // dead center hit wins
   }
-  return best;
+  if (best || coneDeg <= 0) return best ?? wallHit(origin, dir, wh);
+
+  const cosCone = Math.cos(coneDeg * Math.PI / 180);
+  let score = -Infinity;
+  for (const p of players) {
+    if (p === shooter || !p.alive || p.isHostage || (shooter && !isEnemy(shooter, p))) continue;
+    // The point on the victim's spine (feet to top of head) nearest the aim.
+    const duck = p.ducked || p.duckAmount > 0.5;
+    const y0 = p.pos[1] + 0.15, y1 = p.pos[1] + (duck ? 1.2 : 1.75);
+    const t = closestOnAim(origin, dir, p.pos[0], p.pos[2], y0, y1);
+    const v = [p.pos[0] - origin[0], t - origin[1], p.pos[2] - origin[2]];
+    const len = Math.hypot(v[0], v[1], v[2]) || 1e-6;
+    if (len - BODY_HALF > maxD) continue;
+    const cos = (v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2]) / len;
+    // Point blank, anything roughly in front counts.
+    if (cos < (len < 0.9 ? Math.min(cosCone, 0.5) : cosCone)) continue;
+    const d = [v[0] / len, v[1] / len, v[2] / len];
+    const w = world.raycast(origin[0], origin[1], origin[2], d[0], d[1], d[2], len);
+    if (w && w.t < len - BODY_HALF) continue;
+    // Closest to the crosshair wins; nearness breaks ties.
+    const sc = cos - len * 0.05;
+    if (sc <= score) continue;
+    score = sc;
+    const hb = rayPlayer(p, origin, d, len + 0.5);
+    const dist = hb ? hb.t : Math.max(0, len - BODY_HALF);
+    best = { victim: p, group: hb?.group ?? 'chest', dist, point: [origin[0] + d[0] * dist, origin[1] + d[1] * dist, origin[2] + d[2] * dist] };
+  }
+  return best ?? wallHit(origin, dir, wh);
+}
+
+function wallHit(origin, d, wh) {
+  if (!wh) return null;
+  return { wall: { pos: [origin[0] + d[0] * wh.t, origin[1] + d[1] * wh.t, origin[2] + d[2] * wh.t], normal: wh.normal, material: wh.box.material } };
+}
+
+// Height (between y0 and y1) on the vertical line at (x, z) nearest the ray.
+function closestOnAim(o, d, x, z, y0, y1) {
+  // Distance along the ray to the line's nearest approach, then the height
+  // the ray is at there, clamped to the spine.
+  const wx = x - o[0], wz = z - o[2];
+  const hd = d[0] * d[0] + d[2] * d[2];
+  const s = hd > 1e-6 ? Math.max(0, (wx * d[0] + wz * d[2]) / hd) : 0;
+  return Math.max(y0, Math.min(y1, o[1] + d[1] * s));
 }

@@ -95,35 +95,68 @@ test('picking up swaps with the gun in that slot', () => {
   assert.ok(g.drops.some((x) => x.weapon.id === 'mp5'), 'the old gun is left on the ground');
 });
 
-test('the knife slashes for 20 then 15, and stabs hit 3x from behind', () => {
-  const { g, a, b } = duel('ffa', 0.7);
-  g.switchTo(a, 'melee', true);
+function knifeDuel(gap, mode = 'ffa') {
+  const r = duel(mode, gap);
+  r.g.switchTo(r.a, 'melee', true);
+  return r;
+}
+// A swings (fire = slash, alt = stab) with yaw/pitch; B keeps bYaw.
+function swing(g, a, kind, { yaw = 0, pitch = -0.4, bYaw = Math.PI } = {}) {
+  const aim = (extra) => (p) => (p === a ? { ...emptyCmd(), yaw, pitch, ...extra } : { ...emptyCmd(), yaw: bYaw });
+  run(g, 1.2, aim({}));
+  run(g, TICK_DT, aim({ [kind]: true }));
+}
+
+test('the knife slashes for 30 then 25 and stabs for 80, through kevlar', () => {
+  const { g, a, b } = knifeDuel(0.7);
   assert.equal(a.active, 'melee');
-  // A aims at B's chest; B keeps facing A until the stab test.
-  let bYaw = Math.PI;
-  const aim = (extra) => (p) => (p === a ? { ...emptyCmd(), yaw: 0, pitch: -0.4, ...extra } : { ...emptyCmd(), yaw: bYaw });
-  run(g, 1.2, aim({}));
-  run(g, TICK_DT, aim({ fire: true }));
-  assert.equal(b.health, 80, 'first slash');
-  run(g, 0.45, aim({ fire: true }));
-  assert.equal(b.health, 65, 'quick follow-up slash');
-  // Stab from behind: B turns away.
-  b.health = 100; bYaw = 0;
-  run(g, 1.2, aim({}));
-  run(g, TICK_DT, aim({ alt: true }));
-  assert.ok(!b.alive, 'a backstab (65 x 3) kills');
-  assert.equal(g.drops.length, 1, 'and drops the USP');
+  b.armor = 100; b.helmet = true;
+  swing(g, a, 'fire');
+  assert.equal(b.health, 70, 'first slash');
+  const aim = (p) => (p === a ? { ...emptyCmd(), yaw: 0, pitch: -0.4, fire: true } : { ...emptyCmd(), yaw: Math.PI });
+  run(g, 0.45, aim);
+  assert.equal(b.health, 45, 'quick follow-up slash');
+  b.health = 100;
+  swing(g, a, 'alt');
+  assert.equal(b.health, 20, 'stab');
 });
 
-test('the knife reaches 1.5x CS 1.6: a slash connects at 1.9 m, a stab at 1.5 m', () => {
-  for (const [gap, kind] of [[1.9, 'fire'], [1.5, 'alt']]) {
-    const { g, a, b } = duel('ffa', gap);
-    g.switchTo(a, 'melee', true);
-    const aim = (extra) => (p) => (p === a ? { ...emptyCmd(), yaw: 0, pitch: -0.3, ...extra } : { ...emptyCmd(), yaw: Math.PI });
-    run(g, 1.2, aim({}));
-    run(g, TICK_DT, aim({ [kind]: true }));
-    assert.ok(b.health < 100, `${kind === 'fire' ? 'slash' : 'stab'} at ${gap} m`);
+test('any knife hit in the back kills outright, even with armor', () => {
+  for (const kind of ['fire', 'alt']) {
+    const { g, a, b } = knifeDuel(0.7);
+    b.armor = 100; b.helmet = true;
+    swing(g, a, kind, { bYaw: 0 }); // B faces away
+    assert.ok(!b.alive, `${kind === 'fire' ? 'slash' : 'stab'} in the back`);
   }
+  const { g, a, b } = knifeDuel(0.7);
+  swing(g, a, 'fire', { bYaw: Math.PI / 2 }); // side on: not a backstab
+  assert.equal(b.health, 70);
+});
+
+test('the knife reaches 2 m slashing and 1.6 m stabbing, not further', () => {
+  for (const [gap, kind, lands] of [[2.1, 'fire', true], [1.7, 'alt', true], [2.9, 'fire', false], [2.4, 'alt', false]]) {
+    const { g, a, b } = knifeDuel(gap);
+    swing(g, a, kind, { pitch: -0.3 });
+    assert.equal(b.health < 100, lands, `${kind === 'fire' ? 'slash' : 'stab'} at ${gap} m`);
+  }
+});
+
+test('a knife swing a little off the crosshair still connects', () => {
+  for (const yaw of [0.45, -0.45]) {
+    const { g, a, b } = knifeDuel(1.3);
+    swing(g, a, 'fire', { yaw });
+    assert.ok(b.health < 100, `slash ${yaw} rad off`);
+  }
+  const { g, a, b } = knifeDuel(1.3);
+  swing(g, a, 'fire', { yaw: 1.0 });
+  assert.equal(b.health, 100, 'way off misses');
+  // Crouched victim, attacker looking straight ahead.
+  const c = knifeDuel(1.0);
+  c.b.ducked = true; c.b.duckAmount = 1;
+  const aim = (extra) => (p) => (p === c.a ? { ...emptyCmd(), yaw: 0, pitch: 0, ...extra } : { ...emptyCmd(), yaw: Math.PI, duck: true });
+  run(c.g, 1.2, aim({}));
+  run(c.g, TICK_DT, aim({ fire: true }));
+  assert.ok(c.b.health < 100, 'slash over a crouched head still lands');
 });
 
 test('bots pick up a better gun lying nearby', () => {
