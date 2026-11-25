@@ -1,4 +1,4 @@
-# Stick Shooter design doc
+# Stick Shooter 2 design doc
 
 Status: living document. Last updated 2026-10-31.
 Live build: <https://stickshooter.kennk.workers.dev> (practice vs bots on "Yard").

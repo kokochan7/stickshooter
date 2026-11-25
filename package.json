@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Stick Shooter: a lightweight browser 3D stickman shooter",
+  "description": "Stick Shooter 2: a lightweight browser 3D stickman shooter",
   "scripts": {
     "dev": "vite",
     "dev:server": "wrangler dev",
