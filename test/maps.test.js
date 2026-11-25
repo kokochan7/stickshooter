@@ -8,7 +8,7 @@ import { MAP_LIST, MAPS, getMap } from '../src/maps/index.js';
 import { subtractRects, WATER_DEPTH } from '../src/maps/builder.js';
 import { siteAt, applyObjectiveInfo } from '../src/sim/objective.js';
 import {
-  TICK_DT, PLAYER_RADIUS, STAND_HEIGHT, ROUND_FREEZE, ROUND_END_TIME, ROUND_WIN_LIMIT, BOMB_TIMER,
+  TICK_DT, BUY_TIME, PLAYER_RADIUS, STAND_HEIGHT, ROUND_FREEZE, ROUND_END_TIME, ROUND_WIN_LIMIT, BOMB_TIMER,
   PLANT_TIME, DEFUSE_TIME, DEFUSE_KIT_TIME, ROUND_TIME, NEVER, LATE_JOIN,
 } from '../src/sim/constants.js';
 import { sanitizeCmd, cleanMap } from '../src/net/protocol.js';
@@ -321,11 +321,11 @@ test('round survivors keep their gear; the dead start over with a USP and a knif
   assert.equal(red.armor, 0);
 });
 
-test('buying closes 10 seconds after the round goes live', () => {
+test('buying closes BUY_TIME seconds after the round goes live', () => {
   const { g, red } = bombGame();
   red.money = 16000;
   assert.ok(g.canBuy(red), 'open in the freeze');
-  run(g, ROUND_FREEZE + 9.5);
+  run(g, ROUND_FREEZE + BUY_TIME - 0.5);
   assert.ok(g.buy(red, 'ak47'));
   run(g, 1);
   assert.ok(!g.buy(red, 'm4a1'), 'closed');
