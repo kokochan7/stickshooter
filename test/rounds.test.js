@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game, emptyCmd } from '../src/sim/game.js';
 import { MAPS } from '../src/maps/index.js';
-import { TICK_DT, ROUND_FREEZE, ROUND_WIN_LIMIT, NEVER } from '../src/sim/constants.js';
+import { TICK_DT, ROUND_FREEZE, ROUND_WIN_LIMIT, NEVER, BUY_TIME } from '../src/sim/constants.js';
 import { sanitizeCmd } from '../src/net/protocol.js';
 
 function run(g, seconds, cmdFor = () => null) {
@@ -88,7 +88,7 @@ test('F1 re-buy buys what you lack and skips what you have', () => {
   assert.equal(g.rebuy(p, ['m4a1', 'kevlarHelmet', 'defuser']), 0, 'nothing new to buy');
   assert.equal(p.money, money, 'and nothing spent');
   // Not after the buy time.
-  run(g, ROUND_FREEZE + 11);
+  run(g, ROUND_FREEZE + BUY_TIME + 1);
   p.weapons.primary = null;
   assert.equal(g.rebuy(p, ['m4a1']), 0);
 });

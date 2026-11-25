@@ -4,7 +4,7 @@ import { Game, emptyCmd } from '../src/sim/game.js';
 import { BotBrain } from '../src/sim/bot.js';
 import { NavGrid } from '../src/sim/nav.js';
 import { WEAPONS } from '../src/sim/weapons.js';
-import { FFA_KILL_LIMIT, TEAM_KILL_LIMIT, START_DELAY, DROP_LIFETIME, MATCH_OVER_TIME, TICK_DT } from '../src/sim/constants.js';
+import { FFA_KILL_LIMIT, TEAM_KILL_LIMIT, START_DELAY, DROP_LIFETIME, MATCH_OVER_TIME, TICK_DT, BUY_TIME } from '../src/sim/constants.js';
 import { YARD } from '../src/maps/yard.js';
 
 function run(g, seconds, cmdFor = () => null) {
@@ -211,13 +211,14 @@ test('N buys ammo packs at CS 1.6 prices, only as far as the money and the reser
   assert.equal(money - a.money, 2 * 80);
 });
 
-test('buying closes 10 seconds after you spawn (or after the start freeze)', () => {
+test('buying closes BUY_TIME (20 s) after you spawn (or after the start freeze)', () => {
   const g = new Game(YARD, { seed: 3, mode: 'ffa' });
   const a = g.addPlayer({ name: 'A' });
   g.restartMatch();
   a.money = 16000;
-  run(g, START_DELAY + 9.5);
-  assert.ok(g.buy(a, 'mp5'), 'still open 9.5 s after the freeze');
+  assert.equal(BUY_TIME, 20);
+  run(g, START_DELAY + BUY_TIME - 0.5);
+  assert.ok(g.buy(a, 'mp5'), 'still open 19.5 s after the freeze');
   run(g, 1);
   assert.ok(!g.canBuy(a));
   assert.ok(!g.buy(a, 'ak47'));

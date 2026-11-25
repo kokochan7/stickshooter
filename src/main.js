@@ -1468,12 +1468,22 @@ function updateView(dt, alpha) {
     if (specActive() && !buyMenu.open) hud.prompt(spectatePrompt(), 'spec');
     else hud.prompt(pickupPrompt() || objectivePrompt());
     roundHud();
+    buyHud();
   } else {
     hud.update(dt, { p: null, showFps: settings.showFps });
+    hud.buyTimer(null);
     hud.roundTimer('');
     hud.task(null);
     hud.bombTag(false);
   }
+}
+
+// Buy time countdown under the score panel. During the freeze it holds at the
+// full BUY_TIME, then counts down and hides once buying closes.
+function buyHud() {
+  if (!game.canBuy(me)) { hud.buyTimer(null); return; }
+  const left = Math.min(BUY_TIME, game.buyDeadline(me) - game.time);
+  hud.buyTimer(Math.max(0, Math.ceil(left)));
 }
 
 // ---------- Objective rounds: HUD, spectating, bomb beeps ----------

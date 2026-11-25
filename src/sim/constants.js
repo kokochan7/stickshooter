@@ -116,7 +116,7 @@ export const LATE_JOIN = 20;
 // Buying closes BUY_TIME seconds after the round goes live (CS 1.6
 // mp_buytime). Outside objective rounds it closes BUY_TIME seconds after you
 // spawn (or after the start freeze ends).
-export const BUY_TIME = 10;
+export const BUY_TIME = 20;
 // Respawn time used for "not until the next round" (JSON can't carry Infinity).
 export const NEVER = 1e9;
 // The bomb (CS 1.6: mp_c4timer 35, 3 s to plant, 10 s to defuse, 5 with a kit).

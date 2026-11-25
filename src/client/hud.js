@@ -422,6 +422,16 @@ export class Hud {
   }
 
   // "BOMB" badge above the money while you carry it.
+  // Seconds of buy time left, or null to hide the countdown.
+  buyTimer(sec) {
+    const key = sec == null ? '' : String(sec);
+    if (this.last.buyTimer === key) return;
+    this.last.buyTimer = key;
+    const el = $('buy-timer');
+    el.className = sec == null ? 'hidden' : sec <= 5 ? 'low' : '';
+    if (sec != null) $('buy-left').textContent = key;
+  }
+
   bombTag(on) {
     if (this.last.bombTag === on) return;
     this.last.bombTag = on;
