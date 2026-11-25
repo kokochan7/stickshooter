@@ -1478,11 +1478,11 @@ function updateView(dt, alpha) {
   }
 }
 
-// Buy time countdown under the score panel. During the freeze it holds at the
-// full BUY_TIME, then counts down and hides once buying closes.
+// Buy time countdown under the score panel. It starts with the freeze
+// countdown and hides once buying closes.
 function buyHud() {
   if (!game.canBuy(me)) { hud.buyTimer(null); return; }
-  const left = Math.min(BUY_TIME, game.buyDeadline(me) - game.time);
+  const left = game.buyDeadline(me) - game.time;
   hud.buyTimer(Math.max(0, Math.ceil(left)));
 }
 

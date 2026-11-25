@@ -88,7 +88,7 @@ test('F1 re-buy buys what you lack and skips what you have', () => {
   assert.equal(g.rebuy(p, ['m4a1', 'kevlarHelmet', 'defuser']), 0, 'nothing new to buy');
   assert.equal(p.money, money, 'and nothing spent');
   // Not after the buy time.
-  run(g, ROUND_FREEZE + BUY_TIME + 1);
+  run(g, BUY_TIME + 1);
   p.weapons.primary = null;
   assert.equal(g.rebuy(p, ['m4a1']), 0);
 });

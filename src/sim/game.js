@@ -9,7 +9,7 @@ import {
   FFA_KILL_LIMIT, TEAM_KILL_LIMIT, MATCH_OVER_TIME, START_DELAY,
   DROP_LIFETIME, PICKUP_RANGE, TOUCH_RANGE, RECOIL_SCALE, NEVER, WATER_SPEED_MUL,
   NADE_FUSE, NADE_GRAVITY, NADE_PIN_TIME, NADE_SWITCH_TIME, NADE_BOUNCE, NADE_RADIUS,
-  PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL, BUY_TIME, SMOKE_GROW, SMOKE_FADE, SMOKE_HEIGHT, SMOKE_MAX_WAIT,
+  PLAYER_RADIUS, STAND_HEIGHT, HITGROUP_MUL, BUY_TIME, ROUND_FREEZE, SMOKE_GROW, SMOKE_FADE, SMOKE_HEIGHT, SMOKE_MAX_WAIT,
 } from './constants.js';
 import { WEAPONS, GEAR, AMMO, NADE_SLOTS, WEAPON_FILTERS, teamCanBuy, filterAllows, cleanWeaponFilter } from './weapons.js';
 import { World } from './world.js';
@@ -494,9 +494,11 @@ export class Game {
   }
 
   // When buying closes for this player (game time).
+  // The clock starts with the freeze countdown (CS 1.6: buy time counts from
+  // the round start, freeze time included), not when the round goes live.
   buyDeadline(p) {
-    if (this.objective) return this.round.freezeEnd + BUY_TIME;
-    return Math.max(p.frozenUntil, p.spawnedAt) + BUY_TIME;
+    if (this.objective) return this.round.freezeEnd - ROUND_FREEZE + BUY_TIME;
+    return p.spawnedAt + BUY_TIME;
   }
 
   // The team whose shop a player uses, or null in free-for-all.
