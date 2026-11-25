@@ -211,14 +211,14 @@ test('N buys ammo packs at CS 1.6 prices, only as far as the money and the reser
   assert.equal(money - a.money, 2 * 80);
 });
 
-test('buying closes BUY_TIME (20 s) after you spawn (or after the start freeze)', () => {
+test('buying closes BUY_TIME (20 s) after you spawn, counting the start countdown', () => {
   const g = new Game(YARD, { seed: 3, mode: 'ffa' });
   const a = g.addPlayer({ name: 'A' });
   g.restartMatch();
   a.money = 16000;
   assert.equal(BUY_TIME, 20);
-  run(g, START_DELAY + BUY_TIME - 0.5);
-  assert.ok(g.buy(a, 'mp5'), 'still open 19.5 s after the freeze');
+  run(g, BUY_TIME - 0.5);
+  assert.ok(g.buy(a, 'mp5'), 'still open 19.5 s after spawning (start countdown included)');
   run(g, 1);
   assert.ok(!g.canBuy(a));
   assert.ok(!g.buy(a, 'ak47'));

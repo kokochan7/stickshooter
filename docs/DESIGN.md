@@ -40,7 +40,7 @@ The first build (PR #1) is a complete single-player loop:
 - Bots with A* navigation that buy guns, fight and respawn.
 - 13 guns, a shop (`B`), kevlar and kevlar + helmet. `N` buys ammo packs for
   the gun in hand at CS 1.6 prices (e.g. 7.62 $80 / 30 rounds).
-- Buy time (CS 1.6 mp_buytime): buying closes 20 s after the round goes live,
+- Buy time (CS 1.6 mp_buytime): buying closes 20 s after the round starts (freeze countdown included),
   or 20 s after you spawn outside objective rounds.
 - Practice economy: everyone starts with $16,000 (the CS cap), +$300 per
   kill, respawn after 3 seconds with a USP and a knife (nothing is re-bought).

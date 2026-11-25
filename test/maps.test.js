@@ -321,11 +321,11 @@ test('round survivors keep their gear; the dead start over with a USP and a knif
   assert.equal(red.armor, 0);
 });
 
-test('buying closes BUY_TIME seconds after the round goes live', () => {
+test('buying closes BUY_TIME seconds after the round starts (freeze included)', () => {
   const { g, red } = bombGame();
   red.money = 16000;
   assert.ok(g.canBuy(red), 'open in the freeze');
-  run(g, ROUND_FREEZE + BUY_TIME - 0.5);
+  run(g, BUY_TIME - 0.5);
   assert.ok(g.buy(red, 'ak47'));
   run(g, 1);
   assert.ok(!g.buy(red, 'm4a1'), 'closed');
