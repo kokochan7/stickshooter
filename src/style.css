@@ -174,8 +174,8 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 #money-pop.loss { color: #ff8a80; }
 @keyframes moneyPop { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }
 /* DOUBLE KILL, TRIPLE KILL... */
-#multikill { position: absolute; left: 50%; top: 23%; transform: translateX(-50%); font: 400 64px/1 var(--title); letter-spacing: 2px; color: var(--accent); text-shadow: 0 5px 0 #1b1f27, 0 0 28px rgba(255,170,40,.55); white-space: nowrap; opacity: 0; pointer-events: none; }
-#multikill.show { animation: multiKill 1.8s ease-out; }
+#multikill { position: absolute; left: 50%; bottom: 100%; margin-bottom: 14px; font: 400 64px/1 var(--title); letter-spacing: 2px; color: var(--accent); text-shadow: 0 5px 0 #1b1f27, 0 0 28px rgba(255,170,40,.55); white-space: nowrap; opacity: 0; pointer-events: none; display: none; }
+#multikill.show { display: block; animation: multiKill 1.8s ease-out; }
 #multikill.m4 { color: #ff8a3d; }
 #multikill.m5, #multikill.m6 { color: #ff4d4d; }
 @keyframes multiKill { 0% { opacity: 0; transform: translateX(-50%) scale(1.6); } 10% { opacity: 1; transform: translateX(-50%) scale(.96); } 18% { transform: translateX(-50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1); } }
@@ -186,7 +186,12 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin-right: 4p
 /* Inside a smoke cloud (opacity set per frame). */
 #smoke-screen { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse at center, rgba(165,165,160,.82), rgba(150,150,146,.97)); opacity: 0; }
 
-#center-msg { position: absolute; left: 50%; top: 28%; transform: translateX(-50%); text-align: center; font-weight: 800; font-size: 20px; text-shadow: 0 2px 8px rgba(0,0,0,.7); white-space: pre-line; }
+/* The center message (level up, round result, countdown, death info) is
+   anchored at 28%. Kill streaks sit just above its top edge, so the two
+   always stack, however tall the message is, and the message never jumps. */
+#banners { position: absolute; left: 50%; top: 28%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+#banners:has(.count) { top: 16%; }
+#center-msg { text-align: center; font-weight: 800; font-size: 20px; text-shadow: 0 2px 8px rgba(0,0,0,.7); white-space: pre-line; }
 #center-msg small { display: block; font-size: 14px; color: var(--muted); font-weight: 600; margin-top: 6px; }
 #hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 12px; color: rgba(255,255,255,.55); text-shadow: 0 1px 2px #000; transition: opacity 1s; }
 
@@ -477,7 +482,6 @@ body.touch .pause-hint { display: none; }
 /* Start countdown: a light number high up, so the view stays clear. */
 #center-msg .count { display: block; font: 400 72px/1 var(--title); color: rgba(255,255,255,.92); text-shadow: 0 2px 0 rgba(0,0,0,.35); animation: countPop .5s ease-out; }
 #center-msg .count.go { color: var(--hud); }
-#center-msg:has(.count) { top: 16%; }
 #center-msg:has(.count) small { color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
 
 /* Touch: the buttons own the corners. Money and FPS go below the pause /

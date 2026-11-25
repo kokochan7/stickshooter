@@ -1749,8 +1749,9 @@ function matchOverToMenu() {
   if (m.state === 'over') matchOverSeen = true;
   if (!matchOverSeen || (m.state === 'over' && game.time < m.endsAt - 0.25)) return;
   matchOverSeen = false;
-  const status = m.winnerTeam ? `${m.winnerTeam === 'red' ? 'Red' : 'Blue'} team won the match`
-    : m.winner === me.id ? 'You won the match!' : m.winnerName ? `${m.winnerName} won the match` : 'Match over';
+  // No "won the match" line on the menu: the winner already showed on the
+  // final scoreboard (Kenny, 2026-11-25).
+  const status = '';
   if (scoresForced !== null) { scoresForced = null; showScoreboard(false); }
   if (net) return leaveOnline(status);
   game.removePlayer(me.id);
