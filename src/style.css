@@ -41,7 +41,7 @@ canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
 }
 .logo { display: flex; align-items: center; justify-content: center; gap: 0.06em; }
 .logo-words { display: block; }
-.logo-words span { display: block; color: var(--accent); }
+.logo-words span { display: block; color: #1f6fe0; text-shadow: 0 4px 0 #0d1a3a, 0 0 14px rgba(70,150,255,.55); }
 /* The brush-stroke "2": white ink over a blue edge, with a soft blue glow. */
 .logo-two { height: 1.95em; width: auto; flex: none; overflow: visible; margin-right: -0.12em; transform: rotate(-4deg);
   filter: drop-shadow(0 0 6px rgba(70,150,255,.85)) drop-shadow(0 4px 0 #0d1a3a); }
