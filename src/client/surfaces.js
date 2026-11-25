@@ -78,34 +78,6 @@ const GEN = {
     };
   },
 
-  brick(q) {
-    const ROWS = 20, PER = 6;
-    const n = fbm(21, 16, 16, q.smooth ? 2 : 4);
-    const dirt = fbm(22, 3, 3, 3);
-    return (u, v, x, y, o) => {
-      const ry = v * ROWS, row = Math.floor(ry), fy = ry - row;
-      const rx = u * PER + (row % 2 ? 0.5 : 0), col = Math.floor(rx), fx = rx - col;
-      const id = hash2(((col % PER) + PER) % PER, row, 3);
-      const mw = 0.09, mh = 0.16;
-      const ex = Math.min(fx, 1 - fx) / mw, ey = Math.min(fy, 1 - fy) / mh;
-      const edge = Math.min(ex, ey);
-      const isM = edge < 1;
-      const nn = n(u, v);
-      const dd = (dirt(u, v) - 0.5) * 0.25;
-      if (isM) {
-        const m = 0.66 + (nn - 0.5) * 0.12 + dd;
-        o.c[0] = m; o.c[1] = m * 0.97; o.c[2] = m * 0.92;
-        o.h = 0.25 * edge; o.r = 0.95;
-      } else {
-        const k = 0.78 + id * 0.36 - (id > 0.9 ? 0.3 : 0);
-        const g = q.smooth ? 0 : (nn - 0.5) * 0.25 + (hash2(x, y, 4) - 0.5) * 0.06 * G;
-        o.c[0] = (0.62 + g) * k + dd; o.c[1] = (0.29 + g * 0.6) * k + dd * 0.6; o.c[2] = (0.2 + g * 0.4) * k + dd * 0.5;
-        o.h = 0.7 + smooth(1, 2.2, edge) * 0.2 + (q.smooth ? 0 : nn * 0.15);
-        o.r = 0.85;
-      }
-    };
-  },
-
   metal(q) {
     const n = fbm(31, 4, 4, q.smooth ? 2 : 4);
     const rust = fbm(32, 5, 5, 4);
@@ -291,12 +263,36 @@ const GEN = {
       o.h = h; o.r = mix(0.45, 0.9, ru); o.m = 1 - ru;
     };
   },
+  // Big, calm brick: fewer, longer bricks, low colour spread, thin dark
+  // mortar. Reads as brick from a distance without the busy pattern.
+  brick(q) {
+    const ROWS = 10, PER = 3;
+    const n = fbm(151, 8, 8, q.smooth ? 2 : 4);
+    const dirt = fbm(152, 2, 2, 3);
+    return (u, v, x, y, o) => {
+      const ry = v * ROWS, row = Math.floor(ry), fy = ry - row;
+      const rx = u * PER + (row % 2 ? 0.5 : 0), col = Math.floor(rx), fx = rx - col;
+      const id = hash2(((col % PER) + PER) % PER, row, 17);
+      const edge = Math.min(Math.min(fx, 1 - fx) / 0.03, Math.min(fy, 1 - fy) / 0.08);
+      const dd = (dirt(u, v) - 0.5) * 0.12;
+      if (edge < 1) {
+        const m = 0.5 + dd;
+        o.c[0] = m * 1.1; o.c[1] = m * 0.82; o.c[2] = m * 0.66;
+        o.h = 0.3 * edge; o.r = 0.95;
+      } else {
+        const k = 0.93 + id * 0.12;
+        const g = (n(u, v) - 0.5) * 0.08;
+        o.c[0] = (0.6 + g) * k + dd; o.c[1] = (0.36 + g * 0.7) * k + dd * 0.7; o.c[2] = (0.27 + g * 0.5) * k + dd * 0.6;
+        o.h = 0.7 + smooth(1, 2, edge) * 0.2; o.r = 0.85;
+      }
+    };
+  },
 };
 
 // Metres per texture repeat, and whether the UVs are per box face (0..1).
 export const SURFACES = {
   concrete: { tile: 3 },
-  brick: { tile: 1.6 },
+  brick: { tile: 2.4 },
   metal: { tile: 2 },
   corrugated: { tile: 2.4 },
   crate: { tile: 1, boxUV: true },
