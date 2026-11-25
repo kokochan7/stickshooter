@@ -406,7 +406,7 @@ export function groundSurface(map) {
   switch (map.id) {
     case 'dunes': return 'sand';
     case 'frost': return 'snow';
-    case 'depot': case 'warehouse': return 'asphalt';
+    case 'warehouse': return 'asphalt';
     default: return 'paving';
   }
 }

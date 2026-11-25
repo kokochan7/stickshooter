@@ -116,7 +116,7 @@ test('deep water: you swim, float with your eyes above the surface, dive and cli
   const g = new Game(MAPS.canal, { seed: 1 });
   const a = g.addPlayer({ name: 'A' });
   g.spawn(a);
-  // The canal runs east-west across the map: z -16..-10 (times K), surface at -0.1.
+  // The canal runs east-west across the map: z -20..-8 (times K), surface at -0.1.
   const surf = g.waterSurface(-29 * K, -13 * K);
   assert.equal(surf, -0.1);
   place(a, ...C(-29, 0.5, -13)); a.yaw = -Math.PI / 2;
@@ -133,14 +133,14 @@ test('deep water: you swim, float with your eyes above the surface, dive and cli
   place(a, ...C(-16, -1.55, -15)); a.yaw = -Math.PI / 2; // east, clear of boats and bridges
   run(g, 1.5, (p) => hold(p, { fwd: 1 }));
   const swim = Math.hypot(a.vel[0], a.vel[2]);
-  place(a, ...C(-29, 0, -21)); a.yaw = -Math.PI / 2;
+  place(a, ...C(-29, 0, -6)); a.yaw = -Math.PI / 2; // the south quay
   run(g, 1.5, (p) => hold(p, { fwd: 1 }));
   const dry = Math.hypot(a.vel[0], a.vel[2]);
   assert.ok(swim < dry * 0.85 && swim > dry * 0.5, `swim ${swim.toFixed(2)} vs run ${dry.toFixed(2)}`);
   // Swim into the south bank and climb out onto the quay.
-  place(a, ...C(-29, -1.55, -11.5)); a.yaw = Math.PI; // facing +z
+  place(a, ...C(-29, -1.55, -9.5)); a.yaw = Math.PI; // facing +z
   run(g, 2, (p) => hold(p, { fwd: 1 }));
-  assert.ok(a.pos[2] > -9.8 * K && Math.abs(a.pos[1]) < 0.01 && a.onGround, `climbed out onto the quay (${a.pos})`);
+  assert.ok(a.pos[2] > -7.8 * K && Math.abs(a.pos[1]) < 0.01 && a.onGround, `climbed out onto the quay (${a.pos})`);
   assert.ok(!a.swimming);
 });
 
@@ -180,14 +180,14 @@ test('the nav grid uses bridges over deep water and only swims when it must', ()
   assert.ok(Math.abs(nav.floorAt(-22 * K, -13 * K) - 0.15) < 0.01, 'the footbridge deck is a floor');
   assert.ok(nav.isSwim(-28 * K, -13 * K) && !nav.isSwim(-22 * K, -13 * K), 'open water is swum, the footbridge is not');
   // Across the canal: over a bridge, not through the water.
-  const path = nav.findPath(-21 * K, -20 * K, -21 * K, -6 * K);
+  const path = nav.findPath(-21 * K, -24 * K, -21 * K, -5 * K);
   assert.ok(path, 'a way across');
   for (let i = 1; i < path.length; i++) {
-    const [x0, z0] = i === 1 ? [-21 * K, -20 * K] : path[i - 2], [x1, z1] = path[i - 1];
+    const [x0, z0] = i === 1 ? [-21 * K, -24 * K] : path[i - 2], [x1, z1] = path[i - 1];
     for (let t = 0; t <= 1; t += 0.05) assert.ok(!nav.isSwim(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t), 'stays dry');
   }
   // Someone in the water can always get out.
-  assert.ok(nav.findPath(-28 * K, -13 * K, 28 * K, -20 * K), 'a swimmer finds a way out');
+  assert.ok(nav.findPath(-28 * K, -13 * K, 28 * K, -24 * K), 'a swimmer finds a way out');
 });
 
 // ---------- Bomb defusal ----------
@@ -474,7 +474,7 @@ for (const id of ['canal', 'dunes']) {
   });
 }
 
-for (const id of ['harbor', 'frost', 'depot', 'warehouse']) {
+for (const id of ['harbor', 'frost', 'warehouse']) {
   test(`a lone Blue bot leads hostages out on ${id}`, () => {
     const g = botsOnly(MAPS[id], ['blue'], ROUND_FREEZE + ROUND_TIME.hostage, (g) => g.hostages.some((h) => h.state === 'rescued'));
     assert.ok(g.hostages.some((h) => h.state === 'rescued'), `hostages: ${g.hostages.map((h) => h.state)}`);
@@ -545,80 +545,15 @@ test('bomb site and rescue paint lies on the floor, not on crates or roofs', () 
       const z = zoneFloor(world, r);
       assert.equal(z.y, 0, `${map.id} ${name} is painted at ground level`);
       const area = z.cells.reduce((s, c) => s + (c[2] - c[0]) * (c[3] - c[1]), 0);
-      const total = (r.max[0] - r.min[0]) * (r.max[1] - r.min[1]);
-      assert.ok(area > total * 0.8, `${map.id} ${name} covers most of the zone`);
+      // Pools inside a site (Dunes A and B) are left unpainted on purpose.
+      const wet = (map.water ?? []).reduce((s, w) => s
+        + Math.max(0, Math.min(w.max[0], r.max[0]) - Math.max(w.min[0], r.min[0]))
+        * Math.max(0, Math.min(w.max[1], r.max[1]) - Math.max(w.min[1], r.min[1])), 0);
+      const total = (r.max[0] - r.min[0]) * (r.max[1] - r.min[1]) - wet;
+      assert.ok(area > total * 0.8, `${map.id} ${name} covers most of the dry zone`);
       assert.ok(z.label.r >= 2.5, `${map.id} ${name} letter sits on open floor (r ${z.label.r})`);
     }
   }
-});
-
-// ---------- Depot: the fire escape, roof hatch and vent ----------
-
-test('Depot: the fire escape, roof hatch and crawl vent lead into the cold store', () => {
-  const D = (x, y, z) => [x * 1.5, y, z * 1.5];
-  const g = new Game(MAPS.depot, { seed: 3 });
-  const a = g.addPlayer({ name: 'A' });
-  g.spawn(a);
-  // From the landing at the top of the fire escape, jump east onto the roof.
-  place(a, ...D(-27.8, 5.4, -17.5)); a.yaw = -Math.PI / 2;
-  run(g, 1.5, (p, i) => hold(p, { fwd: 1, jump: i % 20 === 0 }));
-  assert.ok(a.pos[1] > 6.2 && a.pos[0] > -26 * 1.5, `on the roof (${a.pos.map((v) => v.toFixed(1))})`);
-  // Step into the hatch: down the shaft to the duct floor.
-  place(a, ...D(-21.3, 6.25, -11.9));
-  run(g, 1.5, (p) => hold(p, { duck: true }));
-  assert.ok(Math.abs(a.pos[1] - 3.3) < 0.05, `in the duct (${a.pos[1].toFixed(2)})`);
-  // Crawl north (crouched) to the end, onto the cold store roof and down
-  // through the opening.
-  a.yaw = 0;
-  run(g, 9, (p) => hold(p, { fwd: 1, duck: true }));
-  const [x, y, z] = a.pos;
-  assert.ok(y < 0.05 && x > -25.7 * 1.5 && x < -12.15 * 1.5 && z > -33.7 * 1.5 && z < -24.15 * 1.5,
-    `dropped into the cold store (${a.pos.map((v) => v.toFixed(1))})`);
-  // You can't stand up in the duct.
-  place(a, ...D(-21.3, 3.3, -18)); a.ducked = true;
-  run(g, 0.5, (p) => hold(p));
-  assert.ok(a.ducked, 'still crouched under the duct ceiling');
-});
-
-test('Depot: bots can reach the roof, and lead hostages home on foot', () => {
-  const nav = new Game(MAPS.depot).nav;
-  // The warehouse floor and its roof are both on the bots' map.
-  const fl = nav.floorsAt(0, -20 * 1.5);
-  assert.ok(fl.some((y) => y < 0.5), 'warehouse floor');
-  assert.ok(fl.some((y) => y > 6), `roof above it (${fl})`);
-  // A route from the street up onto the roof exists (ladder + hop).
-  const blue = MAPS.depot.teamSpawns.blue[0].pos;
-  const up = nav.findPath(blue[0], blue[2], 0, -20 * 1.5, null, { ay: blue[1], by: 6.5 });
-  assert.ok(up && up.length && up[up.length - 1][2] > 6, 'path ends on the roof');
-  // Leading hostages back uses walk-only routes: no jumps, no crawling.
-  const h = MAPS.depot.hostages[0];
-  const path = nav.findPath(h[0], h[2], blue[0], blue[2], null, { ay: h[1] ?? 0, by: 0, walkOnly: true });
-  assert.ok(path && path.length, 'hostage route home');
-  for (const wp of path) assert.equal(wp[3] ?? 0, 0, `walk-only waypoint at ${wp[0].toFixed(1)},${wp[1].toFixed(1)}`);
-});
-
-test('Depot: the ladder reaches the roof, a skylight drops you inside, bots can use the rail yard', () => {
-  const D = (x, y, z) => [x * 1.5, y, z * 1.5];
-  const g = new Game(MAPS.depot, { seed: 4 });
-  const a = g.addPlayer({ name: 'A' });
-  g.spawn(a);
-  // Climb the ladder (facing north) and hop onto the roof.
-  place(a, ...D(18.5, 0, -3.5)); a.yaw = 0;
-  run(g, 4, (p, i) => hold(p, { fwd: 1, jump: i > 200 && i % 20 === 0 }));
-  assert.ok(a.pos[1] > 6.2, `on the roof (${a.pos.map((v) => v.toFixed(1))})`);
-  // Walk into a skylight: down onto the warehouse floor.
-  place(a, ...D(3, 6.25, -13.5)); a.yaw = 0;
-  run(g, 2, (p) => hold(p, { fwd: 1 }));
-  assert.ok(a.pos[1] < 0.05 && a.pos[2] < -14 * 1.5, `dropped inside (${a.pos.map((v) => v.toFixed(1))})`);
-  // The track bed is part of the bots' map, up the stairs.
-  const nav = g.nav;
-  const blue = MAPS.depot.teamSpawns.blue[0].pos;
-  const p = nav.findPath(blue[0], blue[2], -46.8 * 1.5, -20 * 1.5);
-  assert.ok(p, 'a path onto the track bed');
-  assert.ok(Math.abs(nav.floorAt(-46.8 * 1.5, -20 * 1.5) - 2) < 0.01);
-  // And the walkway inside.
-  assert.ok(Math.abs(nav.floorAt(-24.5 * 1.5, -18 * 1.5) - 2.4) < 0.01);
-  assert.ok(nav.findPath(blue[0], blue[2], -24.5 * 1.5, -18 * 1.5));
 });
 
 // ---------- Warehouse (Kenny's map) ----------

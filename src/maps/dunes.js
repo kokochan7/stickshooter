@@ -6,8 +6,10 @@
 //                both sites
 //   Tunnel     - a long covered corridor along the south wall, into the
 //                pillared hall (B)
-//   Site A - an open oasis courtyard with a pool, a footbridge and palms
-//   Site B - a pillared hall with doors west (tunnel), north (mid) and east
+//   Site A - an open oasis courtyard with a big pool, a wide footbridge and
+//            palms
+//   Site B - a pillared hall with a pool and footbridge in the middle, and
+//            doors west (tunnel), north (mid) and east
 // The sites sit east of the middle: Blue gets there first, Red walks
 // further, but both teams have a long way to go.
 import { COVER_H, mapBuilder, scaleMap, spawnGrid, toSpawn } from './builder.js';
@@ -63,13 +65,16 @@ m.crate(-20, 31.5, 1.0); m.crate(-4, 27.5, 1.0);
 // --- Site B: the pillared hall ---
 m.building(2, 8, 24, 34, 5, { col: 'wall', t: 0.4, doors: { w: [[27, 31]], n: [[12, 15]], e: [[18, 22]] } });
 for (const [x, z] of [[8, 15], [17, 15], [8, 27], [17, 27]]) m.box(x - 0.5, 0, z - 0.5, x + 0.5, 5, z + 0.5, 'concrete', 'stone');
-m.crates(12.5, 21); m.crate(5, 11); m.crate(21, 31); m.crate(19.8, 31); m.box(4, 0, 23, 7, COVER_H, 23.6, 'wood', 'wood');
+// The hall's pool, between the pillars, with a footbridge across it.
+m.water(9.5, 17, 15.5, 25);
+m.bridge(8.9, 20, 16.1, 22.5, 'x');
+m.crates(12.5, 29.5); m.crate(5, 11); m.crate(21, 31); m.crate(19.8, 31); m.box(4, 0, 23, 7, COVER_H, 23.6, 'wood', 'wood');
 
 // --- Site A: the oasis ---
 m.wallZ(0, -Z, -8, 3, 0.4, 'concrete', 'wall2', [[-31, -25]]);
-m.water(8, -26, 16, -20);
-m.bridge(11, -26.6, 13, -19.4, 'z');
-m.palm(6, -28); m.palm(18, -18); m.palm(19, -30);
+m.water(6, -28, 18, -18);
+m.bridge(10.5, -28.6, 13.5, -17.4, 'z');
+m.palm(4.5, -27); m.palm(20, -16.5); m.palm(19.5, -30);
 m.crates(3.5, -12); m.crate(21, -13); m.crate(21, -11.8); m.crates(4, -32.5); m.box(22, 0, -26, 22.6, COVER_H, -21, 'concrete', 'stone');
 
 // --- Blue side (east) ---
@@ -108,7 +113,7 @@ export const DUNES = scaleMap({
   spawns: [
     [-58, 0, -6], [-58, 0, 6], [-40, 0, -10], [-40, 0, 10], [-26, 0, -27], [-18, 0, -13],
     [-20, 0, 0], [-14, 0, 19], [-20, 0, 29], [-4, 0, -16], [0, 0, 0], [12, 0, -30],
-    [18, 0, -12], [12, 0, 18], [20, 0, 12], [36, 0, -20], [36, 0, 0], [36, 0, 20],
+    [18, 0, -12], [20, 0, 26], [20, 0, 12], [36, 0, -20], [36, 0, 0], [36, 0, 20],
     [58, 0, -6], [58, 0, 6],
   ].map((s) => toSpawn(s, center)),
   teamSpawns: {

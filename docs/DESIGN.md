@@ -116,7 +116,6 @@ stacked containers) that carve non-rectangular shapes out of the bounds.
 | Dunes (bomb) | 198 x 108 m, wide west-east, tapering between cliffs | Huge | west end | east end |
 | Harbor (hostage) | L shape, 132 m arms around a container terminal | Large | north arm, east end | west arm, south end |
 | Frost (hostage) | 120 x 162 m hourglass valley, 66 m waist | Huge | behind the lodge (north) | cabins (south) |
-| Depot (hostage) | 135 x 132 m: brick warehouse, open truck yard, street, and a west rail yard with a raised track lane; garage doors (watched from the shipping office), side door, back doors, roof by fire escape or ladder with skylights, hatch and crawl vent, raised inside walkway | Huge | back lot behind the warehouse (north) | the street (south) |
 | Warehouse (hostage, Kenny's design) | 109 x 118 m: warehouse in the north-east with an elevated hostage office annex, front yard, mid-street building, divided street; west overpass with a ramp, east overlook tower; garage bay, west side door, two roof ladders, skylights, hatch and crawl vent into the office | Huge | inside the warehouse (north) | the street (south) |
 
 Maps are laid out in the source at their original size and spread out by
