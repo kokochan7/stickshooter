@@ -245,7 +245,7 @@ W.m4a1 = {
   },
 };
 
-// The two scoped rifles zoom once (CS 55 degree FOV, no scope overlay) and
+// The two scoped rifles zoom once (CS 55 degree FOV, rifle sight overlay) and
 // fire slower while zoomed. The SG 552 also slows you down when zoomed.
 W.sg552 = {
   name: 'SG 552', slot: 'primary', category: 'Rifles', price: 3500,

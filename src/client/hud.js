@@ -321,6 +321,7 @@ export class Hud {
       this.crosshair.style.transform = ox || oy ? `translate(${ox}px, ${oy}px)` : '';
     }
     this.scope.classList.toggle('hidden', !scoped);
+    this.scope.classList.toggle('rifle', scoped === 'rifle');
 
     if (this.hitTime > 0) {
       this.hitTime -= dt;
@@ -773,7 +774,7 @@ export class BuyMenu {
       ['Wall Penetration', PEN_NAMES[w.penetration] ?? 'Heavy'],
       ['Move Speed', `${Math.round((w.speed / 250) * 100)}%`],
     ];
-    if (w.zoomLevels) kv.push(['Scope', w.scope ? `${w.zoomLevels.length}-level sniper scope (Mouse 2)` : 'Zooms in (Mouse 2)']);
+    if (w.zoomLevels) kv.push(['Scope', w.scope ? `${w.zoomLevels.length}-level sniper scope (Mouse 2)` : 'Red-dot sight, 1 zoom level (Mouse 2)']);
     if (w.silenced) kv.push(['Silenced', 'Quiet, no muzzle flash']);
     if (w.dual) kv.push(['Note', 'One pistol in each hand, firing in turn']);
     return `<div class="buy-pic"><img src="${this.icons[id]}" alt=""></div>${statsHtml(kv)}`;
