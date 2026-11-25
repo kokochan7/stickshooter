@@ -19,6 +19,7 @@ export const TEX_QUALITY = { size: 256, smooth: true, aniso: 4 };
 const BEVEL = 0.35, BEVEL_W = 0.06; // edge rim: brightness, width in metres
 const INDOOR_FILL = new THREE.Color(0.95, 0.9, 0.8).multiplyScalar(1.45);
 const CELL = 0.25;
+const BRICK_DESAT = 0.3;
 
 const _c = new THREE.Color();
 
@@ -43,6 +44,12 @@ function boxGeometry(list, surf, mean) {
     }
     g.setAttribute('faceEdge', new THREE.BufferAttribute(fe, 4));
     _c.setHex(b.color);
+    if (surf === 'brick') {
+      // Brick walls are toned down a third toward grey (Kenny found the
+      // full palette orange too loud).
+      const l = _c.r * 0.3 + _c.g * 0.59 + _c.b * 0.11;
+      _c.r += (l - _c.r) * BRICK_DESAT; _c.g += (l - _c.g) * BRICK_DESAT; _c.b += (l - _c.b) * BRICK_DESAT;
+    }
     _c.r = Math.min(3, _c.r / mean.r); _c.g = Math.min(3, _c.g / mean.g); _c.b = Math.min(3, _c.b / mean.b);
     const tint = 0.96 + rand() * 0.08;
     for (let i = 0; i < n; i++) {
