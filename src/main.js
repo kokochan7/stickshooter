@@ -1162,6 +1162,12 @@ function norm(v) {
 // ---------- Per-frame view update ----------
 
 function lerp(a, b, t) { return a + (b - a) * t; }
+// Which scope overlay a zoomed player looks through: 'sniper' (AWP, Scout,
+// autosnipers) or 'rifle' (AUG / SG 552 sight), or false when not zoomed.
+function scopeKind(p, def) {
+  if (!p || !(p.zoom > 0) || !def?.zoomLevels) return false;
+  return def.scope ? 'sniper' : 'rifle';
+}
 
 // Swimming: a stroke every SWIM_STROKE_TIME while you swim, slower and
 // softer while you tread water. Jumping or falling in makes a splash.
@@ -1314,8 +1320,8 @@ function updateView(dt, alpha) {
       const h = def.zoomLevels[me.zoom - 1] * DEG;
       fov = (2 * Math.atan(Math.tan(h / 2) * 0.75)) / DEG;
     }
-    // A sniper scope fills the screen; the AUG and SG 552 just zoom.
-    showVm = me.zoom === 0 || !def?.scope;
+    // A scope (sniper or the AUG / SG 552 sight) fills the screen.
+    showVm = me.zoom === 0 || !def?.zoomLevels;
     audio.setListener(px, py, pz, input.yaw);
     underwater = game.underwater(px, py, pz);
   } else if (specOn && spec.mode === 'free') {
@@ -1352,7 +1358,7 @@ function updateView(dt, alpha) {
       const h = def.zoomLevels[t.zoom - 1] * DEG;
       fov = (2 * Math.atan(Math.tan(h / 2) * 0.75)) / DEG;
     }
-    showVm = !(t.zoom > 0 && def?.scope);
+    showVm = !(t.zoom > 0 && def?.zoomLevels);
     audio.setListener(ex, ey, ez, t.yaw);
     underwater = game.underwater(ex, ey, ez);
   } else if (specT) {
@@ -1452,9 +1458,9 @@ function updateView(dt, alpha) {
         if (Number.isFinite(s2)) px = Math.min(80, (s2 * 0.5 * (innerHeight / 2)) / Math.tan((fov * DEG) / 2));
         if (specT.punch) px += Math.hypot(specT.punch[0], specT.punch[1]) * 1.5;
       }
-      eye = { def: tdef, spreadPx: px, scoped: specT.zoom > 0 && !!tdef?.scope };
+      eye = { def: tdef, spreadPx: px, scoped: scopeKind(specT, tdef) };
     }
-    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && me.zoom > 0 && !!def?.scope, chOffset, eye });
+    hud.update(dt, { p: me, def, w, spreadPx, reloadFrac, showFps: settings.showFps, scoped: me.alive && scopeKind(me, def), chOffset, eye });
     document.body.classList.toggle('mode-gungame', game.mode === 'gungame');
     hud.top({ mode: game.mode, myTeam: me.team, scores: game.objective ? game.rounds : game.teamKills, players: game.players, meId: me.id });
     refreshScoreboard(dt);
