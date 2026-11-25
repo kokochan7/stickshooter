@@ -154,7 +154,10 @@ export function renderGunIcons(renderer) {
     scene.add(gun.group);
     renderer.setRenderTarget(rt);
     renderer.clear();
+    const tm = renderer.toneMapping;
+    renderer.toneMapping = THREE.NoToneMapping; // icons keep their flat colours
     renderer.render(scene, cam);
+    renderer.toneMapping = tm;
     renderer.readRenderTargetPixels(rt, 0, 0, W, H, pixels);
     scene.remove(gun.group);
     const img = ctx.createImageData(W, H);

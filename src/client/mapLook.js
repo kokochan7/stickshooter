@@ -1,22 +1,23 @@
-// The map's look: "Classic textured" (Kenny's pick, 2026-11-24). Boxes are
-// grouped by surface (brick, concrete, metal, crate, ...) and drawn with
-// small procedural textures (src/client/surfaces.js), crisp up close like
-// CS 1.6. Map palette colours still set each box's overall colour: a box's
+// The map's look: "Stylized realistic" without shadows (Kenny's pick,
+// 2026-11-25; it replaced "Classic textured"). Boxes are grouped by surface
+// (brick, concrete, metal, crate, ...) and drawn with soft, painted-style
+// procedural textures (src/client/surfaces.js). Map palette colours still set each box's overall colour: a box's
 // vertex colour is its palette colour divided by its texture's mean.
 // Two cheap shader extras per pixel:
-//   - a thin light rim on box edges (worn, rounded edges)
+//   - a light rim on box edges (worn, rounded edges)
+//   - contact darkening at the foot of walls
 //   - sky occlusion from a top-down "cover map" (highest box top per 25 cm
 //     cell): under a roof the sky light fades and a warm indoor fill takes
 //     over, so interiors read as interiors with no light baking.
-// No shadow maps, no post-processing: about the same GPU cost as before.
+// No shadow maps, no post-processing: about the same GPU cost as the old
+// flat look. Tone mapping (ACES) is set on the renderer in scene.js.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { surfaceTextures, classify, groundSurface, SURFACES } from './surfaces.js';
 
-export const TEX_QUALITY = { size: 128, posterize: 28, nearest: true, aniso: 1, grain: 0.12 };
-const AO_FLOOR = 0.55; // vertex shade at the foot of walls
-const BEVEL = 0.12, BEVEL_W = 0.03; // edge rim: brightness, width in metres
-const INDOOR_FILL = new THREE.Color(0.95, 0.9, 0.8).multiplyScalar(1.6);
+export const TEX_QUALITY = { size: 256, smooth: true, aniso: 4 };
+const BEVEL = 0.35, BEVEL_W = 0.06; // edge rim: brightness, width in metres
+const INDOOR_FILL = new THREE.Color(0.95, 0.9, 0.8).multiplyScalar(1.45);
 const CELL = 0.25;
 
 const _c = new THREE.Color();
@@ -54,11 +55,7 @@ function boxGeometry(list, surf, mean) {
         else if (Math.abs(ny) > 0.5) { uv[i * 2] = x / tile; uv[i * 2 + 1] = z / tile; }
         else { uv[i * 2] = x / tile; uv[i * 2 + 1] = y / tile; }
       }
-      // Fake ambient occlusion near the floor + face shading.
-      let shade = ny > 0.5 ? 1.06 : ny < -0.5 ? 0.6 : 0.94;
-      if (ny > 0.5) { /* tops stay bright */ }
-      else if (y < 0.05) shade *= AO_FLOOR;
-      else if (y < 0.4 && ny === 0) shade *= AO_FLOOR + (y / 0.4) * (1 - AO_FLOOR);
+      const shade = 1; // contact shading is per pixel in the shader
       col[i * 3] = _c.r * shade * tint;
       col[i * 3 + 1] = _c.g * shade * tint;
       col[i * 3 + 2] = _c.b * shade * tint;
@@ -126,7 +123,8 @@ function patchShader(mat, uniforms) {
         if (vFE.z > 0.0) {
           float ed = min(min(vFE.x, vFE.z - vFE.x), min(vFE.y, vFE.w - vFE.y));
           diffuseColor.rgb *= 1.0 + ${BEVEL.toFixed(2)} * (1.0 - smoothstep(0.0, ${BEVEL_W.toFixed(3)}, ed));
-        }`)
+        }
+        if (abs(vON.y) < 0.5) diffuseColor.rgb *= mix(0.5, 1.0, smoothstep(0.0, 0.7, vOP.y));`)
       .replace('#include <aomap_fragment>', `#include <aomap_fragment>
         float sv = skyVis();
         reflectedLight.indirectDiffuse = reflectedLight.indirectDiffuse * mix(0.12, 1.0, sv)

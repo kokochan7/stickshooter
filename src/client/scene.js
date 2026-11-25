@@ -14,6 +14,8 @@ import { WATER_DEPTH } from '../maps/builder.js';
 import { zoneFloor } from '../sim/world.js';
 import { buildMapLook } from './mapLook.js';
 
+const _white = new THREE.Color(0xffffff);
+
 function shadowTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
@@ -199,20 +201,38 @@ export class GameView {
     this.camera = new THREE.PerspectiveCamera(settings.fov, 1, 0.04, 500);
     this.camera.rotation.order = 'YXZ';
 
+    // "Stylized realistic" look (Kenny's pick, 2026-11-25), with no shadow
+    // maps: ACES tone mapping on the world (not the first-person gun), a sky
+    // with a sun glow, and hemisphere + sun colours taken from each map's sky.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
+    this.sunDir = new THREE.Vector3(0.5, 0.75, 0.32).normalize();
+
     // Sky dome.
     const skyMat = new THREE.ShaderMaterial({
-      uniforms: { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() } },
+      uniforms: { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() }, sunDir: { value: this.sunDir }, sunCol: { value: new THREE.Color() } },
       vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying vec3 vP; void main(){ float h = clamp(vP.y * 1.6 + 0.1, 0.0, 1.0); gl_FragColor = vec4(mix(bottom, top, h), 1.0); }',
+      fragmentShader: `uniform vec3 top; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 sunCol; varying vec3 vP;
+        void main(){
+          vec3 d = normalize(vP);
+          float h = clamp(d.y * 1.6 + 0.1, 0.0, 1.0);
+          vec3 c = mix(bottom, top, pow(h, 0.7));
+          float s = max(dot(d, sunDir), 0.0);
+          c += sunCol * (pow(s, 900.0) * 6.0 + pow(s, 12.0) * 0.35);
+          c = mix(c, bottom * 1.05, pow(1.0 - abs(d.y), 8.0) * 0.5);
+          gl_FragColor = vec4(c, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
       side: THREE.BackSide, depthWrite: false, fog: false,
     });
-    this.sky = new THREE.Mesh(new THREE.SphereGeometry(400, 24, 12), skyMat);
+    this.sky = new THREE.Mesh(new THREE.SphereGeometry(400, 32, 16), skyMat);
     this.scene.add(this.sky);
 
-    this.scene.add(new THREE.HemisphereLight(0xe6f0ff, 0x9a8a72, 1.7));
-    const sun = new THREE.DirectionalLight(0xfff1dc, 2.0);
-    sun.position.set(0.5, 0.75, 0.32);
-    this.scene.add(sun);
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0x8a7a62, 1.5);
+    this.sun = new THREE.DirectionalLight(0xffffff, 2.6);
+    this.sun.position.copy(this.sunDir);
+    this.scene.add(this.hemi, this.sun);
 
     this.waterTex = waterTexture();
     this.mapGroup = null;
@@ -267,6 +287,9 @@ export class GameView {
     this.scene.fog.color.copy(skyBottom);
     this.sky.material.uniforms.top.value.setHex(map.sky.top);
     this.sky.material.uniforms.bottom.value.copy(skyBottom);
+    this.hemi.color.setHex(map.sky.top).lerp(_white, 0.6);
+    this.sun.color.setRGB(1, 1, 1).lerp(skyBottom, 0.35);
+    this.sky.material.uniforms.sunCol.value.copy(this.sun.color);
 
     // Maps with water draw their ground as boxes (so the banks show) and the
     // big plane becomes the riverbed.
@@ -538,7 +561,11 @@ export class GameView {
     r.render(this.scene, this.camera);
     if (this.viewModel.rig.visible) {
       r.clearDepth();
+      // The gun and arms keep their own tuned look: no tone mapping.
+      const tm = r.toneMapping;
+      r.toneMapping = THREE.NoToneMapping;
       r.render(this.viewModel.scene, this.viewModel.camera);
+      r.toneMapping = tm;
     }
   }
 }
