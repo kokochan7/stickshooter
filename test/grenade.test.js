@@ -93,7 +93,7 @@ test('a lob goes about half as far as a full throw', () => {
   assert.ok(lob < full * 0.75 && lob > 1, `lob ${lob.toFixed(1)} m vs throw ${full.toFixed(1)} m`);
 });
 
-test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past the 13 m radius', () => {
+test('blast damage: CS 1.6 falloff, kevlar halves it, nothing past the 9.85 m radius', () => {
   const { g, a, b } = setup();
   put(b, 0, 10);
   blast(g, a, 0, 10.5);
@@ -194,7 +194,7 @@ test('the grenade costs and does what CS 1.6 says', () => {
   const he = WEAPONS.hegrenade;
   assert.equal(he.price, 300);
   assert.equal(he.damage, 100);
-  assert.equal(he.grenade.radius, 525);
+  assert.equal(he.grenade.radius, 394);
   assert.equal(he.grenade.fuse, 2);
   assert.equal(WEAPONS.smokegrenade.grenade.fuse ?? NADE_FUSE, 1.5);
   assert.equal(WEAPONS.flashbang, undefined, 'flashbang was removed');

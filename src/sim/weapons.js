@@ -383,7 +383,7 @@ W.hegrenade = {
   damage: 100, range: 0, bullet: null, penetration: 0, armorRatio: 1.0,
   cycle: 0.5, auto: false, clip: 1, reserve: 0, deploy: 0.6, speed: 250,
   accuracy: { type: 'none' }, kick: { punch: [0, 0] },
-  grenade: { kind: 'he', radius: 525, fuse: 2, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
+  grenade: { kind: 'he', radius: 394, fuse: 2, maxSpeed: 1000, throwMul: 8, lobMul: 0.5 },
 };
 
 // CS 1.6 smoke grenade ($300, carry one). Once it has stopped (and the
