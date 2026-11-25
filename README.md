@@ -1,22 +1,22 @@
 <div align="center">
 
-# STICK SHOOTER
+# STICK SHOOTER 2
 
 **Classic Counter-Strike gunplay. Stickman simplicity. Zero install.**
 
 A fast, lightweight 3D multiplayer shooter that runs in your browser, on desktop or phone.
 
-### [▶ Play now at stickshooter.kennk.workers.dev](https://stickshooter.kennk.workers.dev)
+### [▶ Play now at stickshooter.kennykao.workers.dev](https://stickshooter.kennykao.workers.dev)
 
-![Stick Shooter: an AK47 firefight against white stickman bots on the Yard map](docs/screenshot.jpg)
+![Stick Shooter 2: an AK47 firefight against white stickman bots on the Yard map](docs/screenshot.jpg)
 
 </div>
 
 ---
 
-## Why Stick Shooter
+## Why Stick Shooter 2
 
-Most browser shooters feel floaty. Stick Shooter is built on the rules that
+Most browser shooters feel floaty. Stick Shooter 2 is built on the rules that
 made Counter-Strike 1.6 a classic: real damage numbers, hitboxes, armor,
 wall penetration, spray patterns and movement. It wraps them in a clean,
 original look with a white stickman, detailed low-poly guns and textured, classic-style maps

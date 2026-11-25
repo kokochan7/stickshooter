@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#14171d" />
-  <title>Stick Shooter</title>
+  <title>Stick Shooter 2</title>
+  <meta name="description" content="Stick Shooter 2: a lightweight 3D stickman shooter with classic Counter-Strike gunplay, right in your browser." />
+  <meta name="apple-mobile-web-app-title" content="Stick Shooter 2" />
+  <meta name="application-name" content="Stick Shooter 2" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Inter:wght@500;700;800&display=swap" rel="stylesheet" />
@@ -68,7 +71,19 @@
 
   <div id="menu" class="screen">
     <div class="menu-card">
-      <h1 class="logo">STICK<span>SHOOTER</span></h1>
+      <h1 class="logo" aria-label="Stick Shooter 2"><span class="logo-words" aria-hidden="true">STICK<span>SHOOTER</span></span><svg class="logo-two" viewBox="0 0 110 124" aria-hidden="true">
+        <defs><mask id="logo-two-bristles"><rect width="110" height="124" fill="#fff"/><path d="M60 95h46M68 100h42M56 105h52M74 110h36M30 48l14-14M36 50l12-12" stroke="#000" stroke-width="1.6" stroke-linecap="round"/></mask></defs>
+        <g class="two-edge" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 50L21 40C26 18 50 8 68 14C88 21 88 42 73 56L27 99" stroke-width="26"/>
+          <path d="M23 100C45 95 72 96 98 102" stroke-width="25"/>
+        </g>
+        <g class="two-ink" mask="url(#logo-two-bristles)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 50L21 40" stroke-width="12"/>
+          <path d="M21 40C26 18 50 8 68 14C88 21 88 42 73 56L27 99" stroke-width="19"/>
+          <path d="M23 100C45 95 72 96 98 102" stroke-width="18"/>
+          <path d="M84 96.5L104 98M88 106L106 109" stroke-width="3.2"/>
+        </g>
+      </svg></h1>
       <div class="mode-pick" role="radiogroup" aria-label="Game mode">
         <button class="mode-btn" data-mode="ffa" role="radio">FREE FOR ALL</button>
         <button class="mode-btn" data-mode="teams" role="radio">TEAMS <small><i class="dot red"></i>vs<i class="dot blue"></i></small></button>

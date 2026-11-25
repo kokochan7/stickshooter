@@ -39,7 +39,14 @@ canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
   font-family: var(--title); font-weight: 400; font-size: clamp(44px, 10vw, 64px); line-height: 0.9; margin: 4px 0 6px;
   letter-spacing: 1px; color: #fff; text-shadow: 0 4px 0 #1b1f27, 0 8px 24px rgba(0,0,0,.35);
 }
-.logo span { display: block; color: var(--accent); }
+.logo { display: flex; align-items: center; justify-content: center; gap: 0.06em; }
+.logo-words { display: block; }
+.logo-words span { display: block; color: var(--accent); }
+/* The brush-stroke "2": white ink over a blue edge, with a soft blue glow. */
+.logo-two { height: 1.95em; width: auto; flex: none; overflow: visible; margin-right: -0.12em; transform: rotate(-4deg);
+  filter: drop-shadow(0 0 6px rgba(70,150,255,.85)) drop-shadow(0 4px 0 #0d1a3a); }
+.logo-two .two-edge { stroke: #1f6fe0; }
+.logo-two .two-ink { stroke: #fff; }
 .logo { margin-bottom: 18px; }
 h2 { font-family: var(--title); font-weight: 400; font-size: 32px; margin: 0 0 16px; letter-spacing: 1px; }
 
