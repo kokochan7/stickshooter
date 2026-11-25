@@ -15,6 +15,9 @@ import { WEAPONS, GEAR, AMMO, NADE_SLOTS, WEAPON_FILTERS, teamCanBuy, filterAllo
 import { World } from './world.js';
 import { movePlayer, aimDir, forwardVec, rightVec, playerBox, hullTouches } from './movement.js';
 import { traceBullet, traceMelee, computeDamage, isEnemy } from './combat.js';
+
+// Enough to kill through full health, kevlar and helmet.
+const BACKSTAB_DAMAGE = 1000;
 import { NavGrid } from './nav.js';
 import * as Obj from './objective.js';
 import { GG_LADDER, GG_LAST, ggWeapon } from './gungame.js';
@@ -1273,23 +1276,26 @@ export class Game {
     const m = def.melee[kind];
     const yaw = p.yaw + p.punch[1] * DEG;
     const fwd = aimDir(yaw, p.pitch + p.punch[0] * DEG);
-    const right = rightVec(yaw);
-    const up = cross(right, fwd);
     const origin = this.eyePos(p);
     const restore = this.lagComp ? this.lagComp(p) : null;
-    const res = traceMelee(this.world, this.targets(), p, origin, fwd, right, up, m.range);
+    const res = traceMelee(this.world, this.targets(), p, origin, fwd, m.range, m.cone);
+    let backstab = false;
+    if (res?.victim && !res.victim.isHostage) {
+      // From behind: the victim faces away from you (within 60 degrees of
+      // straight away). Read before the rewound positions are put back.
+      const v = res.victim, vf = forwardVec(v.yaw);
+      const lx = v.pos[0] - p.pos[0], lz = v.pos[2] - p.pos[2], l = Math.hypot(lx, lz) || 1;
+      backstab = (lx * vf[0] + lz * vf[2]) / l > def.melee.backstabCos;
+    }
     if (restore) restore();
 
     const hit = !!res;
-    let dmg = 0, backstab = false;
+    let dmg = 0;
     if (res?.victim) {
       // CS: a slash after a pause hits harder than one in a quick combo.
       dmg = kind === 'slash' && p.nextAttack + 0.4 < t ? m.firstDamage : m.damage;
-      if (kind === 'stab') {
-        const v = res.victim, vf = forwardVec(v.yaw);
-        const lx = v.pos[0] - p.pos[0], lz = v.pos[2] - p.pos[2], l = Math.hypot(lx, lz) || 1;
-        if ((lx * vf[0] + lz * vf[2]) / l > 0.8) { dmg *= m.backstabMul; backstab = true; }
-      }
+      // Any knife hit in the back is an instant kill, armor or not.
+      if (backstab) dmg = Math.max(dmg, BACKSTAB_DAMAGE);
     }
     this.emit({
       type: 'melee', pid: p.id, kind, hit: res?.victim ? 'flesh' : res?.wall ? 'wall' : null, backstab,
