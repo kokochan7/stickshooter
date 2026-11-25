@@ -42,19 +42,21 @@ m.crate(-26, -40); m.box(-29, 0, -33, -27, COVER_H, -32.4, 'concrete', 'stone');
 m.box(-3.4, 0, -40, -2.8, COVER_H, -36, 'concrete', 'stone'); m.box(2.8, 0, -33, 3.4, COVER_H, -29, 'concrete', 'stone'); m.crate(0, -45.5);
 m.crate(26, -38); m.box(27, 0, -30, 29, COVER_H, -29.4, 'concrete', 'stone'); m.crates(21.5, -44);
 
-// --- The canal ---
-m.water(-W, -16, W, -10);
-m.bridge(-24, -16.6, -20, -9.4, 'z');
-m.highBridgeZ(-2, 2, -16, -10, 2.5);
-m.bridge(20, -16.6, 24, -9.4, 'z');
+// --- The canal (12 m wide) ---
+m.water(-W, -20, W, -8);
+m.bridge(-24, -20.6, -20, -7.4, 'z');
+m.highBridgeZ(-2, 2, -20, -8, 2.5);
+m.bridge(20, -20.6, 24, -7.4, 'z');
 // Moored boats: cover for anyone wading.
-m.box(8, -0.4, -14.6, 13, 0.55, -12.6, 'wood', 'boat');
-m.box(-13, -0.4, -13.4, -9, 0.55, -11.6, 'wood', 'boat');
+m.box(8, -0.4, -17.6, 13, 0.55, -15.6, 'wood', 'boat');
+m.box(-13, -0.4, -11.4, -9, 0.55, -9.6, 'wood', 'boat');
+m.box(-16, -0.4, -18.2, -12, 0.55, -16.4, 'wood', 'boat');
+m.box(10, -0.4, -12, 14, 0.55, -10.2, 'wood', 'boat');
 // Bollards and crates along both quays.
-for (const x of [-28, -14, 9, 27]) m.box(x - 0.25, 0, -16.8, x + 0.25, 0.7, -16.3, 'metal', 'metal');
-for (const x of [-27, -8, 14, 28]) m.box(x - 0.25, 0, -9.7, x + 0.25, 0.7, -9.2, 'metal', 'metal');
-m.crates(-27, -19.5); m.crate(-12, -19); m.crate(-10.8, -19); m.barrel(6, -19.5); m.barrel(6.8, -18.9); m.crates(27, -20);
-m.crate(-6, -6.5); m.barrel(8, -6.5); m.crate(26.5, -6); m.crate(-26.5, -6.5);
+for (const x of [-28, -14, 9, 27]) m.box(x - 0.25, 0, -20.8, x + 0.25, 0.7, -20.3, 'metal', 'metal');
+for (const x of [-27, -8, 14, 28]) m.box(x - 0.25, 0, -7.7, x + 0.25, 0.7, -7.2, 'metal', 'metal');
+m.crates(-27, -23.2); m.crate(-12, -22.8); m.crate(-10.8, -22.8); m.barrel(6, -23); m.barrel(6.8, -22.4); m.crates(27, -23.2);
+m.crate(-6, -5); m.barrel(8, -5); m.crate(26.5, -4.5); m.crate(-26.5, -4.5);
 
 // --- Site B courtyard (west) ---
 m.wallX(-1, -W, -12, 3, 0.4, 'concrete', 'wall2', [[-25, -19.5]]);
@@ -95,8 +97,8 @@ m.crates(-28, 27); m.crate(28, 27); m.crates(-28, 45); m.crate(28, 45.5);
 m.crates(-17, 58); m.crate(17, 60); m.barrel(-21, 51); m.barrel(20.5, 52.5); m.crate(1.5, 50, 1.0); m.crate(-4, 63);
 
 // --- Extra cover: both quays, the lanes and the square ---
-m.cover(-6, -22, 3); m.cover(6, -22.5, 3); // north quay (Red)
-m.cover(-17, -7, 3.5); m.cover(17, -6.5, 3.5); // south quay (Blue)
+m.cover(-4, -23.5, 3); m.cover(3.5, -24, 3); // north quay (Red)
+m.cover(-17, -4.5, 3.5); m.cover(17, -4.2, 3.5); // south quay (Blue)
 m.barrel(-22, -36); m.barrel(-22.6, -35.4); m.barrel(22, -34); m.barrel(22.6, -34.6); // side lanes
 m.crates(-7.5, 27.5); m.crates(8, 40); // the square
 
@@ -114,7 +116,7 @@ export const CANAL = scaleMap({
   groundBoxes: ground,
   spawns: [
     [-12, 0, -58], [12, 0, -55], [-26, 0, -44], [26, 0, -42], [0, 0, -38], [-11, 0, -31],
-    [11, 0, -38], [-24, 0, -22], [24, 0, -22], [0, 0, -5], [-22, 0, 6], [-18, 0, 20],
+    [11, 0, -38], [-22, 0, -23.8], [22, 0, -23.8], [0, 0, -3.5], [-22, 0, 6], [-18, 0, 20],
     [22, 0, 17], [17, 0, 6], [0, 0, 17], [-20, 0, 36], [20, 0, 37], [0, 0, 40],
     [-12, 0, 56], [12, 0, 58],
   ].map((s) => toSpawn(s, center)),

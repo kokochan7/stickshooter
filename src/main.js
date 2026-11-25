@@ -37,6 +37,7 @@ const DEG = Math.PI / 180;
 const settings = loadSettings();
 const canvas = $('game');
 settings.weaponFilter = cleanWeaponFilter(settings.weaponFilter);
+if (!MAPS[settings.map]) settings.map = MAP_LIST[0].id; // a removed map (Depot) falls back
 const game = new Game(getMap(settings.map), { mode: settings.mode, weaponFilter: settings.weaponFilter });
 const view = new GameView(canvas, game.map, game.world, settings);
 const audio = new Audio();
@@ -201,7 +202,7 @@ function loadMap(id) {
 // ---------- Screens ----------
 
 // Map cards on the menu. Each shows a little two-tone swatch of the map.
-const MAP_SWATCH = { yard: ['#d9d1c1', '#8d9aa8'], canal: ['#3f93c4', '#dcb88f'], dunes: ['#e2cc9a', '#c99d62'], harbor: ['#9aa4ad', '#3f93c4'], frost: ['#eef2f6', '#2f6b4a'], depot: ['#a4573a', '#8f8f8a'], warehouse: ['#8c5642', '#354463'] };
+const MAP_SWATCH = { yard: ['#d9d1c1', '#8d9aa8'], canal: ['#3f93c4', '#dcb88f'], dunes: ['#e2cc9a', '#c99d62'], harbor: ['#9aa4ad', '#3f93c4'], frost: ['#eef2f6', '#2f6b4a'], warehouse: ['#8c5642', '#354463'] };
 const mapPick = document.querySelector('.map-pick');
 mapPick.innerHTML = MAP_LIST.map((m) => {
   const [a, b] = MAP_SWATCH[m.id] ?? ['#888', '#555'];

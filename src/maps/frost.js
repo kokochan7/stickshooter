@@ -1,7 +1,7 @@
 // "Frost": hostage rescue in a snowy mountain valley. The map is an
 // hourglass, 80 m wide at both ends and 108 m long, pinched to 44 m in the
-// middle by rock walls. A stream runs across the waist under a log
-// footbridge and an old stone bridge, with pines for cover.
+// middle by rock walls. A wide river (15 m) runs across the waist under a
+// log footbridge and an old stone bridge, with pines for cover.
 //   North - Red spawns behind the lodge and guards four hostages inside
 //           (thin wooden walls: most guns shoot through).
 //   South - Blue spawns by the cabins, where the rescue zone is, and has to
@@ -50,16 +50,21 @@ m.box(19, 0, -22, 23, COVER_H, -20.9, 'wood', 'wood');
 m.crate(-9, -21); m.crate(10, -19); m.box(-3, 0, -24, 3, COVER_H, -23.4, 'concrete', 'stone'); // low wall
 m.pine(-14, -15); m.pine(15, -13, 0.9);
 
-// --- The stream, across the waist ---
-m.water(-22, -3, 22, 2);
-m.bridge(-14, -3.6, -11, 2.6, 'z'); // log footbridge
-m.highBridgeZ(9, 13, -3, 2, 2.5); // old stone bridge
-m.box(-4, -0.4, -1, 1, 0.3, 0, 'wood', 'trunk'); // fallen log in the water
-m.box(17, -WATER_DEPTH, -1.5, 19, 0.5, 0.5, 'concrete', 'stone'); // boulder
-m.crate(-19, -6); m.crate(19, 6);
+// --- The river, across the waist (15 m wide, bank to bank) ---
+m.water(-22, -8, 22, 7);
+m.bridge(-14, -8.6, -11, 7.6, 'z'); // log footbridge
+m.highBridgeZ(9, 13, -8, 7, 2.5); // old stone bridge
+// Fallen logs and boulders: cover for anyone swimming across.
+m.box(-5, -0.4, -4, 0, 0.3, -3, 'wood', 'trunk');
+m.box(1, -0.4, 2.5, 6, 0.3, 3.5, 'wood', 'trunk');
+m.box(17, -WATER_DEPTH, -1.5, 19, 0.5, 0.5, 'concrete', 'stone');
+m.box(-20, -WATER_DEPTH, 1.5, -18, 0.5, 3.5, 'concrete', 'stone');
+m.box(-7, -WATER_DEPTH, 3, -5.5, 0.5, 4.5, 'concrete', 'stone');
+m.box(5, -WATER_DEPTH, -5.5, 6.5, 0.5, -4, 'concrete', 'stone');
+m.crate(-19, -10.5); m.crate(19, 9.5);
 
 // --- South woods ---
-m.pine(-15, 14); m.pine(-5, 9); m.pine(4, 13, 1.2); m.pine(16, 12); m.pine(-24, 24, 0.9); m.pine(24, 25);
+m.pine(-15, 14); m.pine(-11, 10.5); m.pine(4, 13, 1.2); m.pine(16, 12); m.pine(-24, 24, 0.9); m.pine(24, 25);
 m.box(-4, 0, 20, 2, COVER_H, 20.6, 'concrete', 'stone');
 m.crates(-28, 30); m.crate(28, 18 + 12); m.pine(-10, 26); m.pine(10, 22, 0.9);
 
@@ -79,15 +84,15 @@ const boulder = (x, z, w, d, h) => m.box(x - w / 2, 0, z - d / 2, x + w / 2, h, 
 const logs = (x, z, len, axis = 'x') => m.cover(x, z, len, axis, { material: 'wood', col: 'trunk', t: 1.0 });
 // North half (Red's side of the stream).
 boulder(-20, -14, 3, 2.2, 2.2); boulder(21, -15.5, 2.6, 2, COVER_H);
-logs(-6, -12, 4); logs(7, -10.5, 4);
+logs(-6, -13, 4); logs(7, -13.5, 4);
 m.crates(-13, -25.5); m.crates(13, -26.5);
-m.cover(-4, -6.5, 3.5, 'x', { col: 'stone' }); m.cover(4.5, -7, 3, 'x', { col: 'stone' });
+m.cover(-4, -10.5, 3.5, 'x', { col: 'stone' }); m.cover(3, -11, 3, 'x', { col: 'stone' });
 boulder(-26, -15, 2.4, 2.4, 1.8); boulder(25, -13, 2.4, 2.4, COVER_H);
 // South half (Blue's side).
 boulder(20, 14, 3, 2.2, 2.2); boulder(-21, 15.5, 2.6, 2, COVER_H);
-logs(6, 16, 4); logs(-7, 12.5, 4);
+logs(6, 16, 4); logs(-7, 13.5, 4);
 m.crates(-14, 28.5); m.crates(14, 27);
-m.cover(4, 6.5, 3.5, 'x', { col: 'stone' }); m.cover(-4.5, 7, 3, 'x', { col: 'stone' });
+m.cover(4, 9.5, 3.5, 'x', { col: 'stone' }); m.cover(-3, 10, 3, 'x', { col: 'stone' });
 boulder(26, 15, 2.4, 2.4, 1.8); boulder(-25, 13, 2.4, 2.4, COVER_H);
 
 const ground = m.finishGround(-X, -Z, X, Z);
@@ -104,8 +109,8 @@ export const FROST = scaleMap({
   groundBoxes: ground,
   spawns: [
     [-12, 0, -50], [12, 0, -50], [-30, 0, -42], [30, 0, -40], [0, 0, -36], [-12, 0, -32],
-    [12, 0, -33], [-26, 0, -20], [26, 0, -18], [0, 0, -14], [-18, 0, 5], [0, 0, 7],
-    [18, 0, -6], [-34, 0, 32], [-20, 0, 26], [20, 0, 27], [30, 0, 45], [6, 0, 48],
+    [12, 0, -33], [-26, 0, -20], [26, 0, -18], [0, 0, -14], [-18, 0, 10], [0, 0, 12],
+    [18, 0, -11], [-34, 0, 32], [-20, 0, 26], [20, 0, 27], [30, 0, 45], [6, 0, 48],
     [-12, 0, 48],
   ].map((s) => toSpawn(s, center)),
   teamSpawns: {
