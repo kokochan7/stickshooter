@@ -26,7 +26,7 @@ const HOLD = {
   rifle: new THREE.Vector3(0.13, -0.15, -0.44),
   pistol: new THREE.Vector3(0.09, -0.12, -0.5),
   heavy: new THREE.Vector3(0.15, -0.2, -0.4),
-  knife: new THREE.Vector3(0.19, -0.17, -0.38),
+  knife: new THREE.Vector3(0.17, -0.16, -0.36),
   grenade: new THREE.Vector3(0.17, -0.17, -0.36),
   c4: new THREE.Vector3(0.0, -0.17, -0.47),
 };
@@ -102,6 +102,7 @@ export class ViewModel {
     this._m = new THREE.Matrix4();
     this._pR = new THREE.Vector3();
     this._pL = new THREE.Vector3();
+    this._palm = new THREE.Vector3();
   }
 
   setAspect(a) {
@@ -223,6 +224,9 @@ export class ViewModel {
       sx * 2 + ks * 0.01 + rp.yaw + mp.yaw,
       -sx * 1.5 + rp.roll + mp.roll,
     );
+    // The knife is held upright in the fist; the swing above turns the hand
+    // around the wrist in screen axes.
+    if (holdKind === 'knife') this.rig.quaternion.multiply(KNIFE_REST);
 
     if (this.gun.spin) {
       this.spin += dt * spin * 50;
@@ -249,14 +253,15 @@ export class ViewModel {
     const inv = this._m.copy(this.rig.matrix).invert();
     const shoulderR = this._v[2].set(0.24, -0.4, 0.0).applyMatrix4(inv);
     const shoulderL = this._v[3].set(-0.2, -0.42, -0.06).applyMatrix4(inv);
-    // The left hand is hidden while the knife slashes or stabs.
-    this.showLeft(!(this.gun.spec.hold === 'knife' && this.meleeT >= 0));
+    this.showLeft(true);
     if (this.gun.spec.hold === 'knife') {
-      // Knife, like CS 1.6: only the right hand swings. The left hand rests
-      // low on the left and doesn't follow the slash or stab, only the walk.
-      fore.set(-0.25 + bobX, -0.26 + bobY - drop * 0.4, -0.42).applyMatrix4(inv);
-      this.limb('R', shoulderR, grip, this._pR.set(0.6, -1, 0.2).transformDirection(inv));
-      this.limb('L', shoulderL, fore, this._pL.set(-0.8, -1, 0).transformDirection(inv));
+      // Knife: blade up in the right fist, the left hand raised and open on
+      // the left. Only the right hand swings; the left one eases back a
+      // little during a swing and follows the walk.
+      const lift = this.meleeT >= 0 ? Math.sin(Math.min(1, this.meleeT / this.meleeDur) * Math.PI) : 0;
+      fore.set(-0.17 + bobX - 0.02 * lift, -0.19 + bobY - drop * 0.4 - 0.03 * lift, -0.4).applyMatrix4(inv);
+      this.limb('R', shoulderR, grip, this._pR.set(0.7, -1, 0.3).transformDirection(inv), this._v[5].set(-0.6, 0, -0.8).transformDirection(inv));
+      this.limb('L', shoulderL, fore, this._pL.set(-0.9, -1, 0.2).transformDirection(inv), this._v[0].set(0.75, 0.15, -0.65).transformDirection(inv));
     } else {
       this.limb('R', shoulderR, grip, this._pR.set(0.6, -1, 0.2));
       this.limb('L', shoulderL, fore, this._pL.set(-0.8, -1, 0));
@@ -372,16 +377,15 @@ export class ViewModel {
     return rp;
   }
 
-  // Knife rest pose (blade tipped up and in) plus the slash / stab motion,
-  // after CS 1.6's v_knife: a slash winds up to one side and sweeps the
-  // blade flat across the screen (the next one comes back the other way);
-  // the stab lifts the knife up and back, drives it forward and down, holds
-  // a moment and comes back.
+  // Knife slash / stab motion on top of the upright hold (KNIFE_REST),
+  // after CS 1.6's v_knife: a slash cocks the blade over to one side and
+  // sweeps it across the screen edge first (the next one comes back the
+  // other way); the stab raises the knife, drives it forward point first,
+  // holds a moment and comes back.
   meleePose(dt) {
     const mp = this._mp ??= { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0 };
     mp.x = mp.y = mp.z = mp.pitch = mp.yaw = mp.roll = 0;
     if (this.gun.spec.hold !== 'knife') { this.meleeT = -1; return mp; }
-    mp.pitch = 0.45; mp.yaw = 0.25; mp.roll = -0.35;
     if (this.meleeT < 0) return mp;
     this.meleeT += dt;
     const u = Math.min(1, this.meleeT / this.meleeDur);
@@ -469,12 +473,13 @@ export class ViewModel {
     }
   }
 
-  limb(side, shoulder, hand, pole) {
+  limb(side, shoulder, hand, pole, palm = null) {
+    if (palm) palm = this._palm.copy(palm);
     const elbow = solveIK(shoulder, hand, 0.42, 0.42, pole, this._v[4]);
     this.arms['upper' + side].set(shoulder, elbow);
     this.arms['fore' + side].set(elbow, hand);
     this.arms['hand' + side].set(hand);
-    orientHand(this.arms['hand' + side].mesh, this.arms['fore' + side].mesh.quaternion, side === 'R' ? PALM_R : PALM_L);
+    orientHand(this.arms['hand' + side].mesh, this.arms['fore' + side].mesh.quaternion, palm ?? (side === 'R' ? PALM_R : PALM_L));
   }
 
   // Muzzle and shell-ejection points in view space.
@@ -488,29 +493,41 @@ export class ViewModel {
   }
 }
 
-// Knife keyframes as offsets from the rest pose:
-// [fraction of the swing, x, y, z, pitch, yaw, roll, ease into it].
-// Slash, right to left.
+// The knife's hold: blade pointing up and a little away, edge to the left,
+// the flat turned partly toward you (like holding it ready in a fist).
+const KNIFE_REST = (() => {
+  const z = new THREE.Vector3(-0.04, -1, 0.32).normalize(); // gun +Z (pommel end) points down
+  const y = new THREE.Vector3(1, 0, -0.25); // gun +Y (spine) points right and away
+  y.addScaledVector(z, -y.dot(z)).normalize();
+  const x = new THREE.Vector3().crossVectors(y, z);
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+})();
+
+// Knife keyframes as offsets from the hold, turning the hand around the
+// wrist in screen axes: [fraction of the swing, x, y, z, pitch (+ tips the
+// blade back), yaw, roll (+ tips it left), ease into it].
+// Slash, right to left: cock it over to the right, then sweep across.
 const SLASH_KEYS = [
   [0, 0, 0, 0, 0, 0, 0],
-  [0.22, 0.07, 0.05, 0.03, 0.25, -0.55, 0.35, 'o'], // wind up, blade cocked back on the right
-  [0.5, -0.17, -0.05, -0.1, -0.5, 1.0, -0.9, 'i'], // whip across, edge first
-  [0.62, -0.19, -0.07, -0.08, -0.55, 1.1, -1.0, 'o'], // follow through
+  [0.24, 0.07, 0.05, 0.02, -0.25, -0.2, -0.85, 'o'], // cocked over to the right
+  [0.5, -0.2, -0.05, -0.08, -0.6, 0.45, 1.25, 'i'], // whip across, edge first
+  [0.62, -0.23, -0.07, -0.07, -0.65, 0.5, 1.4, 'o'], // follow through
   [1, 0, 0, 0, 0, 0, 0, 's'],
 ];
 // The next slash comes back backhand, left to right.
 const BACKHAND_KEYS = [
   [0, 0, 0, 0, 0, 0, 0],
-  [0.22, -0.16, 0.03, 0, 0.1, 0.7, -0.5, 'o'], // wind up across the body, blade pointing left
-  [0.5, -0.05, -0.05, -0.1, -0.45, -1.2, 0.7, 'i'], // sweep back to the right
-  [0.62, -0.04, -0.07, -0.08, -0.5, -1.3, 0.8, 'o'], // follow through
+  [0.24, -0.15, 0.02, 0.01, -0.35, 0.3, 1.05, 'o'], // wound up across the body
+  [0.5, 0.08, -0.05, -0.08, -0.65, -0.45, -1.1, 'i'], // sweep back to the right
+  [0.62, 0.1, -0.07, -0.07, -0.7, -0.5, -1.25, 'o'], // follow through
   [1, 0, 0, 0, 0, 0, 0, 's'],
 ];
+// Stab: raise it up and back, drive it forward point first, hold, return.
 const STAB_KEYS = [
   [0, 0, 0, 0, 0, 0, 0],
-  [0.28, 0.02, 0.09, 0.08, 0.6, -0.15, 0.2, 'o'], // lift up and back, point raised
-  [0.42, -0.05, -0.03, -0.24, -0.55, 0.15, -0.1, 'i'], // drive it forward and down
-  [0.6, -0.05, -0.035, -0.25, -0.6, 0.15, -0.1, 'o'], // hold
+  [0.28, -0.03, 0.07, 0.07, 0.3, 0.05, 0.15, 'o'], // raised, point back
+  [0.42, -0.07, -0.02, -0.17, -1.3, 0.1, 0.1, 'i'], // drive forward
+  [0.6, -0.07, -0.025, -0.18, -1.32, 0.1, 0.1, 'o'], // hold
   [1, 0, 0, 0, 0, 0, 0, 's'],
 ];
 // Keys typed while planting, as [column, row] on the C4's keypad.
