@@ -395,7 +395,10 @@ export function classify(b, map) {
   if (m === 'snow' || m === 'ice') return 'snow';
   if (m === 'sand' || m === 'dirt') return groundSurface(map);
   if (m === 'concrete') {
-    // Reddish-brown walls read as brick.
+    // Reddish-brown walls read as brick; roof and ceiling slabs (thin,
+    // flat, overhead) stay concrete whatever their colour.
+    const h = b.max[1] - b.min[1], w = b.max[0] - b.min[0], d = b.max[2] - b.min[2];
+    if (b.min[1] > 2 && h <= 0.6 && h < Math.min(w, d)) return 'concrete';
     if (hsl.h < 0.08 && hsl.s > 0.3 && hsl.l < 0.55 && hsl.l > 0.2) return 'brick';
     return 'concrete';
   }

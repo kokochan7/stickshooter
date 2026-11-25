@@ -107,7 +107,9 @@ function patchShader(mat, uniforms) {
         // 1 under open sky, 0 under cover; 5 taps soften skylight and door edges.
         float skyVis() {
           vec2 p = vOP.xz + vON.xz * 0.3;
-          float y = vOP.y + max(vON.y, 0.0) * 0.05 + 0.3;
+          // Test a point just off the face: above a top, just below a
+          // ceiling (never level with the box's own top, which flickers).
+          float y = vOP.y + vON.y * 0.35 + 0.3;
           float v = step(coverAt(p), y);
           v += step(coverAt(p + vec2(0.6, 0.0)), y);
           v += step(coverAt(p - vec2(0.6, 0.0)), y);
@@ -119,7 +121,7 @@ function patchShader(mat, uniforms) {
         // and doorway patches indoors keep the indoor fill too.
         float enclosed() {
           vec2 p = vOP.xz + vON.xz * 0.3;
-          float y = vOP.y + 0.35, e = 0.0;
+          float y = vOP.y + vON.y * 0.4 + 0.35, e = 0.0;
           for (int i = 0; i < 8; i++) {
             float a = float(i) * 0.785398;
             e += 1.0 - step(coverAt(p + vec2(cos(a), sin(a)) * 2.5), y);
