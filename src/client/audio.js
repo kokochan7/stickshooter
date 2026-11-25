@@ -416,6 +416,16 @@ function knifeWall() {
   return lofi(drive(d, 2));
 }
 
+// A stab into thin air: a heavy, low push of air with a thin blade hiss on
+// top, so a miss sounds clearly different from the stab that lands.
+function knifeStabMiss() {
+  const n = Math.floor(SR * 0.42);
+  const out = new Float32Array(n);
+  mixInto(out, whoosh(0.4, 180, 900, 1.2), 1.1);
+  mixInto(out, whoosh(0.22, 1800, 4200, 2.5), 0.35, 0.09);
+  return lofi(out);
+}
+
 // Blade into a body: a meaty stab.
 function knifeHit() {
   const n = Math.floor(SR * 0.25);
@@ -522,6 +532,7 @@ export function buildAll() {
   b.buy = blip(700, 1100, 0.1);
   b.knifeSlash = whoosh(0.22, 700, 2600);
   b.knifeStab = whoosh(0.3, 400, 1500, 1.6);
+  b.knifeStabMiss = knifeStabMiss();
   b.knifeDeploy = knifeDeploy();
   b.knifeHit = knifeHit();
   b.knifeWall = knifeWall();

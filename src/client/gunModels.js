@@ -1068,7 +1068,7 @@ SPECS.knife = () => ({
     box(0.0058, 0.004, 0.08, 0, 0.012, -0.12, 'steel'),
     box(0.0072, 0.003, 0.12, 0, 0.022, -0.12, 'metal'),
   ],
-  muzzle: [0, 0, -0.24], fore: [-0.16, -0.32, 0.12], hold: 'knife', eject: [0, 0, 0],
+  muzzle: [0, 0, -0.24], fore: [-0.16, -0.32, 0.12], gripPoint: [0, -0.003, -0.025], hold: 'knife', eject: [0, 0, 0],
 });
 
 // HE grenade: round olive body with a band, the fuse on top, the spoon down

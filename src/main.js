@@ -930,7 +930,9 @@ function handleEvent(e) {
       break;
     case 'melee': {
       const sound = e.hit === 'flesh' ? 'knifeHit' : e.hit === 'wall' ? 'knifeWall' : null;
-      const swing = e.kind === 'stab' ? 'knifeStab' : 'knifeSlash';
+      // CS's stab sound is the blade going in, so it only plays when the stab
+      // lands; a stab that misses gets its own swish.
+      const swing = e.kind === 'stab' ? (e.hit === 'flesh' ? 'knifeStab' : 'knifeStabMiss') : 'knifeSlash';
       if (isFirstPerson(p)) {
         view.viewModel.melee(e.kind);
         audio.play(swing, { volume: 0.55 });
