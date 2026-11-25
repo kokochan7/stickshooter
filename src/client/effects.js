@@ -423,7 +423,7 @@ export class Effects {
   // the fire reaches can be hurt), sparks and debris, a column of dark smoke
   // and a scorch mark on the floor that fades after 8 s. The fire stops at
   // walls, like the damage. Under water it's a burst of bubbles and spray.
-  explosion(pos, water = false, radius = 13) {
+  explosion(pos, water = false, radius = 9.85) {
     const [x, y, z] = pos;
     const R = Math.random;
     if (water) {
