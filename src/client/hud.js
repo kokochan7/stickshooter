@@ -390,6 +390,8 @@ export class Hud {
     el.className = '';
     void el.offsetWidth;
     el.className = `show m${Math.min(6, level)}`;
+    // Collapse once faded so it stops taking room above the center message.
+    el.onanimationend = () => { el.className = ''; };
   }
 
   message(html) {
